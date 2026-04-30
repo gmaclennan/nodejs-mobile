@@ -19,16 +19,17 @@
 // OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE
 // USE OR OTHER DEALINGS IN THE SOFTWARE.
 
+/* eslint-disable node-core/crypto-check */
 'use strict';
-const process = globalThis.process;  // Some tests tamper with the process globalThis.
+const process = global.process;  // Some tests tamper with the process global.
 
 const assert = require('assert');
+const { exec, execSync, spawn, spawnSync } = require('child_process');
 const fs = require('fs');
-const net = require('net');
 // Do not require 'os' until needed so that test-os-checked-function can
 // monkey patch it. If 'os' is required here, that test will fail.
 const path = require('path');
-const { inspect, getCallSites } = require('util');
+const { inspect } = require('util');
 const { isMainThread } = require('worker_threads');
 
 const tmpdir = require('./tmpdir');
@@ -54,21 +55,16 @@ const noop = () => {};
 const hasCrypto = Boolean(process.versions.openssl) &&
                   !process.env.NODE_SKIP_CRYPTO;
 
-const hasInspector = Boolean(process.features.inspector);
-const hasSQLite = Boolean(process.versions.sqlite);
+const hasOpenSSL3 = hasCrypto &&
+    require('crypto').constants.OPENSSL_VERSION_NUMBER >= 0x30000000;
 
-const hasQuic = hasCrypto && !!process.config.variables.node_quic;
+const hasOpenSSL31 = hasCrypto &&
+    require('crypto').constants.OPENSSL_VERSION_NUMBER >= 0x30100000;
 
-/**
- * Parse test metadata from the specified file.
- * @param {string} filename - The name of the file to parse.
- * @returns {{
- *   flags: string[],
- *   envs: Record<string, string>
- * }} An object containing the parsed flags and environment variables.
- */
-function parseTestMetadata(filename = process.argv[1]) {
-  // The copyright notice is relatively big and the metadata could come afterwards.
+const hasQuic = hasCrypto && !!process.config.variables.openssl_quic;
+
+function parseTestFlags(filename = process.argv[1]) {
+  // The copyright notice is relatively big and the flags could come afterwards.
   const bytesToRead = 1500;
   const buffer = Buffer.allocUnsafe(bytesToRead);
   const fd = fs.openSync(filename, 'r');
@@ -77,33 +73,19 @@ function parseTestMetadata(filename = process.argv[1]) {
   const source = buffer.toString('utf8', 0, bytesRead);
 
   const flagStart = source.search(/\/\/ Flags:\s+--/) + 10;
-  let flags = [];
-  if (flagStart !== 9) {
-    let flagEnd = source.indexOf('\n', flagStart);
-    if (source[flagEnd - 1] === '\r') {
-      flagEnd--;
-    }
-    flags = source
-      .substring(flagStart, flagEnd)
-      .split(/\s+/)
-      .filter(Boolean);
-  }
 
-  const envStart = source.search(/\/\/ Env:\s+/) + 8;
-  let envs = {};
-  if (envStart !== 7) {
-    let envEnd = source.indexOf('\n', envStart);
-    if (source[envEnd - 1] === '\r') {
-      envEnd--;
-    }
-    const envArray = source
-      .substring(envStart, envEnd)
-      .split(/\s+/)
-      .filter(Boolean);
-    envs = Object.fromEntries(envArray.map((env) => env.split('=')));
+  if (flagStart === 9) {
+    return [];
   }
-
-  return { flags, envs };
+  let flagEnd = source.indexOf('\n', flagStart);
+  // Normalize different EOL.
+  if (source[flagEnd - 1] === '\r') {
+    flagEnd--;
+  }
+  return source
+    .substring(flagStart, flagEnd)
+    .split(/\s+/)
+    .filter(Boolean);
 }
 
 // Check for flags. Skip this for workers (both, the `cluster` module and
@@ -116,39 +98,25 @@ if (process.argv.length === 2 &&
     hasCrypto &&
     require('cluster').isPrimary &&
     fs.existsSync(process.argv[1])) {
-  const { flags, envs } = parseTestMetadata();
-
-  const flagsTriggerSpawn = flags.some((flag) => (
-    !process.execArgv.includes(flag) &&
-    // If the binary is build without `intl` the inspect option is
-    // invalid. The test itself should handle this case.
-    (process.features.inspector || !flag.startsWith('--inspect'))
-  ));
-  const envsTriggerSpawn = Object.keys(envs).some((key) => process.env[key] !== envs[key]);
-
-  if (flagsTriggerSpawn || envsTriggerSpawn) {
-    console.log(
-      'NOTE: The test started as a child_process using these flags:',
-      inspect(flags),
-      'And these environment variables:',
-      inspect(envs),
-      'Use NODE_SKIP_FLAG_CHECK to run the test with the original flags.',
-    );
-    const { spawnSync } = require('child_process');
-    const args = [...flags, ...process.execArgv, ...process.argv.slice(1)];
-    const options = {
-      encoding: 'utf8',
-      stdio: 'inherit',
-      env: {
-        ...process.env,
-        ...envs,
-      },
-    };
-    const result = spawnSync(process.execPath, args, options);
-    if (result.signal) {
-      process.kill(0, result.signal);
-    } else {
-      process.exit(result.status);
+  const flags = parseTestFlags();
+  for (const flag of flags) {
+    if (!process.execArgv.includes(flag) &&
+        // If the binary is build without `intl` the inspect option is
+        // invalid. The test itself should handle this case.
+        (process.features.inspector || !flag.startsWith('--inspect'))) {
+      console.log(
+        'NOTE: The test started as a child_process using these flags:',
+        inspect(flags),
+        'Use NODE_SKIP_FLAG_CHECK to run the test with the original flags.',
+      );
+      const args = [...flags, ...process.execArgv, ...process.argv.slice(1)];
+      const options = { encoding: 'utf8', stdio: 'inherit' };
+      const result = spawnSync(process.execPath, args, options);
+      if (result.signal) {
+        process.kill(0, result.signal);
+      } else {
+        process.exit(result.status);
+      }
     }
   }
 }
@@ -158,11 +126,11 @@ const isSunOS = process.platform === 'sunos';
 const isFreeBSD = process.platform === 'freebsd';
 const isOpenBSD = process.platform === 'openbsd';
 const isLinux = process.platform === 'linux';
-const isMacOS = process.platform === 'darwin';
-const isASan = process.config.variables.asan === 1;
-const isRiscv64 = process.arch === 'riscv64';
-const isDebug = process.features.debug;
-function isPi() {
+const isOSX = process.platform === 'darwin';
+const isAndroid = process.platform === 'android';
+const isIOS = process.platform === 'ios';
+const isAsan = process.env.ASAN !== undefined;
+const isPi = (() => {
   try {
     // Normal Raspberry Pi detection is to find the `Raspberry Pi` string in
     // the contents of `/sys/firmware/devicetree/base/model` but that doesn't
@@ -174,11 +142,9 @@ function isPi() {
   } catch {
     return false;
   }
-}
+})();
 
-// When using high concurrency or in the CI we need much more time for each connection attempt
-net.setDefaultAutoSelectFamilyAttemptTimeout(platformTimeout(net.getDefaultAutoSelectFamilyAttemptTimeout() * 10));
-const defaultAutoSelectFamilyAttemptTimeout = net.getDefaultAutoSelectFamilyAttemptTimeout();
+const isDumbTerminal = process.env.TERM === 'dumb';
 
 const buildType = process.config.target_defaults ?
   process.config.target_defaults.default_configuration :
@@ -219,7 +185,7 @@ if (process.env.NODE_TEST_WITH_ASYNC_HOOKS) {
       }
       initHandles[id] = {
         resource,
-        stack: inspect(new Error()).slice(6),
+        stack: inspect(new Error()).substr(6),
       };
     },
     before() { },
@@ -235,6 +201,7 @@ if (process.env.NODE_TEST_WITH_ASYNC_HOOKS) {
   }).enable();
 }
 
+let opensslCli = null;
 let inFreeBSDJail = null;
 let localhostIPv4 = null;
 
@@ -263,14 +230,15 @@ const PIPE = (() => {
 // `$node --abort-on-uncaught-exception $file child`
 // the process aborts.
 function childShouldThrowAndAbort() {
-  const escapedArgs = escapePOSIXShell`"${process.argv[0]}" --abort-on-uncaught-exception "${process.argv[1]}" child`;
+  let testCmd = '';
   if (!isWindows) {
     // Do not create core files, as it can take a lot of disk space on
     // continuous testing and developers' machines
-    escapedArgs[0] = 'ulimit -c 0 && ' + escapedArgs[0];
+    testCmd += 'ulimit -c 0 && ';
   }
-  const { exec } = require('child_process');
-  const child = exec(...escapedArgs);
+  testCmd += `"${process.argv[0]}" --abort-on-uncaught-exception `;
+  testCmd += `"${process.argv[1]}" child`;
+  const child = exec(testCmd);
   child.on('exit', function onExit(exitCode, signal) {
     const errMsg = 'Test should have aborted ' +
                    `but instead exited with exit code ${exitCode}` +
@@ -278,6 +246,13 @@ function childShouldThrowAndAbort() {
     assert(nodeProcessAborted(exitCode, signal), errMsg);
   });
 }
+
+function createZeroFilledFile(filename) {
+  const fd = fs.openSync(filename, 'w');
+  fs.ftruncateSync(fd, 10 * 1024 * 1024);
+  fs.closeSync(fd);
+}
+
 
 const pwdCommand = isWindows ?
   ['cmd.exe', ['/d', '/c', 'cd']] :
@@ -288,24 +263,19 @@ function platformTimeout(ms) {
   const multipliers = typeof ms === 'bigint' ?
     { two: 2n, four: 4n, seven: 7n } : { two: 2, four: 4, seven: 7 };
 
-  if (isDebug)
+  if (process.features.debug)
     ms = multipliers.two * ms;
 
   if (exports.isAIX || exports.isIBMi)
     return multipliers.two * ms; // Default localhost speed is slower on AIX
 
-  if (isPi())
+  if (isPi)
     return multipliers.two * ms;  // Raspberry Pi devices
-
-  if (isRiscv64) {
-    return multipliers.four * ms;
-  }
 
   return ms;
 }
 
-const knownGlobals = new Set([
-  AbortController,
+let knownGlobals = [
   atob,
   btoa,
   clearImmediate,
@@ -316,65 +286,77 @@ const knownGlobals = new Set([
   setInterval,
   setTimeout,
   queueMicrotask,
-  structuredClone,
-  fetch,
-]);
+];
 
-['gc',
- // The following are assumed to be conditionally available in the
- // global object currently. They can likely be added to the fixed
- // set of known globals, however.
- 'navigator',
- 'Navigator',
- 'performance',
- 'Performance',
- 'PerformanceMark',
- 'PerformanceMeasure',
- 'EventSource',
- 'CustomEvent',
- 'ReadableStream',
- 'ReadableStreamDefaultReader',
- 'ReadableStreamBYOBReader',
- 'ReadableStreamBYOBRequest',
- 'ReadableByteStreamController',
- 'ReadableStreamDefaultController',
- 'TransformStream',
- 'TransformStreamDefaultController',
- 'WritableStream',
- 'WritableStreamDefaultWriter',
- 'WritableStreamDefaultController',
- 'ByteLengthQueuingStrategy',
- 'CountQueuingStrategy',
- 'TextEncoderStream',
- 'TextDecoderStream',
- 'CompressionStream',
- 'DecompressionStream',
- 'Storage',
-].forEach((i) => {
-  if (globalThis[i] !== undefined) {
-    knownGlobals.add(globalThis[i]);
-  }
-});
+// TODO(@jasnell): This check can be temporary. AbortController is
+// not currently supported in either Node.js 12 or 10, making it
+// difficult to run tests comparatively on those versions. Once
+// all supported versions have AbortController as a global, this
+// check can be removed and AbortController can be added to the
+// knownGlobals list above.
+if (global.AbortController)
+  knownGlobals.push(global.AbortController);
 
-if (hasCrypto) {
-  knownGlobals.add(globalThis.crypto);
-  knownGlobals.add(globalThis.Crypto);
-  knownGlobals.add(globalThis.CryptoKey);
-  knownGlobals.add(globalThis.SubtleCrypto);
+if (global.gc) {
+  knownGlobals.push(global.gc);
 }
 
-if (hasSQLite) {
-  knownGlobals.add(globalThis.localStorage);
-  knownGlobals.add(globalThis.sessionStorage);
+if (global.Performance) {
+  knownGlobals.push(global.Performance);
+}
+if (global.performance) {
+  knownGlobals.push(global.performance);
+}
+if (global.PerformanceMark) {
+  knownGlobals.push(global.PerformanceMark);
+}
+if (global.PerformanceMeasure) {
+  knownGlobals.push(global.PerformanceMeasure);
 }
 
-const { Worker } = require('node:worker_threads');
-knownGlobals.add(Worker);
+// TODO(@ethan-arrowood): Similar to previous checks, this can be temporary
+// until v16.x is EOL. Once all supported versions have structuredClone we
+// can add this to the list above instead.
+if (global.structuredClone) {
+  knownGlobals.push(global.structuredClone);
+}
+
+if (global.fetch) {
+  knownGlobals.push(fetch);
+}
+if (hasCrypto && global.crypto) {
+  knownGlobals.push(global.crypto);
+  knownGlobals.push(global.Crypto);
+  knownGlobals.push(global.CryptoKey);
+  knownGlobals.push(global.SubtleCrypto);
+}
+if (global.CustomEvent) {
+  knownGlobals.push(global.CustomEvent);
+}
+if (global.ReadableStream) {
+  knownGlobals.push(
+    global.ReadableStream,
+    global.ReadableStreamDefaultReader,
+    global.ReadableStreamBYOBReader,
+    global.ReadableStreamBYOBRequest,
+    global.ReadableByteStreamController,
+    global.ReadableStreamDefaultController,
+    global.TransformStream,
+    global.TransformStreamDefaultController,
+    global.WritableStream,
+    global.WritableStreamDefaultWriter,
+    global.WritableStreamDefaultController,
+    global.ByteLengthQueuingStrategy,
+    global.CountQueuingStrategy,
+    global.TextEncoderStream,
+    global.TextDecoderStream,
+    global.CompressionStream,
+    global.DecompressionStream,
+  );
+}
 
 function allowGlobals(...allowlist) {
-  for (const val of allowlist) {
-    knownGlobals.add(val);
-  }
+  knownGlobals = knownGlobals.concat(allowlist);
 }
 
 if (process.env.NODE_TEST_KNOWN_GLOBALS !== '0') {
@@ -386,13 +368,8 @@ if (process.env.NODE_TEST_KNOWN_GLOBALS !== '0') {
   function leakedGlobals() {
     const leaked = [];
 
-    for (const val in globalThis) {
-      // globalThis.crypto is a getter that throws if Node.js was compiled
-      // without OpenSSL so we'll skip it if it is not available.
-      if (val === 'crypto' && !hasCrypto) {
-        continue;
-      }
-      if (!knownGlobals.has(globalThis[val])) {
+    for (const val in global) {
+      if (!knownGlobals.includes(global[val])) {
         leaked.push(val);
       }
     }
@@ -498,9 +475,18 @@ function _mustCallInner(fn, criteria = 1, field) {
   return _return;
 }
 
+function hasMultiLocalhost() {
+  const { internalBinding } = require('internal/test/binding');
+  const { TCP, constants: TCPConstants } = internalBinding('tcp_wrap');
+  const t = new TCP(TCPConstants.SOCKET);
+  const ret = t.bind('127.0.0.2', 0);
+  t.close();
+  return ret === 0;
+}
+
 function skipIfEslintMissing() {
   if (!fs.existsSync(
-    path.join(__dirname, '..', '..', 'tools', 'eslint', 'node_modules', 'eslint'),
+    path.join(__dirname, '..', '..', 'tools', 'node_modules', 'eslint'),
   )) {
     skip('missing ESLint');
   }
@@ -518,7 +504,6 @@ function canCreateSymLink() {
                                  'System32', 'whoami.exe');
 
     try {
-      const { execSync } = require('child_process');
       const output = execSync(`${whoamiPath} /priv`, { timeout: 1000 });
       return output.includes('SeCreateSymbolicLinkPrivilege');
     } catch {
@@ -529,13 +514,25 @@ function canCreateSymLink() {
   return true;
 }
 
+function getCallSite(top) {
+  const originalStackFormatter = Error.prepareStackTrace;
+  Error.prepareStackTrace = (err, stack) =>
+    `${stack[0].getFileName()}:${stack[0].getLineNumber()}`;
+  const err = new Error();
+  Error.captureStackTrace(err, top);
+  // With the V8 Error API, the stack is not formatted until it is accessed
+  err.stack; // eslint-disable-line no-unused-expressions
+  Error.prepareStackTrace = originalStackFormatter;
+  return err.stack;
+}
+
 function mustNotCall(msg) {
-  const callSite = getCallSites()[1];
+  const callSite = getCallSite(mustNotCall);
   return function mustNotCall(...args) {
     const argsInfo = args.length > 0 ?
       `\ncalled with arguments: ${args.map((arg) => inspect(arg)).join(', ')}` : '';
     assert.fail(
-      `${msg || 'function should not have been called'} at ${callSite.scriptName}:${callSite.lineNumber}` +
+      `${msg || 'function should not have been called'} at ${callSite}` +
       argsInfo);
   };
 }
@@ -592,8 +589,7 @@ function printSkipMessage(msg) {
 
 function skip(msg) {
   printSkipMessage(msg);
-  // In known_issues test, skipping should produce a non-zero exit code.
-  process.exit(require.main?.filename.startsWith(path.resolve(__dirname, '../known_issues/')) ? 1 : 0);
+  process.exit(0);
 }
 
 // Returns true if the exit code "exitCode" and/or signal name "signal"
@@ -646,12 +642,12 @@ function _expectWarning(name, expected, code) {
     expected = [[expected, code]];
   } else if (!Array.isArray(expected)) {
     expected = Object.entries(expected).map(([a, b]) => [b, a]);
-  } else if (expected.length !== 0 && !Array.isArray(expected[0])) {
+  } else if (!(Array.isArray(expected[0]))) {
     expected = [[expected[0], expected[1]]];
   }
   // Deprecation codes are mandatory, everything else is not.
   if (name === 'DeprecationWarning') {
-    expected.forEach(([_, code]) => assert(code, `Missing deprecation code: ${expected}`));
+    expected.forEach(([_, code]) => assert(code, expected));
   }
   return mustCall((warning) => {
     const expectedProperties = expected.shift();
@@ -706,8 +702,9 @@ function expectsError(validator, exact) {
       assert.fail(`Expected one argument, got ${inspect(args)}`);
     }
     const error = args.pop();
+    const descriptor = Object.getOwnPropertyDescriptor(error, 'message');
     // The error message should be non-enumerable
-    assert.strictEqual(Object.prototype.propertyIsEnumerable.call(error, 'message'), false);
+    assert.strictEqual(descriptor.enumerable, false);
 
     assert.throws(() => { throw error; }, validator);
     return true;
@@ -715,7 +712,7 @@ function expectsError(validator, exact) {
 }
 
 function skipIfInspectorDisabled() {
-  if (!hasInspector) {
+  if (!process.features.inspector) {
     skip('V8 inspector is disabled');
   }
 }
@@ -726,9 +723,9 @@ function skipIf32Bits() {
   }
 }
 
-function skipIfSQLiteMissing() {
-  if (!hasSQLite) {
-    skip('missing SQLite');
+function skipIfWorker() {
+  if (!isMainThread) {
+    skip('This test only works on a main thread');
   }
 }
 
@@ -745,7 +742,6 @@ function getArrayBufferViews(buf) {
     Uint16Array,
     Int32Array,
     Uint32Array,
-    Float16Array,
     Float32Array,
     Float64Array,
     BigInt64Array,
@@ -801,7 +797,7 @@ function invalidArgTypeHelper(input) {
   if (input == null) {
     return ` Received ${input}`;
   }
-  if (typeof input === 'function') {
+  if (typeof input === 'function' && input.name) {
     return ` Received function ${input.name}`;
   }
   if (typeof input === 'object') {
@@ -815,6 +811,36 @@ function invalidArgTypeHelper(input) {
   if (inspected.length > 28) { inspected = `${inspected.slice(inspected, 0, 25)}...`; }
 
   return ` Received type ${typeof input} (${inspected})`;
+}
+
+function skipIfDumbTerminal() {
+  if (isDumbTerminal) {
+    skip('skipping - dumb terminal');
+  }
+}
+
+function gcUntil(name, condition) {
+  if (typeof name === 'function') {
+    condition = name;
+    name = undefined;
+  }
+  return new Promise((resolve, reject) => {
+    let count = 0;
+    function gcAndCheck() {
+      setImmediate(() => {
+        count++;
+        global.gc();
+        if (condition()) {
+          resolve();
+        } else if (count < 10) {
+          gcAndCheck();
+        } else {
+          reject(name === undefined ? undefined : 'Test ' + name + ' failed');
+        }
+      });
+    }
+    gcAndCheck();
+  });
 }
 
 function requireNoPackageJSONAbove(dir = __dirname) {
@@ -832,7 +858,6 @@ function requireNoPackageJSONAbove(dir = __dirname) {
 }
 
 function spawnPromisified(...args) {
-  const { spawn } = require('child_process');
   let stderr = '';
   let stdout = '';
 
@@ -862,94 +887,36 @@ function spawnPromisified(...args) {
   });
 }
 
-/**
- * Escape values in a string template literal. On Windows, this function
- * does not escape anything (which is fine for paths, as `"` is not a valid char
- * in a path on Windows), so you should use it only to escape paths – or other
- * values on tests which are skipped on Windows.
- * This function is meant to be used for tagged template strings.
- * @returns {[string, object | undefined]} An array that can be passed as
- *   arguments to `exec` or `execSync`.
- */
-function escapePOSIXShell(cmdParts, ...args) {
-  if (common.isWindows) {
-    // On Windows, paths cannot contain `"`, so we can return the string unchanged.
-    return [String.raw({ raw: cmdParts }, ...args)];
-  }
-  // On POSIX shells, we can pass values via the env, as there's a standard way for referencing a variable.
-  const env = { ...process.env };
-  let cmd = cmdParts[0];
-  for (let i = 0; i < args.length; i++) {
-    const envVarName = `ESCAPED_${i}`;
-    env[envVarName] = args[i];
-    cmd += '${' + envVarName + '}' + cmdParts[i + 1];
-  }
-
-  return [cmd, { env }];
-};
-
-/**
- * Check the exports of require(esm).
- * TODO(joyeecheung): use it in all the test-require-module-* tests to minimize changes
- * if/when we change the layout of the result returned by require(esm).
- * @param {object} mod result returned by require()
- * @param {object} expectation shape of expected namespace.
- */
-function expectRequiredModule(mod, expectation, checkESModule = true) {
-  const { isModuleNamespaceObject } = require('util/types');
-  const clone = { ...mod };
-  if (Object.hasOwn(mod, 'default') && checkESModule) {
-    assert.strictEqual(mod.__esModule, true);
-    delete clone.__esModule;
-  }
-  assert(isModuleNamespaceObject(mod));
-  assert.deepStrictEqual(clone, { ...expectation });
-}
-
-function expectRequiredTLAError(err) {
-  const message = /require\(\) cannot be used on an ESM graph with top-level await/;
-  if (typeof err === 'string') {
-    assert.match(err, /ERR_REQUIRE_ASYNC_MODULE/);
-    assert.match(err, message);
-  } else {
-    assert.strictEqual(err.code, 'ERR_REQUIRE_ASYNC_MODULE');
-    assert.match(err.message, message);
-  }
-}
-
-function sleepSync(ms) {
-  const sab = new SharedArrayBuffer(4);
-  const i32 = new Int32Array(sab);
-  Atomics.wait(i32, 0, 0, ms);
-}
-
 const common = {
   allowGlobals,
   buildType,
   canCreateSymLink,
   childShouldThrowAndAbort,
-  defaultAutoSelectFamilyAttemptTimeout,
-  escapePOSIXShell,
+  createZeroFilledFile,
   expectsError,
-  expectRequiredModule,
-  expectRequiredTLAError,
   expectWarning,
+  gcUntil,
   getArrayBufferViews,
   getBufferSources,
+  getCallSite,
   getTTYfd,
   hasIntl,
   hasCrypto,
+  hasOpenSSL3,
+  hasOpenSSL31,
   hasQuic,
-  hasInspector,
-  hasSQLite,
+  hasMultiLocalhost,
   invalidArgTypeHelper,
   isAlive,
-  isASan,
-  isDebug,
+  isAsan,
+  isDumbTerminal,
+  isAndroid,
   isFreeBSD,
+  isIOS,
   isLinux,
+  isMainThread,
   isOpenBSD,
-  isMacOS,
+  isOSX,
   isPi,
   isSunOS,
   isWindows,
@@ -961,7 +928,7 @@ const common = {
   mustSucceed,
   nodeProcessAborted,
   PIPE,
-  parseTestMetadata,
+  parseTestFlags,
   platformTimeout,
   printSkipMessage,
   pwdCommand,
@@ -969,14 +936,18 @@ const common = {
   runWithInvalidFD,
   skip,
   skipIf32Bits,
+  skipIfDumbTerminal,
   skipIfEslintMissing,
   skipIfInspectorDisabled,
-  skipIfSQLiteMissing,
+  skipIfWorker,
   spawnPromisified,
-  sleepSync,
 
   get enoughTestMem() {
     return require('os').totalmem() > 0x70000000; /* 1.75 Gb */
+  },
+
+  get hasFipsCrypto() {
+    return hasCrypto && require('crypto').getFips();
   },
 
   get hasIPv6() {
@@ -996,7 +967,6 @@ const common = {
   },
 
   get inFreeBSDJail() {
-    const { execSync } = require('child_process');
     if (inFreeBSDJail !== null) return inFreeBSDJail;
 
     if (exports.isFreeBSD &&
@@ -1017,6 +987,11 @@ const common = {
 
   get isIBMi() {
     return require('os').type() === 'OS400';
+  },
+
+  get isLinuxPPCBE() {
+    return (process.platform === 'linux') && (process.arch === 'ppc64') &&
+           (require('os').endianness() === 'BE');
   },
 
   get localhostIPv4() {
@@ -1040,6 +1015,28 @@ const common = {
     return localhostIPv4;
   },
 
+  // opensslCli defined lazily to reduce overhead of spawnSync
+  get opensslCli() {
+    if (opensslCli !== null) return opensslCli;
+
+    if (process.config.variables.node_shared_openssl) {
+      // Use external command
+      opensslCli = 'openssl';
+    } else {
+      // Use command built from sources included in Node.js repository
+      opensslCli = path.join(path.dirname(process.execPath), 'openssl-cli');
+    }
+
+    if (exports.isWindows) opensslCli += '.exe';
+
+    const opensslCmd = spawnSync(opensslCli, ['version']);
+    if (opensslCmd.status !== 0 || opensslCmd.error !== undefined) {
+      // OpenSSL command cannot be executed
+      opensslCli = false;
+    }
+    return opensslCli;
+  },
+
   get PORT() {
     if (+process.env.TEST_PARALLEL) {
       throw new Error('common.PORT cannot be used in a parallelized test');
@@ -1047,13 +1044,11 @@ const common = {
     return +process.env.NODE_COMMON_PORT || 12346;
   },
 
-  get isInsideDirWithUnusualChars() {
-    return __dirname.includes('%') ||
-           (!isWindows && __dirname.includes('\\')) ||
-           __dirname.includes('$') ||
-           __dirname.includes('\n') ||
-           __dirname.includes('\r') ||
-           __dirname.includes('\t');
+  /**
+   * Returns the EOL character used by this Git checkout.
+   */
+  get checkoutEOL() {
+    return fs.readFileSync(__filename).includes('\r\n') ? '\r\n' : '\n';
   },
 };
 
