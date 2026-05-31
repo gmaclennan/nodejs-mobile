@@ -1126,6 +1126,11 @@ parser.add_argument('-C',
     default=None,
     help=argparse.SUPPRESS)
 
+parser.add_argument('--ios-simulator',
+    action='store_true',
+    dest='ios_simulator',
+    help=argparse.SUPPRESS)
+
 parser.add_argument('--clang-cl',
     action='store',
     dest='clang_cl',
@@ -1547,6 +1552,9 @@ def configure_node_cctest_sources(o):
     SearchFiles('test/cctest', 'h')
 
 def configure_node(o):
+  if options.dest_os == 'ios':
+    o['variables']['OS'] = 'ios'
+    o['variables']['iossim'] = b(options.ios_simulator)
   if options.dest_os == 'android':
     o['variables']['OS'] = 'android'
   o['variables']['node_prefix'] = options.prefix
