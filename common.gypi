@@ -16,6 +16,11 @@
 
     'node_shared%': 'false',
     'force_dynamic_crt%': 0,
+
+    # nodejs-mobile: set to 1 by android_configure.py for the comapeo-tuned
+    # "lite" flavor (see doc_mobile/BINARY_SIZE_REDUCTION.md). Enables dead-code
+    # stripping; the "full" flavor (default 0) is left byte-for-byte unchanged.
+    'node_mobile_lite%': 0,
     'node_use_v8_platform%': 'true',
     'node_use_bundled_v8%': 'true',
     'node_module_version%': '',
@@ -38,7 +43,7 @@
 
     # Reset this number to 0 on major V8 upgrades.
     # Increment by one for each non-official patch applied to deps/v8.
-    'v8_embedder_string': '-node.48',
+    'v8_embedder_string': '-node.21',
 
     ##### V8 defaults for Node.js #####
 
@@ -108,7 +113,7 @@
         'obj_dir%': '<(PRODUCT_DIR)/obj.target',
         'v8_base': '<(PRODUCT_DIR)/obj.target/tools/v8_gypfiles/libv8_snapshot.a',
       }],
-      ['OS=="mac"', {
+      ['OS=="mac" or OS == "ios"', {
         'obj_dir%': '<(PRODUCT_DIR)/obj.target',
         'v8_base': '<(PRODUCT_DIR)/libv8_snapshot.a',
       }],
@@ -219,6 +224,25 @@
               }],
             ],
           }],
+          ['OS=="android" and _toolset=="target"', {
+            # nodejs-mobile: emit a GNU build-id on libnode.so so Sentry can
+            # match the AGP-stripped runtime binary to uploaded debug files for
+            # native crash symbolication. Behaviour-neutral; applies to both
+            # flavors (see doc_mobile/BINARY_SIZE_REDUCTION.md). Target toolset
+            # only — the host build-tools (node_js2c etc.) link with the host
+            # linker, which need not be GNU ld.
+            'ldflags': [ '-Wl,--build-id=sha1' ],
+            'conditions': [
+              ['node_mobile_lite==1', {
+                # Lite flavor only: split sections and drop unreferenced ones so
+                # the static libs we still link don't drag in dead code. Kept off
+                # the full flavor to leave its codegen (and green test gate)
+                # exactly as shipped.
+                'cflags': [ '-ffunction-sections', '-fdata-sections' ],
+                'ldflags': [ '-Wl,--gc-sections' ],
+              }],
+            ],
+          }],
           ['OS=="solaris"', {
             # pull in V8's postmortem metadata
             'ldflags': [ '-Wl,-z,allextract' ]
@@ -227,7 +251,7 @@
             # increase performance, number from experimentation
             'cflags': [ '-qINLINE=::150:100000' ]
           }],
-          ['OS!="mac" and OS!="win" and OS!="zos"', {
+          ['OS!="mac" and OS!="ios" and OS!="win" and OS!="zos"', {
             # -fno-omit-frame-pointer is necessary for the --perf_basic_prof
             # flag to work correctly. perf(1) gets confused about JS stack
             # frames otherwise, even with --call-graph dwarf.
@@ -387,7 +411,7 @@
       [ 'target_arch=="arm64"', {
         'msvs_configuration_platform': 'arm64',
       }],
-      ['asan == 1 and OS != "mac" and OS != "zos"', {
+      ['asan == 1 and OS != "mac" and OS != "ios" and OS != "zos"', {
         'cflags+': [
           '-fno-omit-frame-pointer',
           '-fsanitize=address',
@@ -415,7 +439,7 @@
           }],
         ],
       }],
-      ['ubsan == 1 and OS != "mac" and OS != "zos"', {
+      ['ubsan == 1 and OS != "mac" and OS != "ios" and OS != "zos"', {
         'cflags+': [
           '-fno-omit-frame-pointer',
           '-fsanitize=undefined',
@@ -424,7 +448,7 @@
         'cflags!': [ '-fno-omit-frame-pointer' ],
         'ldflags': [ '-fsanitize=undefined' ],
       }],
-      ['ubsan == 1 and OS == "mac"', {
+      ['ubsan == 1 and (OS == "mac" or OS == "ios")', {
         'xcode_settings': {
           'OTHER_CFLAGS+': [
             '-fno-omit-frame-pointer',
@@ -446,11 +470,11 @@
       ['v8_enable_pointer_compression == 1', {
         'defines': ['V8_COMPRESS_POINTERS'],
       }],
-      ['v8_enable_pointer_compression == 1 and v8_enable_pointer_compression_shared_cage != 1', {
-        'defines': ['V8_COMPRESS_POINTERS_IN_MULTIPLE_CAGES'],
-      }],
       ['v8_enable_pointer_compression_shared_cage == 1', {
         'defines': ['V8_COMPRESS_POINTERS_IN_SHARED_CAGE'],
+      }],
+      ['v8_enable_pointer_compression == 1 and v8_enable_pointer_compression_shared_cage != 1', {
+        'defines': ['V8_COMPRESS_POINTERS_IN_ISOLATE_CAGE'],
       }],
       ['v8_enable_pointer_compression == 1 or v8_enable_31bit_smis_on_64bit_arch == 1', {
         'defines': ['V8_31BIT_SMIS_ON_64BIT_ARCH'],
@@ -529,21 +553,18 @@
           }],
           ['_toolset=="host"', {
             'conditions': [
-              [ 'host_arch=="ia32"', {
+              # nodejs-mobile patch: https://github.com/nodejs/node/pull/57748
+              [ 'host_arch=="ia32" or (target_arch=="ia32" or target_arch=="arm")', {
                 'cflags': [ '-m32' ],
                 'ldflags': [ '-m32' ],
               }],
-              [ 'host_arch=="x64"', {
+              # nodejs-mobile patch: https://github.com/nodejs/node/pull/57748
+              [ 'host_arch=="x64" and (target_arch=="x64" or target_arch=="arm64")', {
                 'cflags': [ '-m64' ],
                 'ldflags': [ '-m64' ],
               }],
               [ 'host_arch=="ppc64" and OS not in "aix os400"', {
-                'conditions': [
-                  [ 'clang==0', {
-                    'cflags': [ '-mminimal-toc' ],
-                  }],
-                ],
-                'cflags': [ '-m64' ],
+                'cflags': [ '-m64', '-mminimal-toc' ],
                 'ldflags': [ '-m64' ],
               }],
               [ 'host_arch=="s390x" and OS=="linux"', {
@@ -563,12 +584,7 @@
                 'ldflags': [ '-m64' ],
               }],
               [ 'target_arch=="ppc64" and OS not in "aix os400"', {
-                'conditions': [
-                  [ 'clang==0', {
-                    'cflags': [ '-mminimal-toc' ],
-                  }],
-                ],
-                'cflags': [ '-m64' ],
+                'cflags': [ '-m64', '-mminimal-toc' ],
                 'ldflags': [ '-m64' ],
               }],
               [ 'target_arch=="s390x" and OS=="linux"', {
@@ -610,7 +626,7 @@
             ],
           }, {                                             # else it's `AIX`
             'variables': {
-              'gcc_major': '<!(sh -c "${CXX:-g++} -dumpversion")'
+              'gcc_major': '<!(<(python) -c "import os; import subprocess; CXX=os.environ.get(\'CXX\', \'g++\'); subprocess.run([CXX, \'-dumpversion\'])")'
             },
             # Disable the following compiler warning:
             #
@@ -683,6 +699,98 @@
                 '-Wl,-no_pie',
               ],
             },
+          }],
+          ['clang==1', {
+            'xcode_settings': {
+              'GCC_VERSION': 'com.apple.compilers.llvm.clang.1_0',
+              'CLANG_CXX_LANGUAGE_STANDARD': 'gnu++20',  # -std=gnu++20
+              'CLANG_CXX_LIBRARY': 'libc++',
+            },
+          }],
+        ],
+      }],
+      ['OS=="ios"', {
+        'defines': ['_DARWIN_USE_64_BIT_INODE=1'],
+        'xcode_settings': {
+          'ALWAYS_SEARCH_USER_PATHS': 'NO',
+          'GCC_CW_ASM_SYNTAX': 'NO',                # No -fasm-blocks
+          'GCC_DYNAMIC_NO_PIC': 'NO',               # No -mdynamic-no-pic
+                                                    # (Equivalent to -fPIC)
+          'GCC_ENABLE_CPP_EXCEPTIONS': 'NO',        # -fno-exceptions
+          'GCC_ENABLE_CPP_RTTI': 'NO',              # -fno-rtti
+          'GCC_ENABLE_PASCAL_STRINGS': 'NO',        # No -mpascal-strings
+          'GCC_STRICT_ALIASING': 'NO',              # -fno-strict-aliasing
+          'PREBINDING': 'NO',                       # No -Wl,-prebind
+          'USE_HEADERMAP': 'NO',
+        },
+        'target_conditions': [
+          ['_toolset=="host"', {
+            'xcode_settings': {
+              'SDKROOT': 'macosx',
+              'MACOSX_DEPLOYMENT_TARGET': '13.5',   # Use macOS deployment target for host tools
+              'WARNING_CFLAGS': [
+                '-Wall',
+                '-Wendif-labels',
+                '-W',
+                '-Wno-unused-parameter',
+              ],
+            },
+            'conditions': [
+              ['host_arch=="arm64"', {
+                'xcode_settings': {'ARCHS': ['arm64']},
+              }],
+              ['host_arch=="x64"', {
+                'xcode_settings': {'ARCHS': ['x86_64']},
+              }],
+            ],
+          }, {
+            'xcode_settings': {
+              'IPHONEOS_DEPLOYMENT_TARGET': '14.0', # -miphoneos-version-min=14.0
+              'WARNING_CFLAGS': [
+                '-Wall',
+                '-Wendif-labels',
+                '-W',
+                '-Wno-unused-parameter',
+                '-Wno-enum-constexpr-conversion',
+              ],
+            },
+            'conditions': [
+              ['iossim!="true" and target_arch in "arm64 arm armv7s"', {
+                'xcode_settings': {
+                  # Bitcode was removed in Xcode 14; ENABLE_BITCODE/-fembed-bitcode
+                  # now error on modern Xcode (incl. CI's Xcode 16.4).
+                  'SDKROOT': 'iphoneos',
+                }
+              }, {
+                'xcode_settings': {
+                  'SDKROOT': 'iphonesimulator',
+                }
+              }],
+            ],
+          }],
+          ['_type!="static_library"', {
+            'xcode_settings': {
+              'OTHER_LDFLAGS': [
+                '-Wl,-search_paths_first',
+              ],
+            },
+          }],
+        ],
+        'conditions': [
+          ['target_arch=="ia32"', {
+            'xcode_settings': {'ARCHS': ['i386']},
+          }],
+          ['target_arch=="x64"', {
+            'xcode_settings': {'ARCHS': ['x86_64']},
+          }],
+          [ 'target_arch=="arm64"', {
+            'xcode_settings': {'ARCHS': ['arm64']},
+          }],
+          [ 'target_arch=="arm"', {
+            'xcode_settings': {'ARCHS': ['armv7']},
+          }],
+          [ 'target_arch=="armv7s"', {
+            'xcode_settings': {'ARCHS': ['armv7s']},
           }],
           ['clang==1', {
             'xcode_settings': {
