@@ -309,6 +309,9 @@ bool isSelfIssued(X509* cert) {
 #ifdef __APPLE__
 TrustStatus IsTrustDictionaryTrustedForPolicy(CFDictionaryRef trust_dict,
                                               bool is_self_issued) {
+
+  // nodejs-mobile patch: the APIs used here are macOS-only
+#if TARGET_OS_OSX
   // Trust settings may be scoped to a single application
   // skip as this is not supported
   if (CFDictionaryContainsKey(trust_dict, kSecTrustSettingsApplication)) {
@@ -386,6 +389,7 @@ TrustStatus IsTrustDictionaryTrustedForPolicy(CFDictionaryRef trust_dict,
                ? TrustStatus::TRUSTED
                : TrustStatus::UNSPECIFIED;
   }
+#endif // TARGET_OS_OSX
 
   return TrustStatus::UNSPECIFIED;
 }
@@ -448,6 +452,8 @@ bool IsCertificateTrustedForPolicy(X509* cert, SecCertificateRef ref) {
   bool trust_evaluated = false;
   bool is_self_issued = isSelfIssued(cert);
 
+  // nodejs-mobile patch: the APIs used here are macOS-only
+#if TARGET_OS_OSX
   // Evaluate user trust domain, then admin. User settings can override
   // admin (and both override the system domain, but we don't check that).
   for (const auto& trust_domain :
@@ -486,6 +492,14 @@ bool IsCertificateTrustedForPolicy(X509* cert, SecCertificateRef ref) {
       CFRelease(trust_settings);
     }
   }
+#else
+  if (!trust_evaluated) {
+    bool result = IsCertificateTrustValid(ref);
+    if (result) {
+      return true;
+    }
+  }
+#endif
   return false;
 }
 
