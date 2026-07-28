@@ -39,7 +39,7 @@ Every workflow that consumes a binary builds and tests **both flavors**
 | `build-mobile.yml` → `smoke-{android,ios}` | ubuntu+KVM / macos | push `mobile/**` | the exact shipping artifact boots and runs JS (Tier 1) — emulator / simulator |
 | `android-emulator-tests.yml` | ubuntu+KVM | nightly · `mobile-test` label · dispatch | curated `test/parallel` subset + crc-native addon load, on an x86_64 emulator (Tier 2) |
 | `ios-simulator-tests.yml` | macos | nightly · `mobile-test` label · dispatch | same curated subset + crc-native addon load, on an arm64 simulator (Tier 2) |
-| `browserstack-smoke.yml` | ubuntu / macos-15 + BrowserStack | dispatch | boot smoke + crc-native addon load on **physical devices** — Android arm64 (Pixel 9, 16 KB pages) via Espresso and iPhone via XCUITest (Tier 3). Needs `BROWSERSTACK_USER`/`BROWSERSTACK_PW` secrets and a green `Build` for the target SHA. |
+| `browserstack-smoke.yml` | ubuntu / macos-15 + BrowserStack | **automatic on `release/**` (via Build's `device-smoke` job, required to publish)** · dispatch | boot smoke + crc-native addon load on **physical devices** — Android arm64 (Pixel 9, 16 KB pages) via Espresso and iPhone via XCUITest (Tier 3). Needs `BROWSERSTACK_USER`/`BROWSERSTACK_PW` secrets; dispatch mode needs a green `Build` for the target SHA. |
 
 The Tier-2 workflows reuse the `libnode` artifact the `Build` workflow already
 produced for the commit (via `gh run download`) — they do **not** rebuild. So

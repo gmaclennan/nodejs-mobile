@@ -77,9 +77,10 @@ cd out-release
 git push <fork> HEAD:refs/heads/release/vX.Y.Z-0
 ```
 
-- `Build` runs on `release/**`; once green, add the `mobile-test` label to
-  the release PR for the Tier-2 emulator/simulator gates, and run the
-  Tier-3 BrowserStack device smoke (see [TESTING.md](./TESTING.md)).
+- `Build` runs on `release/**` and includes the Tier-3 BrowserStack
+  real-device smoke automatically (required to publish); once Build is
+  green, add the `mobile-test` label to the release PR for the Tier-2
+  emulator/simulator gates (see [TESTING.md](./TESTING.md)).
 - The release PR needs a final commit with subject
   `release: nodejs-mobile X.Y.Z-0` (dates the CHANGELOG entry) — that
   subject is what `publish-release.yml`'s guard keys on.

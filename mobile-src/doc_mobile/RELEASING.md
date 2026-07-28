@@ -53,13 +53,14 @@ binary) and `lite` (size-reduced; see the
    the Tier-2 curated gate (both platforms) also runs via the label —
    `publish-release` re-checks it before tagging, so it must be green for the
    release commit.
-4. **Real-device smoke** (Tier 3) — the CI gate runs on an
-   emulator + simulator, which don't fully exercise a physical device's
-   restricted `dlopen` / 16 KB-page loader. Dispatch
-   [`browserstack-smoke.yml`](../.github/workflows/browserstack-smoke.yml) with
-   the release SHA: it boots the shipped binary and loads the crc-native N-API
-   addon on a physical Android arm64 device (Pixel 9, 16 KB pages) and a
-   physical iPhone via BrowserStack App Automate. Link the green run in the PR.
+4. **Real-device smoke** (Tier 3) — **automatic and required**: on
+   `release/**` branches the Build workflow's `device-smoke` job runs
+   [`browserstack-smoke.yml`](../.github/workflows/browserstack-smoke.yml)
+   against this run's artifacts — boot + crc-native N-API addon load on a
+   physical Android arm64 device (Pixel 9, 16 KB pages) and a physical
+   iPhone via BrowserStack App Automate — and `publish-release.yml` refuses
+   to tag unless a green Build run for the release SHA contains these jobs.
+   No manual step; the dispatch trigger remains for ad-hoc runs.
    (It smokes the `full` flavor; a physical smoke of `lite` remains manual —
    `tools/mobile-test/addon/build-{android,ios}-addon.sh` + 
    `test-napi-addon.js` — if the release is promoted for lite-only consumers.) This is a manual gate; GitHub-hosted runners

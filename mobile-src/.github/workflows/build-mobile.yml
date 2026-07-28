@@ -421,3 +421,22 @@ jobs:
         run: |
           xcrun simctl shutdown "${{ steps.sim.outputs.udid }}" || true
           xcrun simctl delete "${{ steps.sim.outputs.udid }}" || true
+
+  # Tier-3 real-device gate: on release branches, run the BrowserStack smoke
+  # (boot + N-API addon dlopen on a physical Android arm64 + iPhone) as part
+  # of this Build run, using the artifacts the combine jobs just uploaded.
+  # publish-release.yml requires the gating Build run to contain these jobs
+  # green, so a release cannot be tagged without real-device validation.
+  device-smoke:
+    if: startsWith(github.ref, 'refs/heads/release/')
+    needs: [combine-android, combine-ios]
+    # The called workflow needs actions:read (artifact download); a called
+    # workflow cannot elevate beyond the caller's permissions, so grant it
+    # here (the workflow default is contents:read only).
+    permissions:
+      contents: read
+      actions: read
+    uses: ./.github/workflows/browserstack-smoke.yml
+    secrets: inherit
+    with:
+      build_run_id: ${{ github.run_id }}

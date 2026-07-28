@@ -26,6 +26,21 @@ on:
         description: 'BrowserStack iOS devices (CSV)'
         required: false
         default: 'iPhone 15-17'
+  # Called from build-mobile.yml on release branches, making the real-device
+  # gate an automatic, required part of a release Build run (publish-release
+  # refuses to tag without it). build_run_id points at the calling run so the
+  # artifact download does not depend on a separate completed Build run.
+  workflow_call:
+    inputs:
+      build_run_id:
+        type: string
+        required: false
+        default: ''
+    secrets:
+      BROWSERSTACK_USER:
+        required: true
+      BROWSERSTACK_PW:
+        required: true
 
 env:
   ANDROID_NDK_VERSION: r27d
@@ -75,7 +90,8 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           SHA='${{ steps.sha.outputs.sha }}'
-          RUN=$(gh run list --repo "$GITHUB_REPOSITORY" --workflow build-mobile.yml \
+          RUN='${{ inputs.build_run_id }}'
+          [ -n "$RUN" ] || RUN=$(gh run list --repo "$GITHUB_REPOSITORY" --workflow build-mobile.yml \
                   --commit "$SHA" --status success --limit 1 --json databaseId -q '.[0].databaseId')
           [ -n "$RUN" ] || { echo "::error::No successful Build run for $SHA — run Build first."; exit 1; }
           gh run download "$RUN" --repo "$GITHUB_REPOSITORY" --name nodejs-mobile-android --dir nm-android
@@ -168,7 +184,8 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           SHA='${{ steps.sha.outputs.sha }}'
-          RUN=$(gh run list --repo "$GITHUB_REPOSITORY" --workflow build-mobile.yml \
+          RUN='${{ inputs.build_run_id }}'
+          [ -n "$RUN" ] || RUN=$(gh run list --repo "$GITHUB_REPOSITORY" --workflow build-mobile.yml \
                   --commit "$SHA" --status success --limit 1 --json databaseId -q '.[0].databaseId')
           [ -n "$RUN" ] || { echo "::error::No successful Build run for $SHA — run Build first."; exit 1; }
           gh run download "$RUN" --repo "$GITHUB_REPOSITORY" --name nodejs-mobile-ios --dir nm-ios

@@ -97,6 +97,23 @@ jobs:
             echo "Tier-2 $wf green for $SHA (run $ok)"
           done
 
+      # Tier-3 required gate: at least one green Build run for this commit
+      # must contain the device-smoke jobs (the BrowserStack real-device
+      # smoke that build-mobile.yml runs on release branches). A green Build
+      # from a non-release branch (e.g. the mobile/v24 push this workflow
+      # reacts to) does not carry them, so check job-level, not run-level.
+      - name: Verify Tier-3 device smoke ran green in a gating Build run
+        run: |
+          found=""
+          for run in $(gh run list --repo "$GITHUB_REPOSITORY" --workflow build-mobile.yml --commit "$SHA" \
+                         --status success --json databaseId -q '.[].databaseId'); do
+            n=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$run/jobs?per_page=100" \
+                  -q '[.jobs[] | select(.name | contains("device-smoke")) | select(.conclusion == "success")] | length')
+            if [ "${n:-0}" -ge 2 ]; then found=$run; break; fi
+          done
+          [ -n "$found" ] || { echo "::error::No green Build run for $SHA contains the required Tier-3 device-smoke jobs (BrowserStack real devices). Releases must be cut from a release/** branch Build."; exit 1; }
+          echo "Tier-3 device smoke green for $SHA (Build run $found)"
+
       - name: Create + push tag
         run: |
           # Annotated tags need a committer identity; runners have none set.
