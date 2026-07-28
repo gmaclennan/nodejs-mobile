@@ -35,7 +35,7 @@
 </table>
 
 <a id="24.15.0-0"></a>
-## 2026-06-01, Version 24.15.0-0 (Current)
+## 2026-07-28, Version 24.15.0-0 (Current)
 
 First release on the Node.js 24 line. The mobile patch stack is fully rebased on
 the upstream `v24.15.0` tag (linear history, no merge commit; V8 13.6).
