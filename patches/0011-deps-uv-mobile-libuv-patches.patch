@@ -18,10 +18,10 @@ Co-authored-by: Jaime Bernardo <jaime@janeasystems.com>
  3 files changed, 30 insertions(+), 2 deletions(-)
 
 diff --git a/deps/uv/src/unix/darwin.c b/deps/uv/src/unix/darwin.c
-index 009efbefaa..8c4ba449ec 100644
+index c26a1faccb..e7ff1989ad 100644
 --- a/deps/uv/src/unix/darwin.c
 +++ b/deps/uv/src/unix/darwin.c
-@@ -197,6 +197,10 @@ int uv_cpu_info(uv_cpu_info_t** cpu_infos, int* count) {
+@@ -205,6 +205,10 @@ int uv_cpu_info(uv_cpu_info_t** cpu_infos, int* count) {
      return UV__ERR(errno);
    }
  
@@ -32,7 +32,7 @@ index 009efbefaa..8c4ba449ec 100644
    cpuspeed = 0;
    size = sizeof(cpuspeed);
    sysctlbyname("hw.cpufrequency", &cpuspeed, &size, NULL, 0);
-@@ -204,6 +208,7 @@ int uv_cpu_info(uv_cpu_info_t** cpu_infos, int* count) {
+@@ -212,6 +216,7 @@ int uv_cpu_info(uv_cpu_info_t** cpu_infos, int* count) {
      /* If sysctl hw.cputype == CPU_TYPE_ARM64, the correct value is unavailable
       * from Apple, but we can hard-code it here to a plausible value. */
      cpuspeed = 2400000000U;
@@ -41,10 +41,10 @@ index 009efbefaa..8c4ba449ec 100644
    if (host_processor_info(mach_host_self(), PROCESSOR_CPU_LOAD_INFO, &numcpus,
                            (processor_info_array_t*)&info,
 diff --git a/deps/uv/src/unix/fs.c b/deps/uv/src/unix/fs.c
-index 717f3fab36..3e32a643b7 100644
+index 90cb40d98d..2a242facab 100644
 --- a/deps/uv/src/unix/fs.c
 +++ b/deps/uv/src/unix/fs.c
-@@ -1045,8 +1045,11 @@ static ssize_t uv__fs_sendfile(uv_fs_t* req) {
+@@ -1046,8 +1046,11 @@ static ssize_t uv__fs_sendfile(uv_fs_t* req) {
      try_sendfile = 1;
  
  #ifdef __linux__

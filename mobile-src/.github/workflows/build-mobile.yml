@@ -300,7 +300,7 @@ jobs:
         with:
           name: node-ios-*-${{ matrix.flavor }}
 
-  # Tier 1 on-device smoke (doc_mobile/TEST_PLAN.md): boot an emulator, run a
+  # Tier 1 on-device smoke (doc_mobile/TESTING.md): boot an emulator, run a
   # console.log via the freshly built libnode, assert it ran and exited cleanly.
   # Consumes the nodejs-mobile-android artifact, so it smoke-tests the exact
   # binary that would ship — no rebuild. ubuntu + KVM keeps it at 1x billing.

@@ -17,10 +17,10 @@ Co-authored-by: Jaime Bernardo <jaime@janeasystems.com>
  2 files changed, 50 insertions(+), 11 deletions(-)
 
 diff --git a/node.gyp b/node.gyp
-index 0620850e08..6a5ebfd075 100644
+index 6387b94550..821309828a 100644
 --- a/node.gyp
 +++ b/node.gyp
-@@ -762,8 +762,13 @@
+@@ -774,8 +774,13 @@
              }],
            ],
            }, {
@@ -36,7 +36,7 @@ index 0620850e08..6a5ebfd075 100644
            ],
          }],
          [ 'OS in "linux freebsd openharmony" and '
-@@ -937,6 +942,12 @@
+@@ -949,6 +954,12 @@
              'src/node_snapshot_stub.cc',
            ]
          }],
@@ -49,8 +49,8 @@ index 0620850e08..6a5ebfd075 100644
          [ 'node_shared_gtest=="false"', {
            'dependencies': [
              'deps/googletest/googletest.gyp:gtest_prod',
-@@ -1010,7 +1021,8 @@
-             '<@(node_sqlite_sources)',
+@@ -1017,7 +1028,8 @@
+             '<@(node_quic_sources)',
            ],
          }],
 -        [ 'OS in "linux freebsd mac solaris openharmony" and '
@@ -59,7 +59,7 @@ index 0620850e08..6a5ebfd075 100644
            'target_arch=="x64" and '
            'node_target_type=="executable"', {
            'defines': [ 'NODE_ENABLE_LARGE_CODE_PAGES=1' ],
-@@ -1285,6 +1297,12 @@
+@@ -1303,6 +1315,12 @@
        'sources': [ '<@(node_cctest_sources)' ],
  
        'conditions': [
@@ -72,7 +72,7 @@ index 0620850e08..6a5ebfd075 100644
          [ 'node_shared_gtest=="false"', {
            'dependencies': [
              'deps/googletest/googletest.gyp:gtest',
-@@ -1335,8 +1353,8 @@
+@@ -1360,8 +1378,8 @@
          ['OS=="solaris"', {
            'ldflags': [ '-I<(SHARED_INTERMEDIATE_DIR)' ]
          }],
@@ -83,7 +83,7 @@ index 0620850e08..6a5ebfd075 100644
            'type': 'none',
          }],
          [ 'node_shared=="true"', {
-@@ -1473,7 +1491,8 @@
+@@ -1528,7 +1546,8 @@
          [ 'node_shared_libuv=="false"', {
            'dependencies': [ 'deps/uv/uv.gyp:libuv#host' ],
          }],
@@ -93,7 +93,7 @@ index 0620850e08..6a5ebfd075 100644
            'defines': ['NODE_JS2C_USE_STRING_LITERALS'],
          }],
          [ 'debug_node=="true"', {
-@@ -1511,7 +1530,7 @@
+@@ -1566,7 +1585,7 @@
        'defines': [ 'NODE_WANT_INTERNALS=1' ],
  
        'sources': [
@@ -102,7 +102,7 @@ index 0620850e08..6a5ebfd075 100644
          'tools/snapshot/node_mksnapshot.cc',
        ],
  
-@@ -1522,6 +1541,12 @@
+@@ -1577,6 +1596,12 @@
        },
  
        'conditions': [
@@ -116,7 +116,7 @@ index 0620850e08..6a5ebfd075 100644
            'defines': [ 'NODE_MKSNAPSHOT_USE_ARRAY_LITERALS=1' ],
          }],
 diff --git a/node.gypi b/node.gypi
-index 9e32651032..5178e64dd8 100644
+index 6587270c9e..ffce5184cd 100644
 --- a/node.gypi
 +++ b/node.gypi
 @@ -264,6 +264,11 @@
@@ -159,9 +159,9 @@ index 9e32651032..5178e64dd8 100644
              # -force_load or --whole-archive are not applicable for
              # the static library
              [ 'force_load=="true"', {
-@@ -450,5 +459,10 @@
+@@ -461,5 +470,10 @@
      }, {
-       'defines': [ 'HAVE_SQLITE=0' ]
+       'defines': [ 'HAVE_QUIC=0' ]
      }],
 +    [ 'OS=="android" or OS=="ios"', {
 +      'defines': [

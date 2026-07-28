@@ -1,6 +1,6 @@
 name: BrowserStack device smoke
 
-# Tier-3 real-device smoke (doc_mobile/TEST_PLAN.md) on BrowserStack App
+# Tier-3 real-device smoke (doc_mobile/TESTING.md) on BrowserStack App
 # Automate: boot the shipped binary and run the crc-native N-API addon gate on
 # a physical Android arm64 device (Espresso) and a physical iPhone (XCUITest).
 # This is the release-promotion gate CI emulators/simulators cannot cover —

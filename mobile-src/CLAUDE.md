@@ -40,7 +40,7 @@ doing the task, and **don't duplicate their content back into here**.
   **`process.exit()`** is mis-scored by the current per-process harness (it exits
   via libc `exit()` before the verdict is written) — none are in the curated list.
 - → [`doc_mobile/TESTING.md`](./doc_mobile/TESTING.md) — CI test setup + how to
-  run tests locally. (TEST_PLAN.md is an ephemeral pre-release planning doc.)
+  run tests locally. (TESTING.md is an ephemeral pre-release planning doc.)
 
 ## Playbook — fix a bug / make a change
 1. Branch from `mobile/v24`.

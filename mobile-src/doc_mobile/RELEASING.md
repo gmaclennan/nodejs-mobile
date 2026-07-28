@@ -53,7 +53,7 @@ binary) and `lite` (size-reduced; see the
    the Tier-2 curated gate (both platforms) also runs via the label —
    `publish-release` re-checks it before tagging, so it must be green for the
    release commit.
-4. **Real-device smoke** (RELEASE_PLAN Phase 5 / Tier 3) — the CI gate runs on an
+4. **Real-device smoke** (Tier 3) — the CI gate runs on an
    emulator + simulator, which don't fully exercise a physical device's
    restricted `dlopen` / 16 KB-page loader. Dispatch
    [`browserstack-smoke.yml`](../.github/workflows/browserstack-smoke.yml) with
@@ -82,5 +82,5 @@ binary) and `lite` (size-reduced; see the
 The old flow was 16 manual steps ending in `git push origin --tags` with nothing
 enforcing that CI had passed — a single-point-of-failure we removed. We already
 produce the two combined artifacts that *are* the release payload and a credible
-test gate ([`TEST_PLAN.md`](./TEST_PLAN.md)); this just wires them so the tag
+test gate ([`TESTING.md`](./TESTING.md)); this just wires them so the tag
 can only exist after the gate is green and a human approves the publish.

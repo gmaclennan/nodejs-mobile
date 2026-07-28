@@ -1,5 +1,5 @@
 # Runs the curated Tier 2 subset of the Node.js JS suite on an Android emulator
-# (doc_mobile/TEST_PLAN.md). Builds libnode for x86_64, builds + installs the
+# (doc_mobile/TESTING.md). Builds libnode for x86_64, builds + installs the
 # testnode app, and drives test/parallel cases through the proxy harness.
 #
 # Runs on ubuntu + KVM (1x billing) rather than a macOS runner: the x86_64

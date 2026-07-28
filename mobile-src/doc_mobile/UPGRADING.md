@@ -1,130 +1,90 @@
 # Updating nodejs-mobile to a newer upstream Node.js
 
-This document describes how to rebase the mobile patch stack onto a newer
-upstream Node.js release. It is the canonical procedure under the
-patch-stack maintenance model
-([MAINTENANCE_MODEL.md](./MAINTENANCE_MODEL.md)); the squash-merge
-`format-patch` workflow used previously is deprecated in this branch.
+Upgrades happen on the [`patches` branch](../../../tree/patches) — the
+canonical patches-only representation — and are then materialized to this
+full-source branch for CI and release. There is no rebasing of long-lived
+branches and no force-push of anything except the final materialization.
 
-## Prerequisites
+The procedure below is what the 24.15.0 → 24.18.0 upgrade actually took
+(five small conflicts, all resolved in minutes).
 
-```sh
-git remote add upstream https://github.com/nodejs/node.git
-git fetch upstream --tags
-```
-
-## 1. Pick a target version
-
-The mobile fork tracks one upstream major at a time. The current branch is
-`mobile/v24`.
-
-For minor/patch upgrades within a major, prefer the latest published release
-tag. For major upgrades, expect the rebase to require multi-day work and to
-produce a new long-lived branch (e.g. `mobile/v26`).
-
-## 2. Identify the current base
-
-The current patch-stack base is recorded in
-[`doc_mobile/upstream-base.txt`](./upstream-base.txt). The first non-comment,
-non-empty line is the SHA (or tag) the stack is rebased on; subsequent lines
-are informational (typically the human-readable version label).
+## On the patches branch
 
 ```sh
-cat doc_mobile/upstream-base.txt
+git switch patches
+$EDITOR upstream-base.txt                 # bump the tag, e.g. v24.18.0
+scripts/prepare.sh                        # clone new base + apply series
 ```
 
-CI ([`validate-patch-stack.yml`](../.github/workflows/validate-patch-stack.yml))
-reads this file to enumerate the patches it must validate. **Updating this
-file is part of every rebase** — make it the first commit on the rebase
-branch.
+`prepare.sh` stops at the first patch that no longer applies. For each
+conflict, resolve **in `out/`** with the usual `git am` loop
+(`git status` → edit → `git add` → `git am --continue`), guided by one
+question: *what does this patch intend, and what did upstream change?*
+Patterns seen in practice:
 
-## 3. Create a rebase branch
+- **Adjacent churn** — upstream changed a line next to a mobile hunk (e.g. a
+  version string in `common.gypi`): keep upstream's new value, keep the
+  mobile hunk.
+- **Both append at the same spot** (e.g. the tail of a gyp `conditions`
+  list): keep both blocks, upstream's first.
+- **Upstream restructured context the patch relied on** (e.g. a macro block
+  the mobile diff sat inside was removed): re-apply only the mobile intent
+  against the new structure.
+- **Delete/modify** — a file we delete was modified upstream: the intent is
+  still deletion → `git rm` the unmerged paths, continue.
+- **Wholesale-replacement docs** (the fork `README.md` replaces the upstream
+  remainder): resolve to ours.
+
+Also update, in `mobile-src/`:
+
+- `src/node_mobile_version.h` — mirror the new upstream version (revision
+  resets to 0);
+- `doc_mobile/upstream-base.txt` — same tag (read by
+  `validate-patch-stack.yml` on the materialized branch);
+- `doc_mobile/CHANGELOG.md` — new `X.Y.Z-0` section;
+- check `.github/workflows/` in `out/` for **new upstream workflows** the
+  removal patch doesn't cover yet — delete-and-own them in patch 0019 if
+  they would actually run on this fork (most are gated on
+  `github.repository == 'nodejs/node'` and are harmless).
+
+Then regenerate and commit:
 
 ```sh
-git checkout -B mobile/v24-rebase-24.16.0 mobile/v24
-git rebase --onto v24.16.0 v24.15.0 mobile/v24-rebase-24.16.0
+git -C out add -A && git -C out commit -m "resolve v24.18.0 conflicts"  # any shape
+scripts/regenerate-patches.py out         # re-emits patches/ + syncs mobile-src/
+# update expected-tree.txt to the hash the script prints
+git add -A && git commit -m "upgrade: rebase patch series onto v24.18.0"
+git push
 ```
 
-`git rebase` will replay every mobile patch on top of `v24.16.0`. Patches that
-touch files unchanged upstream will replay cleanly. Patches that touch files
-upstream also modified will land in conflict — resolve them individually.
+The `verify-patches.yml` CI on the patches branch re-runs the reconstruction
+against a fresh upstream clone and fails on any drift from
+`expected-tree.txt`.
 
-If you encounter a patch that has been **made obsolete by upstream** (e.g.
-upstream fixed the issue we were patching around), drop the commit:
+## Materialize + release
 
 ```sh
-git rebase --skip   # if the rebase says "the patch is now empty"
+scripts/prepare.sh out-release            # fresh, verified materialization
+cd out-release
+git push <fork> HEAD:refs/heads/release/vX.Y.Z-0
 ```
 
-If a patch needs to be **rewritten** to fit the new upstream code, do so in
-`git rebase --continue`, but keep the original commit subject (so it's clear
-to future maintainers what the patch was originally for) and add a brief
-note in the commit body, e.g. `Reworked for v24.16.0: foo.cc was renamed to
-bar.cc upstream.`
-
-## 4. Validate per patch
-
-Push the rebase branch:
-
-```sh
-git push --force-with-lease origin mobile/v24-rebase-24.16.0
-```
-
-CI runs the [`validate-patch-stack`](../.github/workflows/validate-patch-stack.yml)
-workflow which checks that **every commit** on the rebase branch
-configure-validates against Android. A broken intermediate patch must be
-fixed before merge — even if `HEAD` happens to build.
-
-Mobile platform builds (the `build-android` / `build-ios` matrices in
-[`build-mobile.yml`](../.github/workflows/build-mobile.yml)) only run at the
-tip of the branch.
-
-## 5. Smoke-test on real devices
-
-Before merging:
-
-- Android: `tools/mobile-test/android/prepare-android-test.sh`, then run the
-  curated subset with `./tools/test.py --arch android` on an emulator or arm64
-  device.
-- iOS: `tools/mobile-test/ios/prepare-ios-sim-tests.sh` (simulator) or
-  `prepare-ios-tests.sh` (device), then `./tools/test.py --arch ios
-  --shell=./tools/mobile-test/ios/node-ios-sim-proxy.sh`.
-
-See [`TESTING.md`](./TESTING.md) for the full local-run instructions.
-
-Document any newly skipped tests by adding a `test,android: SKIP <test>` or
-`test,ios: SKIP <test>` patch to the stack.
-
-## 6. Merge and release
-
-Fast-forward the rebased branch onto `mobile/v24` (linear history — no merge
-commit):
-
-```sh
-git checkout mobile/v24
-git merge --ff-only mobile/v24-rebase-24.16.0
-```
-
-**Do not tag or push a release by hand.** The version bump
-(`src/node_mobile_version.h`), the CHANGELOG entry, tagging, and publishing are
-handled by the guarded `prepare-release` / `publish-release` workflows — see
-[`RELEASING.md`](./RELEASING.md).
+- `Build` runs on `release/**`; once green, add the `mobile-test` label to
+  the release PR for the Tier-2 emulator/simulator gates, and run the
+  Tier-3 BrowserStack device smoke (see [TESTING.md](./TESTING.md)).
+- The release PR needs a final commit with subject
+  `release: nodejs-mobile X.Y.Z-0` (dates the CHANGELOG entry) — that
+  subject is what `publish-release.yml`'s guard keys on.
+- Merging is a **force-push of `mobile/v24`** to the release tip — an
+  upstream bump is a new history rooted at the new tag; the previous
+  history stays reachable via the release tags. `publish-release.yml` then
+  tags and publishes (prerelease until a device smoke is recorded, see
+  [RELEASING.md](./RELEASING.md)).
 
 ## Cross-major upgrades (e.g. v24 → v26)
 
-A cross-major rebase is functionally a fresh patch stack:
-
-1. Branch `mobile/v26` from `upstream/v26.x.y` (a release tag).
-2. `git cherry-pick` patches from `mobile/v24` one at a time. Many will need
-   rework; some will be obsolete.
-3. Open a PR per logical group of patches (build system, source guards,
-   tests, CI). Each PR enforces per-patch CI.
-4. When all patches land and devices smoke-test green, cut the first
-   `nodejs-mobile-26.x.y` release.
-
-Cross-major upgrades should target an LTS release.
-
-## Known v24 blockers
-
-When rebasing the v24 stack to a newer minor, watch out for the issues
-documented in [UPGRADE_BLOCKERS_v24.md](./UPGRADE_BLOCKERS_v24.md).
+Same procedure, larger blast radius: bump the base to the new major's LTS
+tag and expect several patches to need rework or deletion (upstream may
+have absorbed or obsoleted them — each patch body records *why* it exists
+for exactly this decision). Materialize to a new `mobile/v26` branch;
+`mobile/v24` stays for the old line.

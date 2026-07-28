@@ -91,7 +91,7 @@ jobs:
           - [x] version bumped in \`src/node_mobile_version.h\` + \`NODE_VERSION_IS_RELEASE\` flagged
           - [ ] CHANGELOG entry filled in
           - [ ] required checks green (Build full+lite, Tier-2 both platforms, NAPI smoke)
-          - [ ] real-device smoke (RELEASE_PLAN Phase 5)
+          - [ ] real-device smoke (Tier 3)
 
           Merging this PR triggers \`publish-release.yml\` (Environment-gated) to tag \`nodejs-mobile-${V}\` and publish the GitHub Release. **Do not push a tag by hand.**")
           echo "Opened $PR"

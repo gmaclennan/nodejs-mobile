@@ -78,8 +78,6 @@
 0019-ci-remove-upstream-only-workflows-and-config.patch	.github/label-pr-config.yml
 0019-ci-remove-upstream-only-workflows-and-config.patch	.github/workflows/auto-start-ci.yml
 0019-ci-remove-upstream-only-workflows-and-config.patch	.github/workflows/build-tarball.yml
-0019-ci-remove-upstream-only-workflows-and-config.patch	.github/workflows/close-stale-feature-requests.yml
-0019-ci-remove-upstream-only-workflows-and-config.patch	.github/workflows/close-stale-pull-requests.yml
 0019-ci-remove-upstream-only-workflows-and-config.patch	.github/workflows/close-stalled.yml
 0019-ci-remove-upstream-only-workflows-and-config.patch	.github/workflows/comment-labeled.yml
 0019-ci-remove-upstream-only-workflows-and-config.patch	.github/workflows/commit-lint-problem-matcher.json

@@ -1,6 +1,6 @@
 'use strict';
 
-// Tier 1 on-device smoke (see doc_mobile/TEST_PLAN.md): prove the cross-compiled
+// Tier 1 on-device smoke (see doc_mobile/TESTING.md): prove the cross-compiled
 // mobile libnode boots and runs JavaScript on the device runtime, then exits
 // cleanly. The marker string is grepped by the smoke workflows — keep in sync.
 console.log(

@@ -2,6 +2,6 @@
 # This is the integrity anchor: prepare = clone(upstream-base) + patches +
 # mobile-src overlay, and the resulting tree must hash to exactly this.
 # Update it (from prepare.sh's output) whenever patches/ or mobile-src/
-# change intentionally. Current value == the tree of the full-source
-# materialization this branch was generated from (mobile/v24 @ 8304d3307d).
-0ad5f47b47257ffee732e75fbecb98989d06637c
+# change intentionally. Current value == the tree of the mobile/v24
+# materialization (upstream v24.18.0 + this branch).
+ca8e63c443dcf3f3f2bf445b24edb439101c3277

@@ -200,7 +200,7 @@ index 16b6f4e80b..41c34c3c28 100644
  
          writer = MakefileWriter(generator_flags, flavor)
 diff --git a/tools/gyp/pylib/gyp/generator/ninja.py b/tools/gyp/pylib/gyp/generator/ninja.py
-index 4eac6cdb27..2b456a56a1 100644
+index 3ceaf470ce..0bd412656c 100644
 --- a/tools/gyp/pylib/gyp/generator/ninja.py
 +++ b/tools/gyp/pylib/gyp/generator/ninja.py
 @@ -42,7 +42,8 @@ generator_default_variables = {
@@ -503,7 +503,7 @@ index 4eac6cdb27..2b456a56a1 100644
          except subprocess.CalledProcessError:
              return 1
      else:
-@@ -2344,7 +2371,8 @@ def GenerateOutputForConfig(target_list, target_dicts, data, params, config_name
+@@ -2345,7 +2372,8 @@ def GenerateOutputForConfig(target_list, target_dicts, data, params, config_name
          master_ninja.variable("ld", CommandWithWrapper("LINK", wrappers, ld))
          master_ninja.variable("ldxx", CommandWithWrapper("LINK", wrappers, ldxx))
          master_ninja.variable("ar", GetEnvironFallback(["AR_target", "AR"], ar))
@@ -513,7 +513,7 @@ index 4eac6cdb27..2b456a56a1 100644
              # Mac does not use readelf/nm for .TOC generation, so avoiding polluting
              # the master ninja with extra unused variables.
              master_ninja.variable("nm", GetEnvironFallback(["NM_target", "NM"], nm))
-@@ -2410,7 +2438,8 @@ def GenerateOutputForConfig(target_list, target_dicts, data, params, config_name
+@@ -2411,7 +2439,8 @@ def GenerateOutputForConfig(target_list, target_dicts, data, params, config_name
              "cc_s",
              description="CC $out",
              command=(
@@ -523,7 +523,7 @@ index 4eac6cdb27..2b456a56a1 100644
              ),
          )
          master_ninja.rule(
-@@ -2521,7 +2550,8 @@ def GenerateOutputForConfig(target_list, target_dicts, data, params, config_name
+@@ -2522,7 +2551,8 @@ def GenerateOutputForConfig(target_list, target_dicts, data, params, config_name
              "solink",
              description="SOLINK $lib",
              restat=True,
@@ -533,7 +533,7 @@ index 4eac6cdb27..2b456a56a1 100644
              rspfile="$link_file_list",
              rspfile_content=(
                  "-Wl,--whole-archive $in $solibs -Wl,--no-whole-archive $libs"
-@@ -2706,7 +2736,7 @@ def GenerateOutputForConfig(target_list, target_dicts, data, params, config_name
+@@ -2707,7 +2737,7 @@ def GenerateOutputForConfig(target_list, target_dicts, data, params, config_name
              command="$env %(python)s gyp-mac-tool compile-ios-framework-header-map "
              "$out $framework $in && $env %(python)s gyp-mac-tool "
              "copy-ios-framework-headers $framework $copy_headers"
@@ -542,7 +542,7 @@ index 4eac6cdb27..2b456a56a1 100644
          )
          master_ninja.rule(
              "mac_tool",
-@@ -2790,7 +2820,8 @@ def GenerateOutputForConfig(target_list, target_dicts, data, params, config_name
+@@ -2791,7 +2821,8 @@ def GenerateOutputForConfig(target_list, target_dicts, data, params, config_name
          )
  
          spec = target_dicts[qualified_target]
@@ -552,7 +552,7 @@ index 4eac6cdb27..2b456a56a1 100644
              gyp.xcode_emulation.MergeGlobalXcodeSettingsToSpec(data[build_file], spec)
  
          # If build_file is a symlink, we must not follow it because there's a chance
-@@ -2802,7 +2833,7 @@ def GenerateOutputForConfig(target_list, target_dicts, data, params, config_name
+@@ -2803,7 +2834,7 @@ def GenerateOutputForConfig(target_list, target_dicts, data, params, config_name
              build_file, name, toolset
          )
          qualified_target_for_hash = qualified_target_for_hash.encode("utf-8")
@@ -561,7 +561,7 @@ index 4eac6cdb27..2b456a56a1 100644
  
          base_path = os.path.dirname(build_file)
          obj = "obj"
-@@ -2953,4 +2984,4 @@ def GenerateOutput(target_list, target_dicts, data, params):
+@@ -2954,4 +2985,4 @@ def GenerateOutput(target_list, target_dicts, data, params):
              for config_name in config_names:
                  GenerateOutputForConfig(
                      target_list, target_dicts, data, params, config_name

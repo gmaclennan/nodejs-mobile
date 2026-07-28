@@ -42,7 +42,7 @@ index e614c39a6b..711428f898 100644
      'configurations': {
        'Debug': {
 diff --git a/tools/v8_gypfiles/v8.gyp b/tools/v8_gypfiles/v8.gyp
-index 3b749ba71c..687c1d4f7a 100644
+index 74d5bd6a76..d6d9764162 100644
 --- a/tools/v8_gypfiles/v8.gyp
 +++ b/tools/v8_gypfiles/v8.gyp
 @@ -1181,7 +1181,7 @@
@@ -95,7 +95,7 @@ index 3b749ba71c..687c1d4f7a 100644
                ],
              }, {
                'sources': [
-@@ -2002,12 +2014,14 @@
+@@ -2069,12 +2081,14 @@
              ],
            }, { # 'OS!="win"'
              'conditions': [
@@ -112,7 +112,7 @@ index 3b749ba71c..687c1d4f7a 100644
                  'sources': [
                    '<(V8_ROOT)/src/heap/base/asm/ia32/push_registers_asm.cc',
                  ],
-@@ -2223,6 +2237,46 @@
+@@ -2290,6 +2304,46 @@
        },
      },  # postmortem-metadata
  
@@ -159,7 +159,7 @@ index 3b749ba71c..687c1d4f7a 100644
      {
        'target_name': 'v8_zlib',
        'type': 'static_library',
-@@ -2237,6 +2291,10 @@
+@@ -2304,6 +2358,10 @@
              }]
            ]
          }],

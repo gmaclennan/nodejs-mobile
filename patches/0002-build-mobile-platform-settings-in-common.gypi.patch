@@ -12,16 +12,16 @@ Co-authored-by: Andre Staltz <andre@staltz.com>
 Co-authored-by: Julia Samól <j.samol@papers.ch>
 Co-authored-by: Jaime Bernardo <jaime@janeasystems.com>
 ---
- common.gypi | 158 ++++++++++++++++++++++++++++++++++++++++++++--------
- 1 file changed, 134 insertions(+), 24 deletions(-)
+ common.gypi | 156 ++++++++++++++++++++++++++++++++++++++++++++--------
+ 1 file changed, 133 insertions(+), 23 deletions(-)
 
 diff --git a/common.gypi b/common.gypi
-index 576d5057d9..2f0fbcc263 100644
+index c9ff09b4dc..666c69009f 100644
 --- a/common.gypi
 +++ b/common.gypi
-@@ -16,6 +16,11 @@
- 
+@@ -18,6 +18,11 @@
      'node_shared%': 'false',
+     'node_enable_experimentals%': 'false',
      'force_dynamic_crt%': 0,
 +
 +    # nodejs-mobile: set to 1 by android_configure.py for the size-reduced
@@ -31,16 +31,7 @@ index 576d5057d9..2f0fbcc263 100644
      'node_use_v8_platform%': 'true',
      'node_use_bundled_v8%': 'true',
      'node_module_version%': '',
-@@ -38,7 +43,7 @@
- 
-     # Reset this number to 0 on major V8 upgrades.
-     # Increment by one for each non-official patch applied to deps/v8.
--    'v8_embedder_string': '-node.48',
-+    'v8_embedder_string': '-node.21',
- 
-     ##### V8 defaults for Node.js #####
- 
-@@ -108,7 +113,7 @@
+@@ -110,7 +115,7 @@
          'obj_dir%': '<(PRODUCT_DIR)/obj.target',
          'v8_base': '<(PRODUCT_DIR)/obj.target/tools/v8_gypfiles/libv8_snapshot.a',
        }],
@@ -49,7 +40,7 @@ index 576d5057d9..2f0fbcc263 100644
          'obj_dir%': '<(PRODUCT_DIR)/obj.target',
          'v8_base': '<(PRODUCT_DIR)/libv8_snapshot.a',
        }],
-@@ -219,6 +224,27 @@
+@@ -221,6 +226,27 @@
                }],
              ],
            }],
@@ -77,7 +68,7 @@ index 576d5057d9..2f0fbcc263 100644
            ['OS=="solaris"', {
              # pull in V8's postmortem metadata
              'ldflags': [ '-Wl,-z,allextract' ]
-@@ -227,7 +253,7 @@
+@@ -229,7 +255,7 @@
              # increase performance, number from experimentation
              'cflags': [ '-qINLINE=::150:100000' ]
            }],
@@ -86,7 +77,7 @@ index 576d5057d9..2f0fbcc263 100644
              # -fno-omit-frame-pointer is necessary for the --perf_basic_prof
              # flag to work correctly. perf(1) gets confused about JS stack
              # frames otherwise, even with --call-graph dwarf.
-@@ -387,7 +413,7 @@
+@@ -448,7 +474,7 @@
        [ 'target_arch=="arm64"', {
          'msvs_configuration_platform': 'arm64',
        }],
@@ -95,7 +86,7 @@ index 576d5057d9..2f0fbcc263 100644
          'cflags+': [
            '-fno-omit-frame-pointer',
            '-fsanitize=address',
-@@ -415,7 +441,7 @@
+@@ -476,7 +502,7 @@
            }],
          ],
        }],
@@ -104,7 +95,7 @@ index 576d5057d9..2f0fbcc263 100644
          'cflags+': [
            '-fno-omit-frame-pointer',
            '-fsanitize=undefined',
-@@ -424,7 +450,7 @@
+@@ -485,7 +511,7 @@
          'cflags!': [ '-fno-omit-frame-pointer' ],
          'ldflags': [ '-fsanitize=undefined' ],
        }],
@@ -113,7 +104,7 @@ index 576d5057d9..2f0fbcc263 100644
          'xcode_settings': {
            'OTHER_CFLAGS+': [
              '-fno-omit-frame-pointer',
-@@ -446,12 +472,12 @@
+@@ -510,12 +536,12 @@
        ['v8_enable_pointer_compression == 1', {
          'defines': ['V8_COMPRESS_POINTERS'],
        }],
@@ -129,7 +120,7 @@ index 576d5057d9..2f0fbcc263 100644
        ['v8_enable_pointer_compression == 1 or v8_enable_31bit_smis_on_64bit_arch == 1', {
          'defines': ['V8_31BIT_SMIS_ON_64BIT_ARCH'],
        }],
-@@ -529,21 +555,18 @@
+@@ -593,21 +619,18 @@
            }],
            ['_toolset=="host"', {
              'conditions': [
@@ -156,7 +147,7 @@ index 576d5057d9..2f0fbcc263 100644
                  'ldflags': [ '-m64' ],
                }],
                [ 'host_arch=="s390x" and OS=="linux"', {
-@@ -563,12 +586,7 @@
+@@ -627,12 +650,7 @@
                  'ldflags': [ '-m64' ],
                }],
                [ 'target_arch=="ppc64" and OS not in "aix os400"', {
@@ -170,7 +161,7 @@ index 576d5057d9..2f0fbcc263 100644
                  'ldflags': [ '-m64' ],
                }],
                [ 'target_arch=="s390x" and OS=="linux"', {
-@@ -610,7 +628,7 @@
+@@ -674,7 +692,7 @@
              ],
            }, {                                             # else it's `AIX`
              'variables': {
@@ -179,7 +170,7 @@ index 576d5057d9..2f0fbcc263 100644
              },
              # Disable the following compiler warning:
              #
-@@ -693,6 +711,98 @@
+@@ -757,6 +775,98 @@
            }],
          ],
        }],

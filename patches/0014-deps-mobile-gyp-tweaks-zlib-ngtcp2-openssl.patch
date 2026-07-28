@@ -18,10 +18,10 @@ Co-authored-by: Jaime Bernardo <jaime@janeasystems.com>
  3 files changed, 21 insertions(+), 8 deletions(-)
 
 diff --git a/deps/ngtcp2/ngtcp2.gyp b/deps/ngtcp2/ngtcp2.gyp
-index bef81462e4..72dd7e2e56 100644
+index 57dd0f8fda..b0354aa6d4 100644
 --- a/deps/ngtcp2/ngtcp2.gyp
 +++ b/deps/ngtcp2/ngtcp2.gyp
-@@ -122,7 +122,7 @@
+@@ -126,7 +126,7 @@
              },
            },
          }],
@@ -30,7 +30,7 @@ index bef81462e4..72dd7e2e56 100644
            'defines': [
              'HAVE_ARPA_INET_H',
              'HAVE_NETINET_IN_H',
-@@ -172,13 +172,19 @@
+@@ -205,13 +205,19 @@
              },
            },
          }],

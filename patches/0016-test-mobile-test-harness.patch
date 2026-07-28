@@ -23,7 +23,7 @@ Co-authored-by: Jaime Bernardo <jaime@janeasystems.com>
 diff --git a/test/common/index.js b/test/common/index.js
 old mode 100755
 new mode 100644
-index d4f4fab837..0819cf18ec
+index 6cfebae8f4..b9a9213da1
 --- a/test/common/index.js
 +++ b/test/common/index.js
 @@ -159,6 +159,8 @@ const isFreeBSD = process.platform === 'freebsd';
@@ -47,10 +47,10 @@ index d4f4fab837..0819cf18ec
    isOpenBSD,
    isMacOS,
 diff --git a/test/common/index.mjs b/test/common/index.mjs
-index dacaf32b07..dcd0a2fda7 100644
+index a9704d83c2..7d11acd371 100644
 --- a/test/common/index.mjs
 +++ b/test/common/index.mjs
-@@ -22,9 +22,11 @@ const {
+@@ -23,9 +23,11 @@ const {
    hasIPv6,
    isAIX,
    isAlive,
@@ -62,7 +62,7 @@ index dacaf32b07..dcd0a2fda7 100644
    isLinux,
    isOpenBSD,
    isMacOS,
-@@ -74,9 +76,11 @@ export {
+@@ -77,9 +79,11 @@ export {
    hasIPv6,
    isAIX,
    isAlive,
@@ -152,10 +152,10 @@ index 5470fd2bd9..4db0a9d5c6 100644
      return result
  
 diff --git a/tools/test.py b/tools/test.py
-index 8034bad4b5..9971ce0f6e 100755
+index 0bdfa5de79..97c9503393 100755
 --- a/tools/test.py
 +++ b/tools/test.py
-@@ -1744,6 +1744,12 @@ def Main():
+@@ -1745,6 +1745,12 @@ def Main():
          'asan': get_asan_state(vm, context),
          'pointer_compression': get_pointer_compression_state(vm, context),
        }

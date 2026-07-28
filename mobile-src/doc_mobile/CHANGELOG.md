@@ -6,6 +6,7 @@
 </tr>
 <tr>
 <td>
+<a href="#24.18.0-0">24.18.0-0</a><br/>
 <a href="#24.15.0-0">24.15.0-0</a><br/>
 <a href="#18.20.4">18.20.4</a><br/>
 <a href="#18.17.3">18.17.3</a><br/>
@@ -34,8 +35,27 @@
 </tr>
 </table>
 
+<a id="24.18.0-0"></a>
+## 2026-07-28, Version 24.18.0-0 (Current)
+
+First release produced by the patches-only pipeline: the source tree is
+reconstructed from the [`patches` branch](../../../tree/patches)
+(upstream `v24.18.0` + 19 mobile patches + fork-only files) and verified
+byte-for-byte before building.
+
+### Notable Changes
+
+* **Engine:** Node.js 24.18.0 (upstream bump from 24.15.0).
+* **Maintenance:** patches-only model adopted; the mobile diff is ~1.5 MB of
+  reviewable patches and plain files instead of a rebased fork.
+* **Testing:** Tier-3 real-device smoke on BrowserStack App Automate
+  (Android arm64 Pixel 9 with 16 KB pages via Espresso; iPhone via XCUITest),
+  covering boot + a real N-API addon dlopen. See TESTING.md.
+* **Cleanup:** ephemeral v24-upgrade planning docs and superseded in-tree
+  patch tooling removed; Xcode user-state files dropped.
+
 <a id="24.15.0-0"></a>
-## 2026-07-28, Version 24.15.0-0 (Current)
+## 2026-07-28, Version 24.15.0-0
 
 First release on the Node.js 24 line. The mobile patch stack is fully rebased on
 the upstream `v24.15.0` tag (linear history, no merge commit; V8 13.6).

@@ -1,83 +1,51 @@
-# Maintenance model: patch stack on top of upstream Node.js
+# Maintenance model: patches branch + materialized source branch
 
-> **Note (2026-07-28):** the canonical representation of the mobile diff has
-> moved to the patches-only [`patches` branch](../../../tree/patches)
-> (see [PATCHES_ONLY_PROPOSAL.md](./PATCHES_ONLY_PROPOSAL.md), now adopted).
-> This branch remains the full-source materialization that CI builds and
-> releases from; day-to-day patch editing happens on the patches branch.
+nodejs-mobile is maintained as a small set of **patches and fork-only files
+on the orphan [`patches` branch](../../../tree/patches)** — the canonical
+representation of the entire mobile contribution (~1.5 MB) — plus this
+**materialized full-source branch** (`mobile/v24`), which is what CI builds,
+tests, and releases.
 
-`nodejs-mobile` is maintained as a **patch stack** rebased on top of an
-upstream `nodejs/node` release tag. The mobile-specific changes live as
-discrete, atomic commits on top of a clean upstream base. There is no
-long-lived "merge of upstream" model.
+| Branch | Role |
+| --- | --- |
+| `patches` | canonical: `patches/` (per-concern diffs to upstream files) + `mobile-src/` (fork-only files) + `scripts/prepare.sh` / `regenerate-patches.py` + `expected-tree.txt` integrity anchor |
+| `mobile/v24` | generated materialization of `patches` on upstream `v24.x`: the branch CI compiles and releases are tagged from |
+| `main` | legacy v18.20.4 line (frozen) |
 
-This was adopted in 2026 (replacing the squash-merge `format-patch` flow that
-was the project's previous procedure) because:
+The invariant tying them together: `prepare.sh` on the patches branch must
+reconstruct **byte-for-byte** the tree of this branch's tip
+(`expected-tree.txt`), and CI on the patches branch re-proves that against a
+real upstream clone on every push.
 
-- Each mobile patch is reviewable and attributable on its own.
-- Conflicts during an upstream rebase are scoped to the file each patch
-  touches, instead of arriving as one giant unresolvable blob.
-- Supply-chain auditing is tractable: anyone can run `git log vX.Y.Z..` to
-  enumerate every byte we add on top of upstream.
-- When upstream eventually fixes a problem we patched around, the
-  corresponding patch can be deleted cleanly.
+## Changing mobile code
 
-The squash-merge model was the basis of every nodejs-mobile release to date
-and reflects significant sustained work by maintainers; the patch-stack
-model is intended to make the next major upgrade more incremental, not to
-discard that work.
+Day-to-day changes happen via the patches branch dev loop (see its README):
+`prepare.sh` → edit/commit in `out/` → `regenerate-patches.py` → commit the
+regenerated `patches/` + `mobile-src/` → materialize and push here. Small
+doc-only changes may land here first and be synced back; the tree-hash gate
+keeps the two from drifting silently.
 
-## Branch layout
+Guidelines for the patch series itself:
 
-| Branch                     | Purpose                                                       |
-| -------------------------- | ------------------------------------------------------------- |
-| `mobile/v24` (and similar) | Long-lived patch stack on top of an upstream major version.   |
-| Per-PR feature branches    | Cut from `mobile/v24`, merged via rebase to keep stack clean. |
+- One patch per concern, minimal diff, subsystem-prefixed subject
+  (`build:`, `src:`, `deps,v8:`, …). `patches/files.map` records which patch
+  owns which upstream file.
+- The commit body says *why* the change is needed, so a future upgrade can
+  decide whether upstream has made the patch obsolete.
+- Fork-only files (no upstream counterpart) never become patches — they live
+  in `mobile-src/` as plain files.
 
-The tip of `mobile/v24` is always `vX.Y.Z` (an upstream release tag) plus a
-sequence of mobile-only commits.
+## Upgrading upstream Node.js
 
-`main` (legacy) tracks the v18.20.4 release line and is no longer actively
-developed. New work targets `mobile/v24`.
+See [UPGRADING.md](./UPGRADING.md). Summary: bump `upstream-base.txt` on the
+patches branch, run `prepare.sh`, resolve any conflicting patch in `out/`,
+regenerate, then materialize this branch from the new base (a force-push —
+release tags preserve the old history) and run the release pipeline.
 
-## Adding a new mobile patch
+## History
 
-1. Branch from `mobile/v24`.
-2. Make a single focused change. Prefix the subject line with the affected
-   subsystem(s), e.g. `android,build: ...`, `ios,test: ...`.
-3. Each commit should be small, focused, and self-explanatory. The commit
-   message body should describe *why* the change is needed (what platform
-   issue it solves) so future maintainers can decide whether the patch is
-   still needed when a future upstream Node.js release fixes the underlying
-   problem.
-4. Open a PR against `mobile/v24`. CI runs `./android-configure` against
-   every commit on the branch (see
-   [`.github/workflows/validate-patch-stack.yml`](../.github/workflows/validate-patch-stack.yml))
-   so a broken intermediate commit is rejected even if HEAD builds.
-5. Merge by **rebase**, not merge-commit. The patch stack must stay linear.
-
-## Updating to a newer upstream Node.js
-
-This is the primary exercise of the maintenance model. See
-[UPGRADING.md](./UPGRADING.md) for the step-by-step procedure. In summary:
-
-```sh
-git fetch upstream tag vX.Y.Z         # e.g. 24.15.0 → 24.16.0
-git checkout -b mobile/v24-rebase-X.Y.Z mobile/v24
-git rebase --onto vX.Y.Z vA.B.C       # vA.B.C is the current base
-# resolve conflicts patch-by-patch
-git push --force-with-lease origin mobile/v24-rebase-X.Y.Z
-# open PR; CI must be green per-patch before merge
-```
-
-A force-push happens on the rebase PR branch only, never on `mobile/v24`
-itself. The merge into `mobile/v24` is a fast-forward of the validated
-rebase.
-
-## Cross-major upgrades
-
-When a new upstream major lands (e.g. v26), branch a fresh `mobile/v26`
-from the upstream release tag and cherry-pick patches from `mobile/v24` one
-at a time. Many will need rework; some will be obsolete because upstream
-fixed the issue we were patching around. `mobile/v26` is a sibling of
-`mobile/v24`, not a descendant.
+The project previously used a squash-merge import per upstream release
+(through v18.20.4, on `main`), then a rebased in-tree patch stack (the first
+v24 releases). The patches-branch model replaced the rebased stack in July
+2026 because history rewriting made stack maintenance painful; the stack's
+commits, messages, and attribution live on as the generated patch series.

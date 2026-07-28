@@ -14,10 +14,10 @@ Co-authored-by: Jaime Bernardo <jaime@janeasystems.com>
  1 file changed, 1 insertion(+), 1 deletion(-)
 
 diff --git a/lib/internal/modules/cjs/loader.js b/lib/internal/modules/cjs/loader.js
-index df656b8601..9f41e20590 100644
+index 11a7196698..b0e6be5098 100644
 --- a/lib/internal/modules/cjs/loader.js
 +++ b/lib/internal/modules/cjs/loader.js
-@@ -2069,7 +2069,7 @@ Module.createRequire = createRequire;
+@@ -2110,7 +2110,7 @@ Module.createRequire = createRequire;
   */
  Module._initPaths = function() {
    const homeDir = isWindows ? process.env.USERPROFILE : safeGetenv('HOME');
