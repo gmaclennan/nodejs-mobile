@@ -35,6 +35,14 @@ Patterns seen in practice:
 - **Wholesale-replacement docs** (the fork `README.md` replaces the upstream
   remainder): resolve to ours.
 
+A clean `git am` is **not** proof of semantic correctness: in the 24.18.0
+bump, an upstream restructure of `crypto_context.cc` merged cleanly but left
+our `#endif // TARGET_OS_OSX` above a new function tail that used
+guard-scoped identifiers — caught only by the iOS compile. Treat the full
+Build matrix as part of the upgrade loop, and re-check that every
+platform-guard (`TARGET_OS_OSX` / `__ANDROID__`) still encloses everything
+it needs to.
+
 Also update, in `mobile-src/`:
 
 - `src/node_mobile_version.h` — mirror the new upstream version (revision
