@@ -126,7 +126,7 @@
             },
           },
         }],
-        ['OS=="linux" or OS=="android" or OS=="openharmony"', {
+        ['OS=="linux" or OS=="android"', {
           'defines': [
             'HAVE_ARPA_INET_H',
             'HAVE_NETINET_IN_H',
@@ -205,13 +205,19 @@
             },
           },
         }],
-        ['OS!="win"', {
-          'defines': ['HAVE_UNISTD_H']
-        }],
-        ['OS=="linux" or OS=="android" or OS=="openharmony"', {
+        # nodejs-mobile patch: add "android"
+        ['OS=="linux" or OS=="android"', {
           'defines': [
             'HAVE_ARPA_INET_H',
             'HAVE_NETINET_IN_H',
+            # nodejs-mobile patch: flag required for nghttp3_unreachable.c
+            'HAVE_UNISTD_H',
+          ],
+        }],
+        # nodejs-mobile patch: flag requires for nghttp3_unreachable.c
+        ['OS=="ios"', {
+          'defines': [
+            'HAVE_UNISTD_H',
           ],
         }],
       ],
