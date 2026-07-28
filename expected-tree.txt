@@ -3,5 +3,5 @@
 # mobile-src overlay, and the resulting tree must hash to exactly this.
 # Update it (from prepare.sh's output) whenever patches/ or mobile-src/
 # change intentionally. Current value == the tree of the full-source
-# materialization this branch was generated from (mobile/v24 @ 6d2fc1b9a2).
-a934ed6b1e9437c664493d2a30eed1578ac83b99
+# materialization this branch was generated from (mobile/v24 @ 8304d3307d).
+0ad5f47b47257ffee732e75fbecb98989d06637c

@@ -1,6 +1,14 @@
 # Proposal: out-of-tree patches repo (post-v24)
 
-**Status:** proposal, not adopted. Filed for discussion after a v24 release exists.
+**Status:** ADOPTED (2026-07-28), with one deviation from the sequencing
+below: the patches-only representation lives on the orphan
+[`patches` branch](../../../tree/patches) of this repository rather than a
+sibling repo, and it is canonical — see its README for the layout
+(`patches/` + `mobile-src/` + `scripts/prepare.sh`), the dev loop, and the
+`expected-tree.txt` integrity gate. This full-source branch is the
+materialization the build/release CI runs on; after changing the patches
+branch, materialize with its `scripts/prepare.sh` and fast-forward-push here.
+The text below is kept as the design rationale.
 
 ## Summary
 

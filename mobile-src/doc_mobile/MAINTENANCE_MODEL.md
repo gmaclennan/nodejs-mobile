@@ -1,5 +1,11 @@
 # Maintenance model: patch stack on top of upstream Node.js
 
+> **Note (2026-07-28):** the canonical representation of the mobile diff has
+> moved to the patches-only [`patches` branch](../../../tree/patches)
+> (see [PATCHES_ONLY_PROPOSAL.md](./PATCHES_ONLY_PROPOSAL.md), now adopted).
+> This branch remains the full-source materialization that CI builds and
+> releases from; day-to-day patch editing happens on the patches branch.
+
 `nodejs-mobile` is maintained as a **patch stack** rebased on top of an
 upstream `nodejs/node` release tag. The mobile-specific changes live as
 discrete, atomic commits on top of a clean upstream base. There is no
