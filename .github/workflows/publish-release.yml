@@ -13,6 +13,11 @@ on:
   push:
     branches: [mobile/v24, main]
     paths: ['src/node_mobile_version.h']
+  # Escape hatch: the push paths filter can miss a release push whose diff
+  # doesn't touch node_mobile_version.h (e.g. the first release, where the
+  # version header lands pre-set and only NODE_VERSION_IS_RELEASE flips).
+  # The guard job still requires a `release:` head commit with the flag set.
+  workflow_dispatch:
 
 permissions:
   contents: write
@@ -57,17 +62,22 @@ jobs:
     steps:
       # Mint a short-lived token from the release GitHub App for the tag push and
       # the GitHub Release (see doc_mobile/RELEASING.md "One-time setup"). Export
-      # it as GH_TOKEN so the gh steps below pick it up.
+      # it as GH_TOKEN so the gh steps below pick it up. If the App isn't
+      # configured (vars.RELEASE_APP_ID unset), fall back to GITHUB_TOKEN: this
+      # job only pushes a tag and creates the Release, neither of which needs to
+      # trigger downstream workflows, so the App is optional here (unlike
+      # prepare-release.yml, where the pushed branch must trigger CI).
       - uses: actions/create-github-app-token@v3
         id: app-token
+        if: vars.RELEASE_APP_ID != ''
         with:
           app-id: ${{ vars.RELEASE_APP_ID }}
           private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
-      - run: echo "GH_TOKEN=${{ steps.app-token.outputs.token }}" >> "$GITHUB_ENV"
+      - run: echo "GH_TOKEN=${{ steps.app-token.outputs.token || github.token }}" >> "$GITHUB_ENV"
 
       - uses: actions/checkout@v4
         with:
-          token: ${{ steps.app-token.outputs.token }}
+          token: ${{ steps.app-token.outputs.token || github.token }}
           fetch-depth: 0
 
       # "Tests pass before any release": branch protection requires the cheap
@@ -144,8 +154,12 @@ jobs:
         run: |
           TAG="nodejs-mobile-${V}"
           NOTES=$(awk '/^## /{c++} c==1{print} c==2{exit}' doc_mobile/CHANGELOG.md)
+          # Published as a prerelease: the CI gate covers emulator/simulator
+          # only. A maintainer promotes it to a full release after the
+          # real-device smoke (RELEASING.md step 4) has been recorded.
           gh release create "$TAG" out/*.zip \
             --repo "$GITHUB_REPOSITORY" \
             --title "nodejs-mobile ${V}" \
+            --prerelease \
             --notes "${NOTES:-Release ${V}. See doc_mobile/CHANGELOG.md.}"
           echo "Published release $TAG"
