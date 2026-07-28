@@ -774,8 +774,13 @@
             }],
           ],
           }, {
-          'sources': [
-            'src/node_snapshot_stub.cc'
+          # nodejs-mobile patch: `conditions`>`not` added to wrap `sources`
+          'conditions': [
+            [ 'not (node_target_type=="static_library" and OS=="ios")', {
+              'sources': [
+                'src/node_snapshot_stub.cc'
+              ],
+            }],
           ],
         }],
         [ 'OS in "linux freebsd openharmony" and '
@@ -949,6 +954,12 @@
             'src/node_snapshot_stub.cc',
           ]
         }],
+        # nodejs-mobile patch:
+        [ 'node_target_type=="static_library" and OS=="ios"', {
+          'sources': [
+            'src/node_snapshot_stub.cc',
+          ]
+        }],
         [ 'node_shared_gtest=="false"', {
           'dependencies': [
             'deps/googletest/googletest.gyp:gtest_prod',
@@ -1017,7 +1028,8 @@
             '<@(node_quic_sources)',
           ],
         }],
-        [ 'OS in "linux freebsd mac solaris openharmony" and '
+        # nodejs-mobile patch to mention iOS
+        [ 'OS in "linux freebsd mac ios solaris openharmony" and '
           'target_arch=="x64" and '
           'node_target_type=="executable"', {
           'defines': [ 'NODE_ENABLE_LARGE_CODE_PAGES=1' ],
@@ -1303,6 +1315,12 @@
       'sources': [ '<@(node_cctest_sources)' ],
 
       'conditions': [
+        # nodejs-mobile patch: added this whole `not` block
+        [ 'not (node_target_type=="static_library" and OS=="ios")', {
+          'sources': [
+            'src/node_snapshot_stub.cc',
+          ]
+        }],
         [ 'node_shared_gtest=="false"', {
           'dependencies': [
             'deps/googletest/googletest.gyp:gtest',
@@ -1360,8 +1378,8 @@
         ['OS=="solaris"', {
           'ldflags': [ '-I<(SHARED_INTERMEDIATE_DIR)' ]
         }],
-        # Skip cctest while building shared lib node for Windows
-        [ 'OS=="win" and node_shared=="true"', {
+        # Skip cctest while building shared lib node for Windows and mobile
+        [ 'OS in ("win", "android") and node_shared=="true"', {
           'type': 'none',
         }],
         [ 'node_shared=="true"', {
@@ -1528,7 +1546,8 @@
         [ 'node_shared_libuv=="false"', {
           'dependencies': [ 'deps/uv/uv.gyp:libuv#host' ],
         }],
-        [ 'OS in "linux mac openharmony"', {
+        # nodejs-mobile patch: add ios
+        [ 'OS in "linux mac ios openharmony"', {
           'defines': ['NODE_JS2C_USE_STRING_LITERALS'],
         }],
         [ 'debug_node=="true"', {
@@ -1566,7 +1585,7 @@
       'defines': [ 'NODE_WANT_INTERNALS=1' ],
 
       'sources': [
-        'src/node_snapshot_stub.cc',
+        # nodejs-mobile patch: moved `node_snapshot_stub.cc` to the `not` below
         'tools/snapshot/node_mksnapshot.cc',
       ],
 
@@ -1577,6 +1596,12 @@
       },
 
       'conditions': [
+        # nodejs-mobile patch: added this whole `not` block
+        [ 'not (node_target_type=="static_library" and OS=="ios")', {
+          'sources': [
+            'src/node_snapshot_stub.cc',
+          ]
+        }],
         ['node_write_snapshot_as_array_literals=="true"', {
           'defines': [ 'NODE_MKSNAPSHOT_USE_ARRAY_LITERALS=1' ],
         }],
