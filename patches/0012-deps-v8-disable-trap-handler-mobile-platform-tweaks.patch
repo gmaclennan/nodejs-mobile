@@ -1,0 +1,392 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Gregor MacLennan <gmaclennan@gmail.com>
+Date: Tue, 28 Jul 2026 19:20:30 +0000
+Subject: [PATCH 12/19] deps,v8: disable trap handler; mobile platform tweaks
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+trap-handler V8_TRAP_HANDLER_SUPPORTED=false; platform-posix / push_registers_asm mobile adjustments.
+
+Co-authored-by: Andre Staltz <andre@staltz.com>
+Co-authored-by: Julia Samól <j.samol@papers.ch>
+Co-authored-by: Jaime Bernardo <jaime@janeasystems.com>
+---
+ android-patches/trap-handler.h.patch          | 47 ------------
+ deps/v8/src/base/platform/platform-posix.cc   |  6 ++
+ .../heap/base/asm/x64/push_registers_asm.cc   | 74 ++++++++++++++++---
+ .../src/trap-handler/handler-inside-posix.cc  | 68 +++--------------
+ deps/v8/src/trap-handler/handler-outside.cc   |  2 +
+ deps/v8/src/trap-handler/trap-handler.h       | 42 ++---------
+ 6 files changed, 87 insertions(+), 152 deletions(-)
+ delete mode 100644 android-patches/trap-handler.h.patch
+
+diff --git a/android-patches/trap-handler.h.patch b/android-patches/trap-handler.h.patch
+deleted file mode 100644
+index 6974259ffb..0000000000
+--- a/android-patches/trap-handler.h.patch
++++ /dev/null
+@@ -1,47 +0,0 @@
+---- trap-handler.h
+-+++ fixed-trap-handler.h
+-@@ -18,43 +18,1 @@
+--// X64 on Linux, Windows, MacOS, FreeBSD.
+--#if V8_HOST_ARCH_X64 && V8_TARGET_ARCH_X64 &&                        \
+--    ((V8_OS_LINUX && !V8_OS_ANDROID) || V8_OS_WIN || V8_OS_DARWIN || \
+--     V8_OS_FREEBSD)
+--#define V8_TRAP_HANDLER_SUPPORTED true
+--// Arm64 native on Linux, Windows, MacOS.
+--#elif V8_TARGET_ARCH_ARM64 && V8_HOST_ARCH_ARM64 && \
+--    ((V8_OS_LINUX && !V8_OS_ANDROID) || V8_OS_WIN || V8_OS_DARWIN)
+--#define V8_TRAP_HANDLER_SUPPORTED true
+--// For Linux and Mac, enable the simulator when it's been requested.
+--#if USE_SIMULATOR && ((V8_OS_LINUX && !V8_OS_ANDROID) || V8_OS_DARWIN)
+--#define V8_TRAP_HANDLER_VIA_SIMULATOR
+--#endif
+--// Arm64 simulator on x64 on Linux, Mac, or Windows.
+--//
+--// The simulator case uses some inline assembly code, which cannot be
+--// compiled with MSVC, so don't enable the trap handler in that case.
+--// (MSVC #defines _MSC_VER, but so does Clang when targeting Windows, hence
+--// the check for __clang__.)
+--#elif V8_TARGET_ARCH_ARM64 && V8_HOST_ARCH_X64 && \
+--    (V8_OS_LINUX || V8_OS_DARWIN || V8_OS_WIN) && \
+--    (!defined(_MSC_VER) || defined(__clang__))
+--#define V8_TRAP_HANDLER_VIA_SIMULATOR
+--#define V8_TRAP_HANDLER_SUPPORTED true
+--// Loong64 (non-simulator) on Linux.
+--#elif V8_TARGET_ARCH_LOONG64 && V8_HOST_ARCH_LOONG64 && V8_OS_LINUX
+--#define V8_TRAP_HANDLER_SUPPORTED true
+--// Loong64 simulator on x64 on Linux
+--#elif V8_TARGET_ARCH_LOONG64 && V8_HOST_ARCH_X64 && V8_OS_LINUX
+--#define V8_TRAP_HANDLER_VIA_SIMULATOR
+--#define V8_TRAP_HANDLER_SUPPORTED true
+--// RISCV64 (non-simulator) on Linux.
+--#elif V8_TARGET_ARCH_RISCV64 && V8_HOST_ARCH_RISCV64 && V8_OS_LINUX && \
+--    !V8_OS_ANDROID
+--#define V8_TRAP_HANDLER_SUPPORTED true
+--// RISCV64 simulator on x64 on Linux
+--#elif V8_TARGET_ARCH_RISCV64 && V8_HOST_ARCH_X64 && V8_OS_LINUX
+--#define V8_TRAP_HANDLER_VIA_SIMULATOR
+--#define V8_TRAP_HANDLER_SUPPORTED true
+--// Everything else is unsupported.
+--#else
+--#define V8_TRAP_HANDLER_SUPPORTED false
+--#endif
+-+#define V8_TRAP_HANDLER_SUPPORTED false
+diff --git a/deps/v8/src/base/platform/platform-posix.cc b/deps/v8/src/base/platform/platform-posix.cc
+index 5c93b3aaaf..2858a8c7dd 100644
+--- a/deps/v8/src/base/platform/platform-posix.cc
++++ b/deps/v8/src/base/platform/platform-posix.cc
+@@ -334,6 +334,12 @@ void* OS::GetRandomMmapAddr() {
+     MutexGuard guard(rng_mutex.Pointer());
+     GetPlatformRandomNumberGenerator()->NextBytes(&raw_addr, sizeof(raw_addr));
+   }
++#if defined(__APPLE__)
++#if V8_TARGET_ARCH_ARM64 && V8_OS_IOS
++  DCHECK_EQ(1 << 14, AllocatePageSize());
++  raw_addr = RoundDown(raw_addr, 1 << 14);
++#endif
++#endif
+ #if V8_HOST_ARCH_ARM64
+ #if defined(V8_TARGET_OS_MACOS)
+   DCHECK_EQ(1 << 14, AllocatePageSize());
+diff --git a/deps/v8/src/heap/base/asm/x64/push_registers_asm.cc b/deps/v8/src/heap/base/asm/x64/push_registers_asm.cc
+index 554caddfa7..71e6949e3c 100644
+--- a/deps/v8/src/heap/base/asm/x64/push_registers_asm.cc
++++ b/deps/v8/src/heap/base/asm/x64/push_registers_asm.cc
+@@ -14,16 +14,67 @@
+ 
+ // Do not depend on V8_TARGET_OS_* defines as some embedders may override the
+ // GN toolchain (e.g. ChromeOS) and not provide them.
++// _WIN64 Defined as 1 when the compilation target is 64-bit ARM or x64.
++// Otherwise, undefined.
++#ifdef _WIN64
+ 
+ // We maintain 16-byte alignment at calls. There is an 8-byte return address
+-// on the stack and we push 56 bytes which maintains 16-byte stack alignment
++// on the stack and we push 232 bytes which maintains 16-byte stack alignment
+ // at the call.
+-// Source: https://github.com/hjl-tools/x86-psABI/wiki/x86-64-psABI-1.0.pdf
++// Source: https://docs.microsoft.com/en-us/cpp/build/x64-calling-convention
++asm(".globl PushAllRegistersAndIterateStack             \n"
++// nodejs-mobile patch: actually, we SHOULD depend on V8_TARGET_* defines:
++// These situations happen because we compile both "host" and "target" code but
++// with flags that reflect only the "target" platform, so we end up incorrectly
++// mixing "host" files (such as this one) with "target" flags (such as
++// V8_TARGET_ARCH_*)
++#ifndef V8_TARGET_ARCH_ARM
++    "PushAllRegistersAndIterateStack:                   \n"
++    // rbp is callee-saved. Maintain proper frame pointer for debugging.
++    "  push %rbp                                        \n"
++    "  mov %rsp, %rbp                                   \n"
++    // Dummy for alignment.
++    "  push $0xCDCDCD                                   \n"
++    "  push %rsi                                        \n"
++    "  push %rdi                                        \n"
++    "  push %rbx                                        \n"
++    "  push %r12                                        \n"
++    "  push %r13                                        \n"
++    "  push %r14                                        \n"
++    "  push %r15                                        \n"
++    "  sub $160, %rsp                                   \n"
++    // Use aligned instrs as we are certain that the stack is properly aligned.
++    "  movdqa %xmm6, 144(%rsp)                          \n"
++    "  movdqa %xmm7, 128(%rsp)                          \n"
++    "  movdqa %xmm8, 112(%rsp)                          \n"
++    "  movdqa %xmm9, 96(%rsp)                           \n"
++    "  movdqa %xmm10, 80(%rsp)                          \n"
++    "  movdqa %xmm11, 64(%rsp)                          \n"
++    "  movdqa %xmm12, 48(%rsp)                          \n"
++    "  movdqa %xmm13, 32(%rsp)                          \n"
++    "  movdqa %xmm14, 16(%rsp)                          \n"
++    "  movdqa %xmm15, (%rsp)                            \n"
++    // Pass 1st parameter (rcx) unchanged (Stack*).
++    // Pass 2nd parameter (rdx) unchanged (StackVisitor*).
++    // Save 3rd parameter (r8; IterateStackCallback)
++    "  mov %r8, %r9                                     \n"
++    // Pass 3rd parameter as rsp (stack pointer).
++    "  mov %rsp, %r8                                    \n"
++    // Call the callback.
++    "  call *%r9                                        \n"
++    // Pop the callee-saved registers.
++    "  add $224, %rsp                                   \n"
++    // Restore rbp as it was used as frame pointer.
++    "  pop %rbp                                         \n"
++#endif  // !V8_TARGET_ARCH_ARM
++    "  ret                                              \n");
+ 
+-#ifdef _WIN64
+-#error "The masm based version must be used for Windows"
+-#endif
++#else  // !_WIN64
+ 
++// We maintain 16-byte alignment at calls. There is an 8-byte return address
++// on the stack and we push 56 bytes which maintains 16-byte stack alignment
++// at the call.
++// Source: https://github.com/hjl-tools/x86-psABI/wiki/x86-64-psABI-1.0.pdf
+ asm(
+ #ifdef __APPLE__
+     ".globl _PushAllRegistersAndIterateStack            \n"
+@@ -35,6 +86,8 @@ asm(
+     ".hidden PushAllRegistersAndIterateStack            \n"
+     "PushAllRegistersAndIterateStack:                   \n"
+ #endif  // !__APPLE__
++// nodejs-mobile patch: actually, we SHOULD depend on V8_TARGET_* defines.
++#ifndef V8_TARGET_ARCH_ARM
+     // rbp is callee-saved. Maintain proper frame pointer for debugging.
+     "  push %rbp                                        \n"
+     "  mov %rsp, %rbp                                   \n"
+@@ -57,10 +110,7 @@ asm(
+     "  add $48, %rsp                                    \n"
+     // Restore rbp as it was used as frame pointer.
+     "  pop %rbp                                         \n"
+-    "  ret                                              \n"
+-#if !defined(__APPLE__)
+-    ".Lfunc_end0:                                       \n"
+-    ".size PushAllRegistersAndIterateStack, "
+-    ".Lfunc_end0-PushAllRegistersAndIterateStack        \n"
+-#endif  // !defined(__APPLE__)
+-    );
++#endif  // !V8_TARGET_ARCH_ARM
++    "  ret                                              \n");
++
++#endif  // !_WIN64
+diff --git a/deps/v8/src/trap-handler/handler-inside-posix.cc b/deps/v8/src/trap-handler/handler-inside-posix.cc
+index 0ce8abc1bb..17af3d75dc 100644
+--- a/deps/v8/src/trap-handler/handler-inside-posix.cc
++++ b/deps/v8/src/trap-handler/handler-inside-posix.cc
+@@ -49,14 +49,8 @@ namespace trap_handler {
+ 
+ #if V8_TRAP_HANDLER_SUPPORTED
+ 
+-#if V8_OS_LINUX && V8_HOST_ARCH_ARM64
+-#define CONTEXT_REG(reg, REG) &uc->uc_mcontext.regs[REG]
+-#elif V8_OS_LINUX && (V8_HOST_ARCH_LOONG64 || V8_HOST_ARCH_RISCV64)
+-#define CONTEXT_REG(reg, REG) &uc->uc_mcontext.__gregs[REG]
+-#elif V8_OS_LINUX
++#if V8_OS_LINUX
+ #define CONTEXT_REG(reg, REG) &uc->uc_mcontext.gregs[REG_##REG]
+-#elif V8_OS_DARWIN && V8_HOST_ARCH_ARM64
+-#define CONTEXT_REG(reg, REG) &uc->uc_mcontext->__ss.__x[REG]
+ #elif V8_OS_DARWIN
+ #define CONTEXT_REG(reg, REG) &uc->uc_mcontext->__ss.__##reg
+ #elif V8_OS_FREEBSD
+@@ -65,16 +59,6 @@ namespace trap_handler {
+ #error "Unsupported platform."
+ #endif
+ 
+-#if V8_OS_LINUX && V8_HOST_ARCH_ARM64
+-#define CONTEXT_PC() &uc->uc_mcontext.pc
+-#elif V8_OS_DARWIN && V8_HOST_ARCH_ARM64
+-#define CONTEXT_PC() &uc->uc_mcontext->__ss.__pc
+-#elif V8_OS_LINUX && V8_HOST_ARCH_LOONG64
+-#define CONTEXT_PC() &uc->uc_mcontext.__pc
+-#elif V8_OS_LINUX && V8_HOST_ARCH_RISCV64
+-#define CONTEXT_PC() &uc->uc_mcontext.__gregs[REG_PC]
+-#endif
+-
+ bool IsKernelGeneratedSignal(siginfo_t* info) {
+   // On macOS, only `info->si_code > 0` is relevant, because macOS leaves
+   // si_code at its default of 0 for signals that don’t originate in hardware.
+@@ -107,12 +91,7 @@ class UnmaskOobSignalScope {
+ #ifdef V8_TRAP_HANDLER_VIA_SIMULATOR
+ // This is the address where we continue on a failed "ProbeMemory". It's defined
+ // in "handler-outside-simulator.cc".
+-extern char probe_memory_continuation[]
+-#if V8_OS_DARWIN
+-    asm("_v8_simulator_probe_memory_continuation");
+-#else
+-    asm("v8_simulator_probe_memory_continuation");
+-#endif
++extern "C" char v8_probe_memory_continuation[];
+ #endif  // V8_TRAP_HANDLER_VIA_SIMULATOR
+ 
+ bool TryHandleSignal(int signum, siginfo_t* info, void* context) {
+@@ -134,12 +113,6 @@ bool TryHandleSignal(int signum, siginfo_t* info, void* context) {
+   // Make sure the signal was generated by the kernel and not some other source.
+   if (!IsKernelGeneratedSignal(info)) return false;
+ 
+-  // Check whether the fault should be handled based on the accessed address.
+-  // A fault caused by an access to an address that cannot belong to a Wasm
+-  // memory object should not be handled.
+-  uintptr_t access_addr = reinterpret_cast<uintptr_t>(info->si_addr);
+-  if (!IsAccessedMemoryCovered(access_addr)) return false;
+-
+   // Unmask the oob signal, which is automatically masked during the execution
+   // of this handler. This ensures that crashes generated in this function will
+   // be handled by the crash reporter. Otherwise, the process might be killed
+@@ -154,16 +127,14 @@ bool TryHandleSignal(int signum, siginfo_t* info, void* context) {
+ #if V8_HOST_ARCH_X64
+     auto* context_ip = CONTEXT_REG(rip, RIP);
+ #elif V8_HOST_ARCH_ARM64
+-    auto* context_ip = CONTEXT_PC();
+-#elif V8_HOST_ARCH_LOONG64
+-    auto* context_ip = CONTEXT_PC();
+-#elif V8_HOST_ARCH_RISCV64
+-    auto* context_ip = CONTEXT_PC();
++    auto* context_ip = CONTEXT_REG(pc, PC);
+ #else
+ #error "Unsupported architecture."
+ #endif
+ 
+     uintptr_t fault_addr = *context_ip;
++    uintptr_t landing_pad = 0;
++
+ #ifdef V8_TRAP_HANDLER_VIA_SIMULATOR
+     // Only handle signals triggered by the load in {ProbeMemory}.
+     if (fault_addr != reinterpret_cast<uintptr_t>(&ProbeMemory)) {
+@@ -172,33 +143,18 @@ bool TryHandleSignal(int signum, siginfo_t* info, void* context) {
+ 
+     // The simulated ip will be in the second parameter register (%rsi).
+     auto* simulated_ip_reg = CONTEXT_REG(rsi, RSI);
+-    if (!IsFaultAddressCovered(*simulated_ip_reg)) return false;
+-    TH_DCHECK(gLandingPad != 0);
++    if (!TryFindLandingPad(*simulated_ip_reg, &landing_pad)) return false;
++    TH_DCHECK(landing_pad != 0);
+ 
+     auto* return_reg = CONTEXT_REG(rax, RAX);
+-    *return_reg = gLandingPad;
+-    // The fault_address that is set in non-simulator builds here is set in the
+-    // simulator directly.
++    *return_reg = landing_pad;
+     // Continue at the memory probing continuation.
+-    *context_ip = reinterpret_cast<uintptr_t>(&probe_memory_continuation);
++    *context_ip = reinterpret_cast<uintptr_t>(&v8_probe_memory_continuation);
+ #else
+-    if (!IsFaultAddressCovered(fault_addr)) return false;
+-    TH_DCHECK(gLandingPad != 0);
+-    // Tell the caller to return to the landing pad.
+-    *context_ip = gLandingPad;
++    if (!TryFindLandingPad(fault_addr, &landing_pad)) return false;
+ 
+-#if V8_HOST_ARCH_X64
+-    auto* fault_address_reg = CONTEXT_REG(r10, R10);
+-#elif V8_HOST_ARCH_ARM64
+-    auto* fault_address_reg = CONTEXT_REG(x16, 16);
+-#elif V8_HOST_ARCH_LOONG64
+-    auto* fault_address_reg = CONTEXT_REG(t6, 18);
+-#elif V8_HOST_ARCH_RISCV64
+-    auto* fault_address_reg = CONTEXT_REG(t6, 31);
+-#else
+-#error "Unsupported architecture."
+-#endif
+-    *fault_address_reg = fault_addr;
++    // Tell the caller to return to the landing pad.
++    *context_ip = landing_pad;
+ #endif
+   }
+   // We will return to wasm code, so restore the g_thread_in_wasm_code flag.
+diff --git a/deps/v8/src/trap-handler/handler-outside.cc b/deps/v8/src/trap-handler/handler-outside.cc
+index 6e2b40d9f5..ede435b302 100644
+--- a/deps/v8/src/trap-handler/handler-outside.cc
++++ b/deps/v8/src/trap-handler/handler-outside.cc
+@@ -307,11 +307,13 @@ bool EnableTrapHandler(bool use_v8_handler) {
+   if (!V8_TRAP_HANDLER_SUPPORTED) {
+     return false;
+   }
++#if V8_TRAP_HANDLER_SUPPORTED
+   if (use_v8_handler) {
+     g_is_trap_handler_enabled = RegisterDefaultTrapHandler();
+     return g_is_trap_handler_enabled;
+   }
+   g_is_trap_handler_enabled = true;
++#endif
+   return true;
+ }
+ 
+diff --git a/deps/v8/src/trap-handler/trap-handler.h b/deps/v8/src/trap-handler/trap-handler.h
+index bd6f19593d..00105e50e0 100644
+--- a/deps/v8/src/trap-handler/trap-handler.h
++++ b/deps/v8/src/trap-handler/trap-handler.h
+@@ -15,45 +15,13 @@
+ 
+ namespace v8::internal::trap_handler {
+ 
+-// X64 on Linux, Windows, MacOS, FreeBSD.
+-#if V8_HOST_ARCH_X64 && V8_TARGET_ARCH_X64 &&                        \
+-    ((V8_OS_LINUX && !V8_OS_ANDROID) || V8_OS_WIN || V8_OS_DARWIN || \
+-     V8_OS_FREEBSD)
+-#define V8_TRAP_HANDLER_SUPPORTED true
+-// Arm64 (non-simulator) on Linux, Windows, MacOS.
+-#elif V8_TARGET_ARCH_ARM64 && V8_HOST_ARCH_ARM64 && \
+-    ((V8_OS_LINUX && !V8_OS_ANDROID) || V8_OS_WIN || V8_OS_DARWIN)
+-#define V8_TRAP_HANDLER_SUPPORTED true
+-// Arm64 simulator on x64 on Linux, Mac, or Windows.
++// nodejs-mobile patch.
+ //
+-// The simulator case uses some inline assembly code, which cannot be
+-// compiled with MSVC, so don't enable the trap handler in that case.
+-// (MSVC #defines _MSC_VER, but so does Clang when targeting Windows, hence
+-// the check for __clang__.)
+-#elif V8_TARGET_ARCH_ARM64 && V8_HOST_ARCH_X64 && \
+-    (V8_OS_LINUX || V8_OS_DARWIN || V8_OS_WIN) && \
+-    (!defined(_MSC_VER) || defined(__clang__))
+-#define V8_TRAP_HANDLER_VIA_SIMULATOR
+-#define V8_TRAP_HANDLER_SUPPORTED true
+-// Loong64 (non-simulator) on Linux.
+-#elif V8_TARGET_ARCH_LOONG64 && V8_HOST_ARCH_LOONG64 && V8_OS_LINUX
+-#define V8_TRAP_HANDLER_SUPPORTED true
+-// Loong64 simulator on x64 on Linux
+-#elif V8_TARGET_ARCH_LOONG64 && V8_HOST_ARCH_X64 && V8_OS_LINUX
+-#define V8_TRAP_HANDLER_VIA_SIMULATOR
+-#define V8_TRAP_HANDLER_SUPPORTED true
+-// RISCV64 (non-simulator) on Linux.
+-#elif V8_TARGET_ARCH_RISCV64 && V8_HOST_ARCH_RISCV64 && V8_OS_LINUX && \
+-    !V8_OS_ANDROID
+-#define V8_TRAP_HANDLER_SUPPORTED true
+-// RISCV64 simulator on x64 on Linux
+-#elif V8_TARGET_ARCH_RISCV64 && V8_HOST_ARCH_X64 && V8_OS_LINUX
+-#define V8_TRAP_HANDLER_VIA_SIMULATOR
+-#define V8_TRAP_HANDLER_SUPPORTED true
+-// Everything else is unsupported.
+-#else
++// It would require some careful security review before the trap handler
++// can be enabled on Android.  Android may do unexpected things with signal
++// handling and crash reporting that could open up security holes in V8's
++// trap handling.  So we disable the trap handler everywhere.
+ #define V8_TRAP_HANDLER_SUPPORTED false
+-#endif
+ 
+ #if V8_OS_ANDROID && V8_TRAP_HANDLER_SUPPORTED
+ // It would require some careful security review before the trap handler

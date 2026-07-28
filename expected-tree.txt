@@ -1,0 +1,7 @@
+# Git tree hash the reconstruction (scripts/prepare.sh) must produce.
+# This is the integrity anchor: prepare = clone(upstream-base) + patches +
+# mobile-src overlay, and the resulting tree must hash to exactly this.
+# Update it (from prepare.sh's output) whenever patches/ or mobile-src/
+# change intentionally. Current value == the tree of the full-source
+# materialization this branch was generated from (mobile/v24 @ 6d2fc1b9a2).
+a934ed6b1e9437c664493d2a30eed1578ac83b99

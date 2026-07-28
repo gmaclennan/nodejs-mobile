@@ -1,0 +1,69 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Gregor MacLennan <gmaclennan@gmail.com>
+Date: Tue, 28 Jul 2026 19:20:29 +0000
+Subject: [PATCH 09/19] src: expose the mobile version key in metadata
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+node_metadata.{cc,h}: NODE_VERSIONS_KEY_MOBILE.
+
+Co-authored-by: Andre Staltz <andre@staltz.com>
+Co-authored-by: Julia Samól <j.samol@papers.ch>
+Co-authored-by: Jaime Bernardo <jaime@janeasystems.com>
+---
+ src/node_metadata.cc | 7 +++++++
+ src/node_metadata.h  | 8 ++++++++
+ 2 files changed, 15 insertions(+)
+
+diff --git a/src/node_metadata.cc b/src/node_metadata.cc
+index a6063ce4d2..51e247cd71 100644
+--- a/src/node_metadata.cc
++++ b/src/node_metadata.cc
+@@ -47,6 +47,10 @@
+ #include <unicode/uversion.h>
+ #endif  // NODE_HAVE_I18N_SUPPORT
+ 
++#ifdef NODE_MOBILE
++#include "node_mobile_version.h"
++#endif  // NODE_MOBILE
++
+ namespace node {
+ 
+ namespace per_process {
+@@ -115,6 +119,9 @@ Metadata::Versions::Versions() {
+       NODE_STRINGIFY(LLHTTP_VERSION_MINOR)
+       "."
+       NODE_STRINGIFY(LLHTTP_VERSION_PATCH);
++#ifdef NODE_MOBILE
++  mobile = NODE_MOBILE_VERSION_STRING;
++#endif  // NODE_MOBILE
+ 
+   brotli =
+     std::to_string(BrotliEncoderVersion() >> 24) +
+diff --git a/src/node_metadata.h b/src/node_metadata.h
+index 7f6268a1d8..bb524bf604 100644
+--- a/src/node_metadata.h
++++ b/src/node_metadata.h
+@@ -79,6 +79,13 @@ namespace node {
+ #define NODE_VERSIONS_KEY_INTL(V)
+ #endif  // NODE_HAVE_I18N_SUPPORT
+ 
++#ifdef NODE_MOBILE
++#define NODE_VERSIONS_KEY_MOBILE(V)                                            \
++  V(mobile)
++#else
++#define NODE_VERSIONS_KEY_MOBILE(V)
++#endif  // NODE_MOBILE
++
+ #ifdef OPENSSL_INFO_QUIC
+ #define NODE_VERSIONS_KEY_QUIC(V)                                             \
+   V(ngtcp2)                                                                   \
+@@ -97,6 +104,7 @@ namespace node {
+   NODE_VERSIONS_KEYS_BASE(V)                                                   \
+   NODE_VERSIONS_KEY_CRYPTO(V)                                                  \
+   NODE_VERSIONS_KEY_INTL(V)                                                    \
++  NODE_VERSIONS_KEY_MOBILE(V)                                                  \
+   NODE_VERSIONS_KEY_QUIC(V)                                                    \
+   NODE_VERSIONS_KEY_SQLITE(V)
+ 

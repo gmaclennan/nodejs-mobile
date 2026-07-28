@@ -1,0 +1,30 @@
+name: Verify patches branch
+
+# Integrity gate for the patches-only representation: reconstruct the full
+# source tree from a real shallow clone of upstream nodejs/node at the pinned
+# base, and fail unless the result hashes byte-for-byte to expected-tree.txt.
+# Fast (no compilation): clone + git am + overlay + tree hash.
+on:
+  push:
+    branches: [patches]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Reconstruct + verify
+        run: scripts/prepare.sh out
+
+      - name: Report
+        if: always()
+        run: |
+          echo "base:     $(grep -Ev '^\s*(#|$)' upstream-base.txt | head -n1)"
+          echo "expected: $(grep -Ev '^\s*(#|$)' expected-tree.txt | head -n1)"
+          [ -d out ] && echo "got:      $(git -C out rev-parse 'HEAD^{tree}' 2>/dev/null || echo n/a)"
