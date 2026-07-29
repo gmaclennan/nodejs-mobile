@@ -50,7 +50,8 @@ with `WebAssembly is not defined`, and so does anything else undici backs —
 `Response`, `Request`, `Headers`, `FormData`, `WebSocket`, `EventSource`.
 
 The library ships a pure-JS WebAssembly implementation
-([polywasm](https://github.com/evanw/polywasm), MIT, in `deps/polywasm`) and
+([polywasm](https://github.com/evanw/polywasm), MIT, vendored in
+`deps/polywasm` — see its README for provenance and updates) and
 installs it as `globalThis.WebAssembly` at startup **only when the engine has
 none** — so Android and the host build keep V8's implementation untouched, and
 iOS gets a working `fetch()`. It compiles each wasm function to JavaScript with

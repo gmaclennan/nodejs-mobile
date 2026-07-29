@@ -1,15 +1,3 @@
-// Vendored from polywasm 0.2.0 (https://github.com/evanw/polywasm), MIT --
-// see LICENSE.md. This is the package's own `index.js` bundle, unmodified
-// except for this header and the ESM->CJS export at the bottom (Node builtins
-// are CommonJS). To update: `npm pack polywasm@<version>`, copy `index.js`
-// here, and re-apply those two edits.
-//
-// Why it ships in the binary: iOS forbids JIT, so the mobile build runs V8
-// jitless and V8 then exposes no `WebAssembly` at all -- which breaks `fetch()`,
-// because undici parses HTTP with a WebAssembly build of llhttp.
-// `internal/process/pre_execution` installs this as `globalThis.WebAssembly`
-// when the engine has none. See doc_mobile/FAQ.md.
-
 // src/library.ts
 var buffer = new ArrayBuffer(8);
 var f32 = new Float32Array(buffer);
