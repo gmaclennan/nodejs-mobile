@@ -554,6 +554,13 @@ jobs:
 
       - uses: ./.github/actions/materialize
 
+      # Note: the materialized tree is a SHALLOW clone of nodejs/node (prepare.sh
+      # uses --depth 1), so this pushes a tag whose history is grafted at the
+      # upstream base. That is accepted because this repository already contains
+      # upstream's history, so the remote has the boundary commit and git sends
+      # only the new commits. Verified empirically against this remote. A fork
+      # with no upstream history would get "shallow update not allowed" here and
+      # would need to fetch the base's ancestry before tagging.
       - name: Tag the materialized tree
         run: |
           git config user.name "nodejs-mobile-bot"
