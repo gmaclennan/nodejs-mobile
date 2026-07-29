@@ -2,6 +2,7 @@
 
 - [Can I use npm node-modules with nodejs-mobile?](#can-i-use-npm-node-modules-with-nodejs-mobile)
 - [Are all Node.js APIs supported on mobile?](#are-all-nodejs-apis-supported-on-mobile)
+- [Does `fetch()` work? What about WebAssembly?](#does-fetch-work-what-about-webassembly)
 - [Trying to write a file results in an error. What's going on?](#trying-to-write-a-file-results-in-an-error-whats-going-on)
 - [Are Node.js native modules supported?](#are-nodejs-native-modules-supported)
 - [How can I improve Node.js load times?](#how-can-i-improve-nodejs-load-times)
@@ -28,6 +29,50 @@ Not every API is supported on mobile, the main reason for this being that the mo
 A few other general JavaScript APIs are also unsupported due to Node.js Mobile not including full internationalization support:
 
 - RegExp Unicode Property Names, for example `/\p{Letter}+/u`
+
+WebAssembly is a special case on iOS — see
+[the next question](#does-fetch-work-what-about-webassembly).
+
+## Does `fetch()` work? What about WebAssembly?
+
+`fetch()` works out of the box on both platforms. Applications do not need a
+shim, a polyfill package, or a patched `undici`.
+
+On **Android** nothing is unusual: V8 has its JIT and its own WebAssembly
+implementation.
+
+On **iOS** it takes some work, because Apple does not allow apps to generate
+machine code at runtime. The iOS library therefore runs V8 **jitless**, and a
+jitless V8 has *no* `WebAssembly` global at all. That matters well beyond
+`WebAssembly` itself: `fetch()` is implemented by undici, and undici parses
+HTTP with a WebAssembly build of llhttp. Without it, the first `fetch()` fails
+with `WebAssembly is not defined`, and so does anything else undici backs —
+`Response`, `Request`, `Headers`, `FormData`, `WebSocket`, `EventSource`.
+
+The library ships a pure-JS WebAssembly implementation
+([polywasm](https://github.com/evanw/polywasm), MIT, in `deps/polywasm`) and
+installs it as `globalThis.WebAssembly` at startup **only when the engine has
+none** — so Android and the host build keep V8's implementation untouched, and
+iOS gets a working `fetch()`. It compiles each wasm function to JavaScript with
+`new Function()`, which jitless V8 allows (that restriction is on machine code,
+not on parsing source). The polyfill is loaded lazily: an app that never
+touches WebAssembly never compiles it.
+
+Worth knowing:
+
+- **It is much slower than a real wasm engine.** Fine for llhttp-sized parsing
+  work; do not expect native speed from a heavy wasm workload on iOS.
+- **The supported subset is the wasm MVP plus some post-MVP proposals.** No
+  SIMD, threads/atomics, exception handling, or GC. A module using those
+  throws when the offending function is first called.
+- **`UNDICI_NO_WASM_SIMD` is set to `1`** when the polyfill is installed.
+  undici otherwise picks a SIMD build of llhttp, which polywasm compiles
+  happily and then trips over on the first request (`Unsupported instruction:
+  0xFD`), past undici's own fallback. Set the variable yourself and your value
+  is left alone.
+- **To use a different implementation**, assign to the global before anything
+  touches it (`globalThis.WebAssembly = myImpl`) — the property is a normal
+  writable global, exactly as V8's own is.
 
 ## Trying to write a file results in an error. What's going on?
 

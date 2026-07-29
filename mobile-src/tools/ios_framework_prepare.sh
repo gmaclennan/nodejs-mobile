@@ -29,8 +29,10 @@ echo "iOS build flavor: $FLAVOR"
 INTL="small-icu"
 # --v8-lite-mode drops the compiled JIT and the V8 native WASM engine. Both are
 # dead on iOS for EVERY flavor — iOS runs jitless (no JIT entitlement) and
-# WebAssembly is served by the polywasm JS shim — so apply it to full and lite
-# alike (it is the ~20MB lever). Threaded into both configure blocks below.
+# WebAssembly is served by the polywasm polyfill the binary bundles (deps/
+# polywasm, installed by lib/internal/process/pre_execution.js — see
+# doc_mobile/FAQ.md) — so apply it to full and lite alike (it is the ~20MB
+# lever). Threaded into both configure blocks below.
 V8_LITE_MODE="--v8-lite-mode"
 LITE_FLAGS=""
 if [ "$FLAVOR" = "lite" ]; then

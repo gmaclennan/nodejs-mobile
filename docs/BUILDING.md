@@ -140,7 +140,7 @@ patch-stack surface):
 | `--without-sqlite` | for consumers using the `better-sqlite3` addon, not `node:sqlite` |
 | `--with-intl=none` (no ICU) | for consumers that use no `Intl.*` — verify per consumer (e.g. valibot's only `Intl` user, `Intl.Segmenter`, sits behind grapheme validators that may be unused); also shipped on Node 18 with `intl=none` |
 | `-ffunction-sections`/`--gc-sections` | dead-code strip; no behavior change |
-| **iOS only:** `--v8-lite-mode` | drops the compiled JIT + V8 WASM engine, both **dead on iOS** (it runs jitless; undici's WASM is served by the polywasm JS shim). This is the big lever. |
+| **iOS only:** `--v8-lite-mode` | drops the compiled JIT + V8 WASM engine, both **dead on iOS** (it runs jitless; WebAssembly is served by the bundled polywasm polyfill — see [FAQ](./FAQ.md#does-fetch-work-what-about-webassembly)). This is the big lever. |
 
 Measured shipping sizes (arm64, after symbol strip):
 

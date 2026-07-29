@@ -1,7 +1,7 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Gregor MacLennan <gmaclennan@gmail.com>
 Date: Tue, 28 Jul 2026 19:20:25 +0000
-Subject: [PATCH 03/19] build: mobile targets in node.gyp / node.gypi
+Subject: [PATCH 03/20] build: mobile targets in node.gyp / node.gypi
 MIME-Version: 1.0
 Content-Type: text/plain; charset=UTF-8
 Content-Transfer-Encoding: 8bit
@@ -12,15 +12,27 @@ Co-authored-by: Andre Staltz <andre@staltz.com>
 Co-authored-by: Julia Samól <j.samol@papers.ch>
 Co-authored-by: Jaime Bernardo <jaime@janeasystems.com>
 ---
- node.gyp  | 39 ++++++++++++++++++++++++++++++++-------
+ node.gyp  | 44 +++++++++++++++++++++++++++++++++++++-------
  node.gypi | 22 ++++++++++++++++++----
- 2 files changed, 50 insertions(+), 11 deletions(-)
+ 2 files changed, 55 insertions(+), 11 deletions(-)
 
 diff --git a/node.gyp b/node.gyp
-index 6387b94550..821309828a 100644
+index 6387b94550..f6f5252a75 100644
 --- a/node.gyp
 +++ b/node.gyp
-@@ -774,8 +774,13 @@
+@@ -64,6 +64,11 @@
+       'deps/acorn/acorn/dist/acorn.js',
+       'deps/acorn/acorn-walk/dist/walk.js',
+       'deps/minimatch/index.js',
++      # mobile: pure-JS WebAssembly polyfill, installed by
++      # internal/process/pre_execution when the engine ships no WebAssembly
++      # (iOS runs V8 jitless). Loaded lazily, so builds that never touch
++      # WebAssembly only pay its ~100 KB of source in the binary.
++      'deps/polywasm/polywasm.js',
+       '<@(node_builtin_shareable_builtins)',
+     ],
+     'node_sources': [
+@@ -774,8 +779,13 @@
              }],
            ],
            }, {
@@ -36,7 +48,7 @@ index 6387b94550..821309828a 100644
            ],
          }],
          [ 'OS in "linux freebsd openharmony" and '
-@@ -949,6 +954,12 @@
+@@ -949,6 +959,12 @@
              'src/node_snapshot_stub.cc',
            ]
          }],
@@ -49,7 +61,7 @@ index 6387b94550..821309828a 100644
          [ 'node_shared_gtest=="false"', {
            'dependencies': [
              'deps/googletest/googletest.gyp:gtest_prod',
-@@ -1017,7 +1028,8 @@
+@@ -1017,7 +1033,8 @@
              '<@(node_quic_sources)',
            ],
          }],
@@ -59,7 +71,7 @@ index 6387b94550..821309828a 100644
            'target_arch=="x64" and '
            'node_target_type=="executable"', {
            'defines': [ 'NODE_ENABLE_LARGE_CODE_PAGES=1' ],
-@@ -1303,6 +1315,12 @@
+@@ -1303,6 +1320,12 @@
        'sources': [ '<@(node_cctest_sources)' ],
  
        'conditions': [
@@ -72,7 +84,7 @@ index 6387b94550..821309828a 100644
          [ 'node_shared_gtest=="false"', {
            'dependencies': [
              'deps/googletest/googletest.gyp:gtest',
-@@ -1360,8 +1378,8 @@
+@@ -1360,8 +1383,8 @@
          ['OS=="solaris"', {
            'ldflags': [ '-I<(SHARED_INTERMEDIATE_DIR)' ]
          }],
@@ -83,7 +95,7 @@ index 6387b94550..821309828a 100644
            'type': 'none',
          }],
          [ 'node_shared=="true"', {
-@@ -1528,7 +1546,8 @@
+@@ -1528,7 +1551,8 @@
          [ 'node_shared_libuv=="false"', {
            'dependencies': [ 'deps/uv/uv.gyp:libuv#host' ],
          }],
@@ -93,7 +105,7 @@ index 6387b94550..821309828a 100644
            'defines': ['NODE_JS2C_USE_STRING_LITERALS'],
          }],
          [ 'debug_node=="true"', {
-@@ -1566,7 +1585,7 @@
+@@ -1566,7 +1590,7 @@
        'defines': [ 'NODE_WANT_INTERNALS=1' ],
  
        'sources': [
@@ -102,7 +114,7 @@ index 6387b94550..821309828a 100644
          'tools/snapshot/node_mksnapshot.cc',
        ],
  
-@@ -1577,6 +1596,12 @@
+@@ -1577,6 +1601,12 @@
        },
  
        'conditions': [
