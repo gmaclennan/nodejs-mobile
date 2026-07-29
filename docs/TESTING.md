@@ -86,9 +86,16 @@ as the iOS build does — so a regression in the polyfill or in its install path
 fails in ~10 minutes instead of waiting for a release-gated device run.
 
 ```sh
-./out/Release/node --jitless test/parallel/test-mobile-fetch.js   # host, polyfill path
-./out/Release/node           test/parallel/test-mobile-fetch.js   # host, V8's own wasm
+NODEJS_MOBILE_EXPECT_WASM_IMPL=polyfill ./out/Release/node --jitless \
+  test/parallel/test-mobile-fetch.js                              # host, polyfill path
+NODEJS_MOBILE_EXPECT_WASM_IMPL=engine ./out/Release/node \
+  test/parallel/test-mobile-fetch.js                              # host, V8's own wasm
 ```
+
+The test reports which implementation it ran on, and asserts it when
+`NODEJS_MOBILE_EXPECT_WASM_IMPL` is set (`polyfill` | `engine`) -- so the
+jitless step can't silently degrade into testing native wasm if a future V8
+keeps WebAssembly under `--jitless`. The device runs leave it unset.
 
 ### The NAPI addon gate
 

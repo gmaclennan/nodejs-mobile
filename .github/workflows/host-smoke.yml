@@ -50,10 +50,18 @@ jobs:
       # --jitless to the host build reproduces that engine exactly, so this
       # gates the polyfill on every push instead of only on device runs.
       # See doc_mobile/TESTING.md "The fetch / WebAssembly gate".
+      # NODEJS_MOBILE_EXPECT_WASM_IMPL makes the test assert which
+      # implementation it actually ran on, so this stays a real gate: if a
+      # future V8 kept WebAssembly under --jitless, or the install stopped
+      # firing, the step fails instead of quietly testing the wrong path.
       - name: fetch/WebAssembly gate (jitless, polyfill path)
+        env:
+          NODEJS_MOBILE_EXPECT_WASM_IMPL: polyfill
         run: |
           ./out/Release/node --jitless test/parallel/test-mobile-fetch.js
 
       - name: fetch/WebAssembly gate (V8's own WebAssembly)
+        env:
+          NODEJS_MOBILE_EXPECT_WASM_IMPL: engine
         run: |
           ./out/Release/node test/parallel/test-mobile-fetch.js

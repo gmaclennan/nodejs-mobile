@@ -30,6 +30,20 @@ async function main() {
   assert.strictEqual(typeof WebAssembly, 'object');
   assert.strictEqual(typeof WebAssembly.Module, 'function');
 
+  // Which of the two is it? V8's constructors are native code; the polyfill is
+  // plain JavaScript. Report it, and assert it when the caller says which one
+  // this run is supposed to exercise -- otherwise a build that stopped needing
+  // the polyfill (or stopped installing it) would still pass this test and the
+  // gate would quietly stop covering the iOS path. host-smoke sets it both
+  // ways; the device runs leave it unset and just take whatever the binary has.
+  const impl = /\[native code\]/.test(Function.prototype.toString.call(WebAssembly.Module)) ?
+    'engine' : 'polyfill';
+  console.log(`WebAssembly implementation: ${impl}`);
+  const expected = process.env.NODEJS_MOBILE_EXPECT_WASM_IMPL;
+  if (expected) {
+    assert.strictEqual(impl, expected);
+  }
+
   // Whichever implementation it is, it compiles and runs a module...
   const { instance } = await WebAssembly.instantiate(addModule, {});
   assert.strictEqual(instance.exports.add(40, 2), 42);
