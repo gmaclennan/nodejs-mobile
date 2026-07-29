@@ -1,53 +1,53 @@
 # Release Instructions
 
-Releases are **fully automated behind a single commit**. The entire gate
-chain — build (all arches, both flavors), Tier-1 boot smokes, NAPI symbol
-smoke, Tier-2 emulator/simulator curated suites, and the Tier-3 BrowserStack
-real-device smoke — runs as one `build.yml` run on the
-[`patches` branch](../../../tree/patches), and the publish job (tag +
-GitHub prerelease) sits behind `needs:` on all of it. No PAT, GitHub App,
-tag push, or manual test step is involved.
+Releasing is a button, a review, and (optionally) an approval:
 
-The version of record is `mobile-src/src/node_mobile_version.h`. The tag is
-`nodejs-mobile-X.Y.Z-R`, pointing at a materialized full-source commit (so
-every release remains browsable as a complete tree). Releases ship both
-flavors: four zips, `nodejs-mobile-{android,ios}{,-lite}-X.Y.Z-R.zip`.
+1. **Actions → "Cut release" → Run workflow** (no inputs). It computes the
+   next version — `X.Y.Z` from `upstream-base.txt`, the `-R` revision as the
+   next free one derived from existing tags (nobody types a revision) —
+   bumps `mobile-src/src/node_mobile_version.h`, stubs a dated CHANGELOG
+   section, re-anchors `expected-tree.txt` by running `prepare.sh`, and
+   opens a **release PR**.
+2. **Fill in the CHANGELOG entry, review, and merge.** Merging is the
+   release sign-off; any merge method works. (PR checks don't run on the
+   bot-pushed branch — a `GITHUB_TOKEN` limitation — but nothing publishes
+   unverified: every gate re-runs on the merge push.)
+3. The merge push makes the version of record **untagged at HEAD**, which
+   is the release trigger (`release-check` in `build.yml` — content-derived
+   and idempotent; no magic commit wording). One run then carries the full
+   gate chain — build matrix both flavors, Tier-1 smokes, NAPI smoke,
+   Tier-2 emulator/simulator, Tier-3 BrowserStack real devices — and the
+   publish job, which `needs:` all of it.
+4. **Optional human gate:** the publish job runs in the `release`
+   Environment. Add required reviewers under Settings → Environments →
+   release and the pipeline pauses for an approval click before tagging.
+   With no reviewers configured it proceeds automatically.
+5. Publish tags **`vX.Y.Z-R`** on a materialized full-source commit (the
+   release stays browsable as a complete tree) and creates the GitHub
+   **prerelease** with four zips: `nodejs-mobile-{android,ios}{,-lite}-X.Y.Z-R.zip`.
+   Promote (untick "prerelease") when satisfied — the `full` flavor has
+   already passed real devices by construction; `lite` is
+   emulator/simulator-tested only.
 
-## Cutting a release
+A failed gate means no tag and no release; fix on `patches` and the next
+push retries automatically (the version is still untagged — the trigger is
+self-healing). For a full rehearsal without tagging/publishing, push a
+commit whose subject starts with `release-dryrun:`.
 
-On the `patches` branch, open an ordinary PR (or push directly) that:
+## Versioning and tags
 
-1. bumps `mobile-src/src/node_mobile_version.h` (upstream bump → mirror the
-   new version, revision 0; mobile-only rebuild → increment `REVISION`);
-2. adds a dated `X.Y.Z-R` section to `mobile-src/doc_mobile/CHANGELOG.md`
-   (the publish job uses the first `##` section as the release notes);
-3. updates `expected-tree.txt` (run `scripts/prepare.sh` locally, or take
-   the hash from the failed verify run);
-4. lands with the **final commit subject** `release: nodejs-mobile X.Y.Z-R`
-   — this exact subject is what triggers the gate chain and what the
-   publish job asserts against the version of record.
-
-Merging/pushing that commit runs everything; if every gate is green the
-prerelease appears with all four zips. A red gate means no tag and no
-release — fix and push a new `release:` commit.
-
-## Dress rehearsal
-
-A commit with subject `release-dryrun: nodejs-mobile X.Y.Z-R` runs the
-identical chain — including real devices — but skips the two mutating steps
-(tag push, release create), printing what would have been published. Use it
-after pipeline changes or before a nervous release.
-
-## Promotion from prerelease
-
-Releases publish with the **prerelease** flag. The Tier-3 device gate has
-already passed for the `full` flavor by construction; promote (untick
-"prerelease" on the release page) when you're satisfied — `lite` is
-emulator/simulator-tested only, so give it a manual device pass first if
-your consumers ship lite.
+- `process.version` stays upstream's (`v24.18.0`) so every tool that parses
+  Node versions keeps working; the mobile release is readable at runtime as
+  **`process.versions.mobile`** (`"24.18.0-1"`, `-pre`-suffixed on
+  non-release builds).
+- Tags are `vX.Y.Z-R` (semver reads `-R` as a prerelease qualifier — apt
+  for a variant build, and irrelevant to tag/URL consumers). Releases
+  before the rename used `nodejs-mobile-X.Y.Z-R`; both spellings count as
+  "already released" to `release-check` and to Cut release's revision
+  computation.
 
 ## Post-release
 
-Bump the consumer plugins (`nodejs-mobile-react-native`, `-cordova`) to the
-new zips as needed. No version-unflag commit is required: the stack keeps
-upstream's release-tagged `NODE_VERSION_IS_RELEASE` as-is.
+Bump the consumer plugins (`nodejs-mobile-react-native`, `-cordova`) as
+needed. No version-unflag commit: the stack keeps upstream's release-tagged
+`NODE_VERSION_IS_RELEASE` as-is.

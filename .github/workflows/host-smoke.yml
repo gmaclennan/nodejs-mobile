@@ -8,6 +8,8 @@ name: Host smoke
 on:
   push:
     branches: [patches]
+  pull_request:
+    branches: [patches]
   workflow_dispatch:
 
 permissions:

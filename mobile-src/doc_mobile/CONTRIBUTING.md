@@ -10,11 +10,26 @@ Please ensure that commits messages adhere to the [Node.js commit message guidel
 
 Platform-specific fixes for Android or iOS should be implemented in separate commits, and the titles of those commits should include `android` or `ios` in the list of affected subsystems.
 
+## Review process
+
+Development happens on the [`patches` branch](../../../tree/patches) — the
+canonical patches-only representation. Open PRs against it; the diffs are
+small and reviewable by construction (patch files, `mobile-src/` files, and
+the `expected-tree.txt` anchor). CI is tiered:
+
+- **on the PR** (minutes): byte-for-byte reconstruction (`verify`),
+  per-patch `./android-configure` validation, host smoke;
+- **on merge**: the full build matrix + Tier-1 smokes;
+- **on release** (via the "Cut release" button and its reviewed PR — see
+  [RELEASING.md](./RELEASING.md)): everything, including the Tier-2
+  emulator/simulator suites and the Tier-3 real-device smoke, gating an
+  automated publish.
+
 ## Updating nodejs-mobile from upstream nodejs/node
 
-The squash-merge `format-patch` flow once described here is **deprecated**.
-nodejs-mobile is now maintained as a rebased **patch stack** — see
-[MAINTENANCE_MODEL.md](./MAINTENANCE_MODEL.md) for the model and
+The squash-merge `format-patch` flow and the rebased in-tree patch stack
+that followed it are both **superseded** — see
+[MAINTENANCE_MODEL.md](./MAINTENANCE_MODEL.md) for the current model and
 [UPGRADING.md](./UPGRADING.md) for the step-by-step upgrade procedure.
 
 <a id="developers-certificate-of-origin"></a>

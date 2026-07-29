@@ -37,13 +37,13 @@ Every workflow that consumes a binary builds and tests **both flavors**
 | `verify-patches.yml` → `patch-stack-configure` | ubuntu | push `patches` | every patch passes `./android-configure` individually (~1 min/patch) |
 | `host-smoke.yml` | ubuntu | push `patches` | C++ patches compile; `node -e` runs on the host build |
 | `build.yml` → `smoke-{android,ios}` + `napi-smoke-android` | ubuntu+KVM / macos | push `patches` | the exact shipping artifact boots and runs JS (Tier 1); NAPI symbols in `.dynsym` |
-| `build.yml` → `emulator-tests` / `simulator-tests` | ubuntu+KVM / macos | `release:` commits (required to publish) · dispatch | curated `test/parallel` subset + crc-native addon load on an x86_64 emulator and arm64 simulator (Tier 2) |
-| `build.yml` → `device-smoke` | ubuntu / macos-15 + BrowserStack | `release:` commits (required to publish) · dispatch | boot smoke + crc-native addon load on **physical devices** — Android arm64 (Pixel 9, 16 KB pages) via Espresso and iPhone via XCUITest (Tier 3). Needs `BROWSERSTACK_USER`/`BROWSERSTACK_PW` secrets. |
+| `build.yml` → `emulator-tests` / `simulator-tests` | ubuntu+KVM / macos | releases (untagged version of record; required to publish) · dispatch | curated `test/parallel` subset + crc-native addon load on an x86_64 emulator and arm64 simulator (Tier 2) |
+| `build.yml` → `device-smoke` | ubuntu / macos-15 + BrowserStack | releases (untagged version of record; required to publish) · dispatch | boot smoke + crc-native addon load on **physical devices** — Android arm64 (Pixel 9, 16 KB pages) via Espresso and iPhone via XCUITest (Tier 3). Needs `BROWSERSTACK_USER`/`BROWSERSTACK_PW` secrets. |
 
 Every job first **materializes** the source tree from the patches branch
 (`.github/actions/materialize` runs `scripts/prepare.sh` and verifies the
-tree hash), then proceeds exactly as it would on a full checkout. On a
-`release:` (or `release-dryrun:`) commit, one `build.yml` run carries the
+tree hash), then proceeds exactly as it would on a full checkout. On a release
+(or a `release-dryrun:` rehearsal commit), one `build.yml` run carries the
 whole gate chain — Tier 1/2/3 and publish — connected by `needs:`; there is
 no cross-run lookup, label contract, or manual step.
 

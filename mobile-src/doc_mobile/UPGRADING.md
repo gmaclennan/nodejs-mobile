@@ -71,11 +71,11 @@ against a fresh upstream clone and fails on any drift from
 
 ## Release
 
-Land the upgrade with a final commit whose subject is
-`release: nodejs-mobile X.Y.Z-0` (see [RELEASING.md](./RELEASING.md)). That
-single push runs the whole gate chain — build, Tier-1/2/3 including real
-devices — and publishes the prerelease when everything is green. Use a
-`release-dryrun:` subject first if you want a rehearsal without tagging.
+Land the upgrade PR with the version header still at the old release's
+values, then run **Cut release** (see [RELEASING.md](./RELEASING.md)) — it
+bumps to `X.Y.Z-0` for the new base and opens the release PR; merging that
+runs the whole gate chain and publishes. (If the upgrade PR bumps the
+header itself, its merge becomes the release directly — both work.)
 
 ## Cross-major upgrades (e.g. v24 → v26)
 

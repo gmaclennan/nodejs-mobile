@@ -72,11 +72,14 @@ is isolated to one patch; a patch made obsolete by upstream is deleted from
   publish job), `host-smoke.yml`, and `verify-patches.yml` all run here.
   Every job starts with `.github/actions/materialize`, which runs
   `prepare.sh` and swaps the reconstructed full tree into the workspace.
-- **Releases** are cut by landing a commit with subject
-  `release: nodejs-mobile X.Y.Z-R` (see `mobile-src/doc_mobile/RELEASING.md`).
-  The published tag points at a **materialized full-source commit**, so
-  every release is browsable as a complete tree; `release-dryrun:` runs the
-  same chain without tagging/publishing.
+- **Releases** are cut with the "Cut release" workflow button, which opens
+  a version-bump PR; merging it is the sign-off, and the merge push runs
+  the full gate chain and publishes (the trigger is content-derived: the
+  version of record being untagged — see
+  `mobile-src/doc_mobile/RELEASING.md`). The published tag (`vX.Y.Z-R`)
+  points at a **materialized full-source commit**, so every release is
+  browsable as a complete tree; `release-dryrun:` commits rehearse the
+  chain without tagging/publishing.
 - **`mobile/v24`** is frozen (it was the materialized CI branch through
   24.18.0-0). **`main`** is the legacy v18.20.4 line.
 

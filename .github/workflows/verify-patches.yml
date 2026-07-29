@@ -7,6 +7,8 @@ name: Verify patches branch
 on:
   push:
     branches: [patches]
+  pull_request:
+    branches: [patches]
   workflow_dispatch:
 
 permissions:

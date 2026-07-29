@@ -428,6 +428,48 @@ jobs:
           xcrun simctl shutdown "${{ steps.sim.outputs.udid }}" || true
           xcrun simctl delete "${{ steps.sim.outputs.udid }}" || true
 
+  # Decide whether this push is a release. A release happens whenever the
+  # version of record (mobile-src/src/node_mobile_version.h) is NOT yet
+  # tagged -- content-derived and idempotent: no magic commit wording, and a
+  # failed release run self-heals on the next push. Both the current tag
+  # scheme (vX.Y.Z-R) and the legacy one (nodejs-mobile-X.Y.Z-R) count as
+  # released. A commit subject starting 'release-dryrun:' forces the full
+  # gate chain with publish in dry mode regardless of tag state.
+  release-check:
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    outputs:
+      release: ${{ steps.d.outputs.release }}
+      dryrun: ${{ steps.d.outputs.dryrun }}
+      version: ${{ steps.d.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+      - id: d
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          f=mobile-src/src/node_mobile_version.h
+          MA=$(grep -oE 'NODE_MOBILE_MAJOR_VERSION [0-9]+' "$f" | awk '{print $2}')
+          MI=$(grep -oE 'NODE_MOBILE_MINOR_VERSION [0-9]+' "$f" | awk '{print $2}')
+          PA=$(grep -oE 'NODE_MOBILE_PATCH_VERSION [0-9]+' "$f" | awk '{print $2}')
+          RE=$(grep -oE 'NODE_MOBILE_REVISION [0-9]+' "$f" | awk '{print $2}')
+          V="${MA}.${MI}.${PA}-${RE}"
+          DR=false
+          case "$(git log -1 --format=%s)" in release-dryrun:*) DR=true ;; esac
+          REL=true
+          for t in "v${V}" "nodejs-mobile-${V}"; do
+            if gh api "repos/${GITHUB_REPOSITORY}/git/ref/tags/${t}" >/dev/null 2>&1; then
+              echo "tag ${t} exists"
+              REL=false
+            fi
+          done
+          [ "$DR" = "true" ] && REL=false
+          { echo "version=$V"; echo "release=$REL"; echo "dryrun=$DR"; } >> "$GITHUB_OUTPUT"
+          echo "version=$V release=$REL dryrun=$DR"
+
   # Tier-3 real-device gate: on release branches, run the BrowserStack smoke
   # (boot + N-API addon dlopen on a physical Android arm64 + iPhone) as part
   # of this Build run, using the artifacts the combine jobs just uploaded.
@@ -435,9 +477,9 @@ jobs:
   # green, so a release cannot be tagged without real-device validation.
   device-smoke:
     if: >-
-      startsWith(github.event.head_commit.message, 'release:') ||
-      startsWith(github.event.head_commit.message, 'release-dryrun:')
-    needs: [combine-android, combine-ios]
+      needs.release-check.outputs.release == 'true' ||
+      needs.release-check.outputs.dryrun == 'true'
+    needs: [release-check, combine-android, combine-ios]
     # The called workflow needs actions:read (artifact download); a called
     # workflow cannot elevate beyond the caller's permissions, so grant it
     # here (the workflow default is contents:read only).
@@ -456,9 +498,9 @@ jobs:
   # no mergeable PR to label).
   emulator-tests:
     if: >-
-      startsWith(github.event.head_commit.message, 'release:') ||
-      startsWith(github.event.head_commit.message, 'release-dryrun:')
-    needs: combine-android
+      needs.release-check.outputs.release == 'true' ||
+      needs.release-check.outputs.dryrun == 'true'
+    needs: [release-check, combine-android]
     permissions:
       contents: read
       actions: read
@@ -468,9 +510,9 @@ jobs:
 
   simulator-tests:
     if: >-
-      startsWith(github.event.head_commit.message, 'release:') ||
-      startsWith(github.event.head_commit.message, 'release-dryrun:')
-    needs: combine-ios
+      needs.release-check.outputs.release == 'true' ||
+      needs.release-check.outputs.dryrun == 'true'
+    needs: [release-check, combine-ios]
     permissions:
       contents: read
       actions: read
@@ -485,9 +527,10 @@ jobs:
   # mutating steps (tag push, release create).
   publish:
     if: >-
-      startsWith(github.event.head_commit.message, 'release:') ||
-      startsWith(github.event.head_commit.message, 'release-dryrun:')
+      needs.release-check.outputs.release == 'true' ||
+      needs.release-check.outputs.dryrun == 'true'
     needs:
+      - release-check
       - smoke-android
       - smoke-ios
       - napi-smoke-android
@@ -499,39 +542,23 @@ jobs:
     permissions:
       contents: write   # tag push + release create
       actions: read     # artifact download from this run
+    environment: release   # optional approval gate: add required reviewers in Settings
     env:
-      DRY: ${{ startsWith(github.event.head_commit.message, 'release-dryrun:') && '1' || '0' }}
+      DRY: ${{ needs.release-check.outputs.dryrun == 'true' && '1' || '0' }}
+      V: ${{ needs.release-check.outputs.version }}
       GH_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 1
 
-      - name: Parse + assert release version
-        id: v
-        run: |
-          f=mobile-src/src/node_mobile_version.h
-          MA=$(grep -oE 'NODE_MOBILE_MAJOR_VERSION [0-9]+' "$f" | awk '{print $2}')
-          MI=$(grep -oE 'NODE_MOBILE_MINOR_VERSION [0-9]+' "$f" | awk '{print $2}')
-          PA=$(grep -oE 'NODE_MOBILE_PATCH_VERSION [0-9]+' "$f" | awk '{print $2}')
-          RE=$(grep -oE 'NODE_MOBILE_REVISION [0-9]+' "$f" | awk '{print $2}')
-          V="${MA}.${MI}.${PA}-${RE}"
-          MSG=$(git log -1 --format=%s)
-          case "$MSG" in
-            "release: nodejs-mobile ${V}"|"release-dryrun: nodejs-mobile ${V}") ;;
-            *) echo "::error::head commit subject '$MSG' does not match version of record ${V}"; exit 1 ;;
-          esac
-          echo "version=$V" >> "$GITHUB_OUTPUT"
-
       - uses: ./.github/actions/materialize
 
       - name: Tag the materialized tree
-        env:
-          V: ${{ steps.v.outputs.version }}
         run: |
           git config user.name "nodejs-mobile-bot"
           git config user.email "bot@users.noreply.github.com"
-          TAG="nodejs-mobile-${V}"
+          TAG="v${V}"
           git tag -a "$TAG" -m "nodejs-mobile ${V}"
           git remote add fork "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
           if [ "$DRY" = "1" ]; then
@@ -542,8 +569,6 @@ jobs:
           fi
 
       - name: Download + package this run's artifacts
-        env:
-          V: ${{ steps.v.outputs.version }}
         run: |
           mkdir -p dl out
           gh run download "$GITHUB_RUN_ID" --repo "$GITHUB_REPOSITORY" --dir dl
@@ -560,10 +585,8 @@ jobs:
           ls -la out
 
       - name: Create GitHub Release (prerelease)
-        env:
-          V: ${{ steps.v.outputs.version }}
         run: |
-          TAG="nodejs-mobile-${V}"
+          TAG="v${V}"
           NOTES=$(awk '/^## /{c++} c==1{print} c==2{exit}' doc_mobile/CHANGELOG.md)
           if [ "$DRY" = "1" ]; then
             echo "DRY RUN: would publish prerelease $TAG with:"
