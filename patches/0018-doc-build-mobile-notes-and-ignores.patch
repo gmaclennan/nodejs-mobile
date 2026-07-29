@@ -40,7 +40,7 @@ index 74eb99c815..ce1c201ce9 100644
  /deps/openssl/openssl.props
  /deps/openssl/openssl.targets
 diff --git a/README.md b/README.md
-index c2012523eb..d674c5d3e8 100644
+index c2012523eb..8d7b805c1a 100644
 --- a/README.md
 +++ b/README.md
 @@ -1,907 +1,49 @@
@@ -133,10 +133,10 @@ index c2012523eb..d674c5d3e8 100644
 +## Versioning
  
 -#### Current and LTS releases
-+This project does *NOT* follow SemVer, instead it aims to reflect the upstream Node.js version is is based on.
++This project does *NOT* follow SemVer; it tracks the upstream Node.js version it is built from.
  
 -<https://nodejs.org/download/release/>
-+`nodejs-mobile` version `A.B.C` is based on Node.js version `A.B.*`, while the `C` is incremented whenever there are *any* changes to our codebase, be them fixes, features or otherwise.
++A release is `A.B.C-R`, where `A.B.C` is the upstream Node.js version and `R` is the mobile revision — incremented for mobile-only rebuilds of that same upstream version, and reset to 0 when the upstream version changes. At runtime, `process.version` reports the plain upstream version (so version-parsing tools keep working) and `process.versions.mobile` reports the full `A.B.C-R`.
  
 -The [latest](https://nodejs.org/download/release/latest/) directory is an
 -alias for the latest Current release. The latest-_codename_ directory is an
@@ -977,4 +977,4 @@ index c2012523eb..d674c5d3e8 100644
 -[Strategic initiatives]: doc/contributing/strategic-initiatives.md
 -[Technical values and prioritization]: doc/contributing/technical-values.md
 -[Working Groups]: https://github.com/nodejs/TSC/blob/HEAD/WORKING_GROUPS.md
-+Please see the [CONTRIBUTING](./doc_mobile/CONTRIBUTING.md) file in the `doc_mobile` folder in this source distribution.
++This source tree is generated from the project's `patches` branch, which holds the mobile patch series, the tooling, and the contributing/upgrading/releasing docs. See [CONTRIBUTING](https://github.com/nodejs-mobile/nodejs-mobile/blob/patches/docs/CONTRIBUTING.md).

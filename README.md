@@ -1,93 +1,112 @@
-# nodejs-mobile — patches branch
+# Node.js for Mobile Apps
 
-This branch is the **canonical, patches-only representation of nodejs-mobile**
-(the model sketched in `doc_mobile/PATCHES_ONLY_PROPOSAL.md` on `mobile/v24`,
-now adopted). It contains the *entire* mobile contribution — about 1.5 MB —
-instead of a ~1 GB fork of upstream Node.js:
+Full Node.js, built as an embeddable native library for **Android** and
+**iOS** — the runtime your app links against to run a real Node.js process
+in-app, with npm modules and N-API native addons.
 
-| Path | What it is |
-| --- | --- |
-| `upstream-base.txt` | the pinned upstream `nodejs/node` release tag (`v24.15.0`) |
-| `patches/` | one patch per mobile concern for **modified/deleted upstream files** (109 files across 19 patches), plus `series` (apply order) and `files.map` (which patch owns which file) |
-| `mobile-src/` | **fork-only files** with no upstream counterpart (build scripts, xcframework project, test apps and harness, CI workflows, mobile docs) — plain files, not patches |
-| `expected-tree.txt` | the git tree hash the reconstruction must produce, byte-for-byte |
-| `scripts/prepare.sh` | clone upstream @ base → `git am` the series → overlay `mobile-src/` → verify against `expected-tree.txt` |
-| `scripts/regenerate-patches.py` | the dev loop: re-emit `patches/` + sync `mobile-src/` from an edited `out/` tree |
+| Platform | Artifact | ABIs / slices |
+|---|---|---|
+| Android | `libnode.so` + headers | `arm64-v8a`, `armeabi-v7a`, `x86_64` (16 KB page size) |
+| iOS | `NodeMobile.xcframework` | `arm64` device, `arm64` simulator |
 
-Attribution from the original patch stack is preserved in each patch's
-`Co-authored-by:` trailers.
+Current line: **Node.js 24** (`v24.18.0`). `process.version` reports the
+upstream version unchanged, so version-parsing tools keep working; the
+mobile build is identified by `process.versions.mobile` (e.g. `"24.18.0-1"`).
 
-## Get a buildable tree
+## Get it
 
-```sh
-scripts/prepare.sh          # produces ./out — a full source tree, verified
-cd out
-./android-configure ...     # build as usual (see doc_mobile/BUILDING.md in out/)
+Download the zips from [Releases](../../releases) — four per release:
+
+```
+nodejs-mobile-android-X.Y.Z-R.zip        nodejs-mobile-ios-X.Y.Z-R.zip
+nodejs-mobile-android-lite-X.Y.Z-R.zip   nodejs-mobile-ios-lite-X.Y.Z-R.zip
 ```
 
-`prepare.sh` fails loudly if any patch does not apply or the reconstructed
-tree does not hash to `expected-tree.txt`.
+**`full`** is the general-purpose binary — pick it unless size is critical.
+**`lite`** is ~30% smaller on iOS but drops ICU, the inspector,
+`node:sqlite`, and TypeScript type-stripping (see
+[BUILDING.md](mobile-src/doc_mobile/BUILDING.md#the-lite-variant) for the
+full list and the caveats — the `Intl` one needs checking against your
+dependency tree).
+
+To embed it in an app, most people use a plugin rather than the raw library:
+[nodejs-mobile-react-native](https://github.com/nodejs-mobile/nodejs-mobile-react-native)
+· [nodejs-mobile-cordova](https://github.com/nodejs-mobile/nodejs-mobile-cordova).
+See the [FAQ](mobile-src/doc_mobile/FAQ.md) for what mobile platforms do and
+don't allow (child processes, writable paths, native modules, `Intl`).
+
+## How this repository works
+
+This repo does **not** contain a copy of Node.js. It contains the *recipe*
+for building one — about 1.5 MB instead of a 1 GB fork:
+
+| | |
+|---|---|
+| `upstream-base.txt` | the pinned upstream release tag (`v24.18.0`) |
+| `patches/` | 19 per-concern patches to upstream files, plus `series` (apply order) and `files.map` (which patch owns which file) |
+| `mobile-src/` | files that have no upstream counterpart — build scripts, the iOS framework project, test apps and harness, shipped docs |
+| `expected-tree.txt` | the git tree hash the reconstruction must produce |
+| `scripts/` | `prepare.sh` (recipe → source tree) and `regenerate-patches.py` (source tree → recipe) |
+
+`scripts/prepare.sh` clones upstream at the pinned tag, applies the patch
+series, overlays `mobile-src/`, and verifies the result hashes to
+`expected-tree.txt` — so what CI builds, what a release tag contains, and
+what was reviewed here are provably the same bytes.
+
+```sh
+scripts/prepare.sh          # → ./out, a complete, verified Node.js source tree
+cd out && ./tools/android_build.sh "$ANDROID_NDK_HOME" 24 arm64
+```
+
+Because the mobile diff is a set of small, labelled patches, "what does this
+project actually change in Node.js?" is answerable by reading `patches/`, and
+an upstream upgrade is a handful of small conflicts rather than a re-import.
 
 ## Make a change
 
 ```sh
-scripts/prepare.sh
-cd out
-# ... edit, build, test ...
-git commit -am "what I changed"          # any commit shape is fine
-cd ..
-scripts/regenerate-patches.py out
-git add patches mobile-src expected-tree.txt   # update expected-tree.txt to the printed hash
-git commit -m "src: ..."
+scripts/prepare.sh                       # one-time: get ./out
+cd out && $EDITOR src/node.cc && make -j node   # edit + build + test
+cd .. && scripts/regenerate-patches.py out      # fold changes back into patches/ + mobile-src/
 ```
 
-Rules of the partition (enforced by `regenerate-patches.py`):
+Then commit the regenerated files with the `expected-tree.txt` hash the
+script prints, and open a PR. Full walkthrough and review process:
+[docs/CONTRIBUTING.md](docs/CONTRIBUTING.md).
 
-- an edit to a file **owned by a patch** (see `patches/files.map`) re-emits
-  that patch — unchanged patches regenerate byte-identically;
-- a **new file** goes to `mobile-src/` by default;
-- an edit to an upstream file owned by **no** patch is an error — assign the
-  file to an existing patch or add a new `NNNN-name.patch` entry to `series`
-  + `files.map` first. Keep patches per-concern and minimal.
+## Documentation
 
-## Upgrade to a newer upstream release
+**Working on this repo**
 
-```sh
-$EDITOR upstream-base.txt                # bump the tag, e.g. v24.16.0
-scripts/prepare.sh                       # conflicts (if any) stop at the failing patch
-# resolve in out/ (git am --continue), build, test
-scripts/regenerate-patches.py out        # re-emit the series against the new base
-# update expected-tree.txt, commit
-```
+- [docs/CONTRIBUTING.md](docs/CONTRIBUTING.md) — dev loop, patch rules, review process, DCO
+- [docs/PATCHES.md](docs/PATCHES.md) — the patches model in depth: what the files mean, how the integrity check works, why it's built this way
+- [docs/UPGRADING.md](docs/UPGRADING.md) — moving to a newer upstream Node.js release
+- [docs/RELEASING.md](docs/RELEASING.md) — cutting and publishing a release
 
-Because each patch is a small per-concern diff, a conflicting upstream change
-is isolated to one patch; a patch made obsolete by upstream is deleted from
-`series` + `files.map`.
+**Building and using the source**
 
-## Relationship to the other branches
+- [BUILDING.md](mobile-src/doc_mobile/BUILDING.md) — build Android and iOS by hand, host requirements, build flavors
+- [TESTING.md](mobile-src/doc_mobile/TESTING.md) — the test tiers, what CI runs, running tests locally
+- [FAQ.md](mobile-src/doc_mobile/FAQ.md) — what is and isn't supported on mobile
+- [CHANGELOG.md](mobile-src/doc_mobile/CHANGELOG.md) — release history
 
-- **This branch is also the CI branch**: `build.yml` (full matrix, both
-  flavors, Tier-1 smokes, and — on `release:` commits — the Tier-2
-  emulator/simulator gates, the Tier-3 BrowserStack device smoke, and the
-  publish job), `host-smoke.yml`, and `verify-patches.yml` all run here.
-  Every job starts with `.github/actions/materialize`, which runs
-  `prepare.sh` and swaps the reconstructed full tree into the workspace.
-- **Releases** are cut with the "Cut release" workflow button, which opens
-  a version-bump PR; merging it is the sign-off, and the merge push runs
-  the full gate chain and publishes (the trigger is content-derived: the
-  version of record being untagged — see
-  `mobile-src/doc_mobile/RELEASING.md`). The published tag (`vX.Y.Z-R`)
-  points at a **materialized full-source commit**, so every release is
-  browsable as a complete tree; `release-dryrun:` commits rehearse the
-  chain without tagging/publishing.
-- **`mobile/v24`** is frozen (it was the materialized CI branch through
-  24.18.0-0). **`main`** is the legacy v18.20.4 line.
+## Testing and releases
 
-## CI on this branch
+Every push reconstructs the tree, validates each patch individually, and
+builds all platforms and both flavors. A release additionally runs the
+curated Node.js test subset on an Android emulator and an iOS simulator, and
+a real-device smoke on physical hardware (BrowserStack: Android arm64 with
+16 KB pages, and an iPhone) that boots the shipped binary and loads a real
+N-API addon. Publishing is gated on all of it — see
+[TESTING.md](mobile-src/doc_mobile/TESTING.md) and
+[docs/RELEASING.md](docs/RELEASING.md).
 
-`verify-patches.yml` runs on every push: the `verify` job reconstructs the
-tree from a real shallow clone of `nodejs/node` and fails unless it matches
-`expected-tree.txt`; the `patch-stack-configure` job applies the series one
-patch at a time and runs `./android-configure` after each, so a broken
-intermediate patch cannot hide behind a later one. `build.yml` and
-`host-smoke.yml` then build and smoke the materialized tree.
+## Project goals and license
+
+1. Provide the fixes necessary to run Node.js on mobile operating systems.
+2. Investigate what Node.js needs to be a useful mobile app development tool.
+3. Diverge as little as possible from `nodejs/node` while doing (1) and (2).
+
+Node.js is available under the MIT license; see `LICENSE` in a materialized
+tree (or [upstream](https://github.com/nodejs/node/blob/main/LICENSE)). The
+mobile patches and tooling in this repo are offered under the same terms.

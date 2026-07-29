@@ -1,18 +1,17 @@
 # Updating nodejs-mobile to a newer upstream Node.js
 
-Upgrades happen on the [`patches` branch](../../../tree/patches) — the
-canonical patches-only representation — and are then materialized to this
-full-source branch for CI and release. There is no rebasing of long-lived
-branches and no force-push of anything except the final materialization.
+Bumping to a newer upstream Node.js release means re-basing the patch
+series onto the new tag. There is no branch rebasing and no force-pushing —
+the patches are files, and the upgrade is an ordinary reviewable PR.
 
 The procedure below is what the 24.15.0 → 24.18.0 upgrade actually took
-(five small conflicts, all resolved in minutes).
+(five small conflicts, all resolved in minutes, plus one that only the
+compile caught — see the warning below).
 
-## On the patches branch
+## Re-base the series
 
 ```sh
-git switch patches
-$EDITOR upstream-base.txt                 # bump the tag, e.g. v24.18.0
+$EDITOR upstream-base.txt                 # bump the tag, e.g. v24.19.0
 scripts/prepare.sh                        # clone new base + apply series
 ```
 
@@ -45,11 +44,8 @@ it needs to.
 
 Also update, in `mobile-src/`:
 
-- `src/node_mobile_version.h` — mirror the new upstream version (revision
-  resets to 0);
-- `doc_mobile/upstream-base.txt` — same tag (read by
-  `validate-patch-stack.yml` on the materialized branch);
-- `doc_mobile/CHANGELOG.md` — new `X.Y.Z-0` section;
+- `doc_mobile/upstream-base.txt` — the same tag (a copy that ships with the
+  source; the authoritative one is at the repo root);
 - check `.github/workflows/` in `out/` for **new upstream workflows** the
   removal patch doesn't cover yet — delete-and-own them in patch 0019 if
   they would actually run on this fork (most are gated on
@@ -58,16 +54,16 @@ Also update, in `mobile-src/`:
 Then regenerate and commit:
 
 ```sh
-git -C out add -A && git -C out commit -m "resolve v24.18.0 conflicts"  # any shape
+git -C out add -A && git -C out commit -m "resolve v24.19.0 conflicts"  # any shape
 scripts/regenerate-patches.py out         # re-emits patches/ + syncs mobile-src/
 # update expected-tree.txt to the hash the script prints
-git add -A && git commit -m "upgrade: rebase patch series onto v24.18.0"
-git push
+git add -A && git commit -m "upgrade: rebase patch series onto v24.19.0"
 ```
 
-The `verify-patches.yml` CI on the patches branch re-runs the reconstruction
-against a fresh upstream clone and fails on any drift from
-`expected-tree.txt`.
+Open the PR. CI re-runs the reconstruction against a fresh upstream clone,
+validates each patch individually, and — once merged — builds the full
+matrix. The version bump and release are a separate step (below), so an
+upgrade can land and be exercised before anyone decides to ship it.
 
 ## Release
 
