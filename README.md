@@ -66,28 +66,25 @@ is isolated to one patch; a patch made obsolete by upstream is deleted from
 
 ## Relationship to the other branches
 
-- **`mobile/v24`** is the full-source materialization this branch was
-  generated from (its tip tree at generation time is `expected-tree.txt`).
-  The build/test/release CI (`build-mobile.yml`, Tier-1/2 gates,
-  `publish-release.yml`, BrowserStack Tier-3 smoke) currently runs there.
-  After changing this branch, materialize and push:
-
-  ```sh
-  scripts/prepare.sh out && cd out
-  git remote add fork git@github.com:gmaclennan/nodejs-mobile.git
-  git push fork HEAD:refs/heads/mobile/v24   # fast-forward-only by policy
-  ```
-
-  (Longer term the build CI can run `prepare.sh` itself and `mobile/v24`
-  becomes a generated artifact; that migration is deliberate follow-up work,
-  not part of this branch.)
-- **`main`** is the legacy v18.20.4 line.
-- Releases are tagged from the materialized branch (`nodejs-mobile-X.Y.Z-R`),
-  unchanged.
+- **This branch is also the CI branch**: `build.yml` (full matrix, both
+  flavors, Tier-1 smokes, and — on `release:` commits — the Tier-2
+  emulator/simulator gates, the Tier-3 BrowserStack device smoke, and the
+  publish job), `host-smoke.yml`, and `verify-patches.yml` all run here.
+  Every job starts with `.github/actions/materialize`, which runs
+  `prepare.sh` and swaps the reconstructed full tree into the workspace.
+- **Releases** are cut by landing a commit with subject
+  `release: nodejs-mobile X.Y.Z-R` (see `mobile-src/doc_mobile/RELEASING.md`).
+  The published tag points at a **materialized full-source commit**, so
+  every release is browsable as a complete tree; `release-dryrun:` runs the
+  same chain without tagging/publishing.
+- **`mobile/v24`** is frozen (it was the materialized CI branch through
+  24.18.0-0). **`main`** is the legacy v18.20.4 line.
 
 ## CI on this branch
 
-`verify-patches.yml` runs `prepare.sh` against a real shallow clone of
-`nodejs/node` on every push and fails unless the tree matches
-`expected-tree.txt` — the branch can never silently drift from what it
-claims to reconstruct.
+`verify-patches.yml` runs on every push: the `verify` job reconstructs the
+tree from a real shallow clone of `nodejs/node` and fails unless it matches
+`expected-tree.txt`; the `patch-stack-configure` job applies the series one
+patch at a time and runs `./android-configure` after each, so a broken
+intermediate patch cannot hide behind a later one. `build.yml` and
+`host-smoke.yml` then build and smoke the materialized tree.

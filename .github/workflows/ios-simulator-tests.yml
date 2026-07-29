@@ -12,19 +12,14 @@ name: iOS Simulator Tests
 # of macos runner time), so it is gated behind a nightly cron, the 'mobile-test'
 # PR label, and workflow_dispatch.
 on:
-  schedule:
-    # 04:17 UTC nightly. Off the hour to avoid the cron-scheduler thundering herd.
-    - cron: '17 4 * * *'
-  # Only on an explicit 'mobile-test' label add (matches android-emulator-tests):
-  # the job reuses the Build workflow's libnode artifact, so it must run *after*
-  # Build is green for the commit, not on every push (synchronize would fire it
-  # before Build finishes and the artifact fetch would fail). NB: Build only runs
-  # on push to build-mobile.yml's branch globs (main, icu, mobile/**, claude/**)
-  # or its workflow_dispatch — so the head branch must match one of those (or
-  # Build must be dispatched for the SHA) or the artifact fetch below has nothing
-  # to find. workflow_dispatch on a matching branch is the simplest path.
-  pull_request:
-    types: [labeled]
+  # Called from build.yml on release commits (Tier-2 gate); build_run_id
+  # points at the calling run so the artifact fetch targets it directly.
+  workflow_call:
+    inputs:
+      build_run_id:
+        type: string
+        required: false
+        default: ''
   workflow_dispatch:
 
 env:
@@ -38,10 +33,6 @@ permissions:
 jobs:
   ios-simulator-tests:
     # On pull_request, only run when the 'mobile-test' label is present.
-    if: >-
-      github.event_name != 'pull_request' ||
-      github.event.label.name == 'mobile-test'
-
     # Both flavors run the SAME curated list (true full-parity, no exclusions):
     # verified all 151 pass on a local lite build despite iOS lite dropping the
     # WebAssembly + Intl globals (--v8-lite-mode + intl=none) — the ICU tests
@@ -64,6 +55,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 1
+      - uses: ./.github/actions/materialize
 
       # Reuse the framework build-mobile.yml already produced for this commit
       # instead of rebuilding (a from-scratch build is 1.5-3h and overruns the job
@@ -75,8 +67,9 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          SHA="${{ github.event.pull_request.head.sha || github.sha }}"
-          RUN=$(gh run list --repo "$GITHUB_REPOSITORY" --workflow build-mobile.yml \
+          SHA="$GITHUB_SHA"
+          RUN='${{ inputs.build_run_id }}'
+          [ -n "$RUN" ] || RUN=$(gh run list --repo "$GITHUB_REPOSITORY" --workflow build.yml \
                   --commit "$SHA" --status success --limit 1 --json databaseId -q '.[0].databaseId')
           if [ -z "$RUN" ]; then
             echo "::error::No successful Build run found for $SHA. Build only runs on push to its branch globs (main, icu, mobile/**, claude/**) or workflow_dispatch; dispatch/await Build for this SHA before the Tier-2 tests."

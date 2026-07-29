@@ -1,0 +1,23 @@
+name: Materialize source tree
+description: >
+  Reconstruct the full nodejs-mobile source tree from this patches branch
+  (scripts/prepare.sh: clone upstream @ pinned base + apply patches + overlay
+  mobile-src, verified byte-for-byte against expected-tree.txt) and replace
+  the workspace with it, so every subsequent step sees exactly the layout the
+  old full-source checkout provided. Must run as the first step after
+  actions/checkout of the patches branch.
+runs:
+  using: composite
+  steps:
+    - name: Reconstruct + swap into workspace
+      shell: bash
+      run: |
+        set -euo pipefail
+        scripts/prepare.sh "$RUNNER_TEMP/matsrc"
+        # Replace the (tiny) patches checkout with the materialized tree.
+        # The running workflow/action definitions were already loaded, so
+        # deleting them from disk is safe.
+        shopt -s dotglob
+        find "$GITHUB_WORKSPACE" -mindepth 1 -maxdepth 1 -exec rm -rf {} +
+        mv "$RUNNER_TEMP/matsrc"/* "$GITHUB_WORKSPACE"/
+        echo "Materialized $(git -C "$GITHUB_WORKSPACE" rev-parse 'HEAD^{tree}') into workspace"

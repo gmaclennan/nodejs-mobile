@@ -31,20 +31,21 @@ mis-scored. None of the curated tests call `process.exit()`.
 Every workflow that consumes a binary builds and tests **both flavors**
 (`full` and `lite`).
 
-| Workflow | Runner | Trigger | Proves |
+| Workflow (on the `patches` branch) | Runner | Trigger | Proves |
 |---|---|---|---|
-| `host-smoke.yml` | ubuntu | push `mobile/**` | C++ patches compile; `node -e` runs on the host build |
-| `validate-patch-stack.yml` | ubuntu | push `mobile/**` | every commit in the stack passes `./android-configure` (~1 min/commit) |
-| `mobile-napi-smoke.yml` | ubuntu | PR | NAPI symbols present in the Android `libnode.so` `.dynsym` (cheap B-1 tripwire) |
-| `build-mobile.yml` → `smoke-{android,ios}` | ubuntu+KVM / macos | push `mobile/**` | the exact shipping artifact boots and runs JS (Tier 1) — emulator / simulator |
-| `android-emulator-tests.yml` | ubuntu+KVM | nightly · `mobile-test` label · dispatch | curated `test/parallel` subset + crc-native addon load, on an x86_64 emulator (Tier 2) |
-| `ios-simulator-tests.yml` | macos | nightly · `mobile-test` label · dispatch | same curated subset + crc-native addon load, on an arm64 simulator (Tier 2) |
-| `browserstack-smoke.yml` | ubuntu / macos-15 + BrowserStack | **automatic on `release/**` (via Build's `device-smoke` job, required to publish)** · dispatch | boot smoke + crc-native addon load on **physical devices** — Android arm64 (Pixel 9, 16 KB pages) via Espresso and iPhone via XCUITest (Tier 3). Needs `BROWSERSTACK_USER`/`BROWSERSTACK_PW` secrets; dispatch mode needs a green `Build` for the target SHA. |
+| `verify-patches.yml` → `verify` | ubuntu | push `patches` | the patch series + `mobile-src/` reconstruct the recorded tree byte-for-byte from a fresh upstream clone |
+| `verify-patches.yml` → `patch-stack-configure` | ubuntu | push `patches` | every patch passes `./android-configure` individually (~1 min/patch) |
+| `host-smoke.yml` | ubuntu | push `patches` | C++ patches compile; `node -e` runs on the host build |
+| `build.yml` → `smoke-{android,ios}` + `napi-smoke-android` | ubuntu+KVM / macos | push `patches` | the exact shipping artifact boots and runs JS (Tier 1); NAPI symbols in `.dynsym` |
+| `build.yml` → `emulator-tests` / `simulator-tests` | ubuntu+KVM / macos | `release:` commits (required to publish) · dispatch | curated `test/parallel` subset + crc-native addon load on an x86_64 emulator and arm64 simulator (Tier 2) |
+| `build.yml` → `device-smoke` | ubuntu / macos-15 + BrowserStack | `release:` commits (required to publish) · dispatch | boot smoke + crc-native addon load on **physical devices** — Android arm64 (Pixel 9, 16 KB pages) via Espresso and iPhone via XCUITest (Tier 3). Needs `BROWSERSTACK_USER`/`BROWSERSTACK_PW` secrets. |
 
-The Tier-2 workflows reuse the `libnode` artifact the `Build` workflow already
-produced for the commit (via `gh run download`) — they do **not** rebuild. So
-**`Build` must be green for the commit before** you add the `mobile-test` label
-or dispatch a Tier-2 workflow.
+Every job first **materializes** the source tree from the patches branch
+(`.github/actions/materialize` runs `scripts/prepare.sh` and verifies the
+tree hash), then proceeds exactly as it would on a full checkout. On a
+`release:` (or `release-dryrun:`) commit, one `build.yml` run carries the
+whole gate chain — Tier 1/2/3 and publish — connected by `needs:`; there is
+no cross-run lookup, label contract, or manual step.
 
 ### The curated subset
 

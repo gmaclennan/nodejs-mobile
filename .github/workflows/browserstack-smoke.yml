@@ -14,10 +14,6 @@ name: BrowserStack device smoke
 on:
   workflow_dispatch:
     inputs:
-      sha:
-        description: 'Commit to smoke (default: this ref''s head). Needs a green Build run.'
-        required: false
-        default: ''
       android_devices:
         description: 'BrowserStack Android devices (CSV)'
         required: false
@@ -58,40 +54,18 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     steps:
-      - name: Resolve smoke SHA
-        id: sha
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          SHA='${{ inputs.sha }}'
-          [ -n "$SHA" ] || SHA="$GITHUB_SHA"
-          echo "sha=$SHA" >> "$GITHUB_OUTPUT"
-          echo "Smoking commit $SHA"
-
       - uses: actions/checkout@v4
         with:
-          ref: ${{ steps.sha.outputs.sha }}
           fetch-depth: 1
-
-      # Overlay the harness from the triggering ref so smoke fixes on a dev
-      # branch apply without rebuilding libnode at that ref. On mobile/v24
-      # dispatches this is a no-op (same content).
-      - uses: actions/checkout@v4
-        with:
-          path: harness-ref
-          fetch-depth: 1
-      - name: Overlay harness from triggering ref
-        run: |
-          rm -rf tools/mobile-test
-          cp -R harness-ref/tools/mobile-test tools/mobile-test
+      - uses: ./.github/actions/materialize
 
       - name: Fetch libnode (Android) from the latest Build run
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          SHA='${{ steps.sha.outputs.sha }}'
+          SHA="$GITHUB_SHA"
           RUN='${{ inputs.build_run_id }}'
-          [ -n "$RUN" ] || RUN=$(gh run list --repo "$GITHUB_REPOSITORY" --workflow build-mobile.yml \
+          [ -n "$RUN" ] || RUN=$(gh run list --repo "$GITHUB_REPOSITORY" --workflow build.yml \
                   --commit "$SHA" --status success --limit 1 --json databaseId -q '.[0].databaseId')
           [ -n "$RUN" ] || { echo "::error::No successful Build run for $SHA — run Build first."; exit 1; }
           gh run download "$RUN" --repo "$GITHUB_REPOSITORY" --name nodejs-mobile-android --dir nm-android
@@ -147,7 +121,7 @@ jobs:
           ./tools/mobile-test/browserstack/run-bs-build.sh espresso \
             tools/mobile-test/android/testnode/app/build/outputs/apk/debug/app-debug.apk \
             tools/mobile-test/android/testnode/app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk \
-            "$DEVICES" nodejs-mobile "sha-${{ steps.sha.outputs.sha }}"
+            "$DEVICES" nodejs-mobile "sha-${{ github.sha }}"
 
   ios-device-smoke:
     # macos-15 (Xcode 16.x), NOT macos-26: an XCUITest runner built by Xcode 26
@@ -157,35 +131,18 @@ jobs:
     runs-on: macos-15
     timeout-minutes: 60
     steps:
-      - name: Resolve smoke SHA
-        id: sha
-        run: |
-          SHA='${{ inputs.sha }}'
-          [ -n "$SHA" ] || SHA="$GITHUB_SHA"
-          echo "sha=$SHA" >> "$GITHUB_OUTPUT"
-          echo "Smoking commit $SHA"
-
       - uses: actions/checkout@v4
         with:
-          ref: ${{ steps.sha.outputs.sha }}
           fetch-depth: 1
-
-      - uses: actions/checkout@v4
-        with:
-          path: harness-ref
-          fetch-depth: 1
-      - name: Overlay harness from triggering ref
-        run: |
-          rm -rf tools/mobile-test
-          cp -R harness-ref/tools/mobile-test tools/mobile-test
+      - uses: ./.github/actions/materialize
 
       - name: Fetch NodeMobile.xcframework from the latest Build run
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          SHA='${{ steps.sha.outputs.sha }}'
+          SHA="$GITHUB_SHA"
           RUN='${{ inputs.build_run_id }}'
-          [ -n "$RUN" ] || RUN=$(gh run list --repo "$GITHUB_REPOSITORY" --workflow build-mobile.yml \
+          [ -n "$RUN" ] || RUN=$(gh run list --repo "$GITHUB_REPOSITORY" --workflow build.yml \
                   --commit "$SHA" --status success --limit 1 --json databaseId -q '.[0].databaseId')
           [ -n "$RUN" ] || { echo "::error::No successful Build run for $SHA — run Build first."; exit 1; }
           gh run download "$RUN" --repo "$GITHUB_REPOSITORY" --name nodejs-mobile-ios --dir nm-ios
@@ -245,4 +202,4 @@ jobs:
           ./tools/mobile-test/browserstack/run-bs-build.sh xcuitest \
             tools/mobile-test/ios/testnode/testnode.ipa \
             tools/mobile-test/ios/testnode/testnodeUITests.zip \
-            "$DEVICES" nodejs-mobile "sha-${{ steps.sha.outputs.sha }}"
+            "$DEVICES" nodejs-mobile "sha-${{ github.sha }}"

@@ -4,4 +4,4 @@
 # Update it (from prepare.sh's output) whenever patches/ or mobile-src/
 # change intentionally. Current value == the tree of the mobile/v24
 # materialization (upstream v24.18.0 + this branch).
-32cce7f0b471b5f14d65938284433f8ff7862c1b
+d87a517861c7d966b601bde35a21362a38062ce4

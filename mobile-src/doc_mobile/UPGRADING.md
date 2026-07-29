@@ -69,31 +69,18 @@ The `verify-patches.yml` CI on the patches branch re-runs the reconstruction
 against a fresh upstream clone and fails on any drift from
 `expected-tree.txt`.
 
-## Materialize + release
+## Release
 
-```sh
-scripts/prepare.sh out-release            # fresh, verified materialization
-cd out-release
-git push <fork> HEAD:refs/heads/release/vX.Y.Z-0
-```
-
-- `Build` runs on `release/**` and includes the Tier-3 BrowserStack
-  real-device smoke automatically (required to publish); once Build is
-  green, add the `mobile-test` label to the release PR for the Tier-2
-  emulator/simulator gates (see [TESTING.md](./TESTING.md)).
-- The release PR needs a final commit with subject
-  `release: nodejs-mobile X.Y.Z-0` (dates the CHANGELOG entry) — that
-  subject is what `publish-release.yml`'s guard keys on.
-- Merging is a **force-push of `mobile/v24`** to the release tip — an
-  upstream bump is a new history rooted at the new tag; the previous
-  history stays reachable via the release tags. `publish-release.yml` then
-  tags and publishes (prerelease until a device smoke is recorded, see
-  [RELEASING.md](./RELEASING.md)).
+Land the upgrade with a final commit whose subject is
+`release: nodejs-mobile X.Y.Z-0` (see [RELEASING.md](./RELEASING.md)). That
+single push runs the whole gate chain — build, Tier-1/2/3 including real
+devices — and publishes the prerelease when everything is green. Use a
+`release-dryrun:` subject first if you want a rehearsal without tagging.
 
 ## Cross-major upgrades (e.g. v24 → v26)
 
 Same procedure, larger blast radius: bump the base to the new major's LTS
 tag and expect several patches to need rework or deletion (upstream may
 have absorbed or obsoleted them — each patch body records *why* it exists
-for exactly this decision). Materialize to a new `mobile/v26` branch;
-`mobile/v24` stays for the old line.
+for exactly this decision). If both lines must stay releasable, branch the
+patches branch itself (e.g. `patches-v24`) before bumping the base.

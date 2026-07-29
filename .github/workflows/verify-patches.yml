@@ -28,3 +28,59 @@ jobs:
           echo "base:     $(grep -Ev '^\s*(#|$)' upstream-base.txt | head -n1)"
           echo "expected: $(grep -Ev '^\s*(#|$)' expected-tree.txt | head -n1)"
           [ -d out ] && echo "got:      $(git -C out rev-parse 'HEAD^{tree}' 2>/dev/null || echo n/a)"
+
+  # Per-patch build-system validation (successor to the retired
+  # validate-patch-stack workflow on the materialized branch): apply the
+  # series one patch at a time onto a clean upstream checkout and run
+  # ./android-configure after each, so a broken intermediate patch is caught
+  # even when a later patch happens to mask it at HEAD. Configure-only and
+  # arm64-only for the same reasons the old workflow was (~1 min/patch;
+  # nearly every historical patch regression surfaced at configure).
+  patch-stack-configure:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    env:
+      ANDROID_NDK_VERSION: r27d
+      ANDROID_TARGET_SDK_VERSION: '24'
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.13'
+
+      # gyp-next needs setuptools at build time (distutils was removed from
+      # the stdlib).
+      - name: Install Python build deps
+        run: |
+          python3.13 -m pip install --upgrade pip
+          python3.13 -m pip install setuptools
+
+      - name: Setup Android NDK
+        uses: nttld/setup-ndk@ed92fe6cadad69be94a966a7ee3271275e62f779 # v1.6.0
+        id: setup-ndk
+        with:
+          ndk-version: ${{ env.ANDROID_NDK_VERSION }}
+          add-to-path: false
+
+      - name: Apply each patch and configure
+        env:
+          MY_ANDROID_NDK_HOME: ${{ steps.setup-ndk.outputs.ndk-path }}
+        run: |
+          set -euo pipefail
+          BASE=$(grep -Ev '^\s*(#|$)' upstream-base.txt | head -n1 | tr -d '[:space:]')
+          git clone --depth 1 --branch "$BASE" https://github.com/nodejs/node.git src
+          git -C src config user.name ci
+          git -C src config user.email ci@invalid
+          while IFS= read -r p; do
+            [ -z "$p" ] && continue
+            case "$p" in \#*) continue ;; esac
+            git -C src am --3way --keep-cr --whitespace=nowarn "$PWD/patches/$p"
+            echo "::group::configure after $p"
+            ( cd src && ./android-configure "${MY_ANDROID_NDK_HOME}" "${ANDROID_TARGET_SDK_VERSION}" arm64 )
+            # Drop configure outputs so the next patch applies to a clean tree.
+            git -C src clean -qfdx -e .git
+            git -C src checkout -q -- .
+            echo "::endgroup::"
+          done < patches/series
+          echo "All patches configure-validate individually."

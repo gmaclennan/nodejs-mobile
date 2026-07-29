@@ -8,22 +8,21 @@ tests, and releases.
 
 | Branch | Role |
 | --- | --- |
-| `patches` | canonical: `patches/` (per-concern diffs to upstream files) + `mobile-src/` (fork-only files) + `scripts/prepare.sh` / `regenerate-patches.py` + `expected-tree.txt` integrity anchor |
-| `mobile/v24` | generated materialization of `patches` on upstream `v24.x`: the branch CI compiles and releases are tagged from |
+| `patches` | canonical AND the CI branch: `patches/` (per-concern diffs to upstream files) + `mobile-src/` (fork-only files) + `scripts/prepare.sh` / `regenerate-patches.py` + `expected-tree.txt` + all workflows. Every CI job materializes the full tree via `.github/actions/materialize` before building. |
+| `mobile/v24` | frozen (was the materialized CI branch through 24.18.0-0). Full-source trees now live on release tags (`nodejs-mobile-X.Y.Z-R`), each pointing at a materialized commit. |
 | `main` | legacy v18.20.4 line (frozen) |
 
-The invariant tying them together: `prepare.sh` on the patches branch must
-reconstruct **byte-for-byte** the tree of this branch's tip
-(`expected-tree.txt`), and CI on the patches branch re-proves that against a
-real upstream clone on every push.
+The invariant: `prepare.sh` must reconstruct **byte-for-byte** the tree
+recorded in `expected-tree.txt`, and CI re-proves that against a real
+upstream clone on every push — and again inside every build job, since each
+one materializes before compiling.
 
 ## Changing mobile code
 
 Day-to-day changes happen via the patches branch dev loop (see its README):
 `prepare.sh` → edit/commit in `out/` → `regenerate-patches.py` → commit the
-regenerated `patches/` + `mobile-src/` → materialize and push here. Small
-doc-only changes may land here first and be synced back; the tree-hash gate
-keeps the two from drifting silently.
+regenerated `patches/` + `mobile-src/` + updated `expected-tree.txt` to the
+patches branch. CI builds from exactly that.
 
 Guidelines for the patch series itself:
 
@@ -37,10 +36,9 @@ Guidelines for the patch series itself:
 
 ## Upgrading upstream Node.js
 
-See [UPGRADING.md](./UPGRADING.md). Summary: bump `upstream-base.txt` on the
-patches branch, run `prepare.sh`, resolve any conflicting patch in `out/`,
-regenerate, then materialize this branch from the new base (a force-push —
-release tags preserve the old history) and run the release pipeline.
+See [UPGRADING.md](./UPGRADING.md). Summary: bump `upstream-base.txt`, run
+`prepare.sh`, resolve any conflicting patch in `out/`, regenerate, land a
+`release:` commit — the pipeline does the rest.
 
 ## History
 
