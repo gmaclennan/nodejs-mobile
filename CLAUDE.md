@@ -70,11 +70,10 @@ catches. → [docs/UPGRADING.md](./docs/UPGRADING.md)
   `test/fixtures/wasi/subdir/{input_link,outside}.txt` from the working tree.
   Restore them (`git checkout -- test/fixtures/wasi/subdir/`) before
   committing in `out/`, or they regenerate as spurious patch deletions.
-- **Two `upstream-base.txt` files:** the authoritative one is at the repo
-  root; `mobile-src/doc_mobile/upstream-base.txt` is a copy that ships with
-  the source (read by `audit-test-edits.sh` from inside a materialized tree,
-  where the root file does not exist). Update both on an upgrade —
-  `prepare.sh` fails if they disagree, because `expected-tree.txt` cannot
-  catch this drift on its own.
+- **One base, two readers:** `upstream-base.txt` at the repo root is the
+  only place the pinned tag is written. Code running *inside* a materialized
+  tree (where that file doesn't exist) derives it from upstream's own
+  `src/node_version.h`, which this project never patches — don't reintroduce
+  a shipped copy of the tag.
 - **CI runs from this branch**, materializing per job. A workflow change is
   a `mobile-src`-free root-level edit and does not move the tree hash.

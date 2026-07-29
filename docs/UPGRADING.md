@@ -42,10 +42,8 @@ Build matrix as part of the upgrade loop, and re-check that every
 platform-guard (`TARGET_OS_OSX` / `__ANDROID__`) still encloses everything
 it needs to.
 
-Also update, in `mobile-src/`:
+Also:
 
-- `doc_mobile/upstream-base.txt` — the same tag (a copy that ships with the
-  source; the authoritative one is at the repo root);
 - check `.github/workflows/` in `out/` for **new upstream workflows** the
   removal patch doesn't cover yet — delete-and-own them in patch 0019 if
   they would actually run on this fork (most are gated on

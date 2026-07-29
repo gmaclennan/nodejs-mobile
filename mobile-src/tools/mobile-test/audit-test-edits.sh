@@ -18,14 +18,21 @@ SCRIPT_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 REPO_ROOT=$(git -C "${SCRIPT_DIR}" rev-parse --show-toplevel)
 cd "${REPO_ROOT}"
 
-BASE_FILE="doc_mobile/upstream-base.txt"
-if [ ! -f "${BASE_FILE}" ]; then
-  echo "error: ${BASE_FILE} is missing — cannot determine the patch-stack base." >&2
-  exit 1
-fi
-BASE=$(grep -Ev '^\s*(#|$)' "${BASE_FILE}" | head -n1 | tr -d '[:space:]')
-if [ -z "${BASE}" ] || ! git rev-parse --verify --quiet "${BASE}^{commit}" >/dev/null; then
-  echo "error: patch-stack base '${BASE}' is not a valid commit." >&2
+# The upstream base is derived from the tree itself: src/node_version.h is
+# upstream's own version header and is not patched by this project, so it
+# states exactly which nodejs/node release this tree was built from. That
+# keeps one source of truth (upstream-base.txt on the patches branch, which
+# prepare.sh clones from) instead of a second copy shipped here that could
+# silently drift.
+MA=$(grep -oE '#define NODE_MAJOR_VERSION [0-9]+' src/node_version.h | awk '{print $3}')
+MI=$(grep -oE '#define NODE_MINOR_VERSION [0-9]+' src/node_version.h | awk '{print $3}')
+PA=$(grep -oE '#define NODE_PATCH_VERSION [0-9]+' src/node_version.h | awk '{print $3}')
+BASE="v${MA}.${MI}.${PA}"
+if ! git rev-parse --verify --quiet "${BASE}^{commit}" >/dev/null; then
+  echo "error: upstream base '${BASE}' (from src/node_version.h) is not a commit here." >&2
+  echo "       This audit needs the upstream tag present, as it is in a tree" >&2
+  echo "       produced by scripts/prepare.sh. Fetch it with:" >&2
+  echo "         git fetch --depth 1 https://github.com/nodejs/node.git tag ${BASE}" >&2
   exit 1
 fi
 
