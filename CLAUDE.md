@@ -72,6 +72,9 @@ catches. → [docs/UPGRADING.md](./docs/UPGRADING.md)
   committing in `out/`, or they regenerate as spurious patch deletions.
 - **Two `upstream-base.txt` files:** the authoritative one is at the repo
   root; `mobile-src/doc_mobile/upstream-base.txt` is a copy that ships with
-  the source. Keep them in step on an upgrade.
+  the source (read by `audit-test-edits.sh` from inside a materialized tree,
+  where the root file does not exist). Update both on an upgrade —
+  `prepare.sh` fails if they disagree, because `expected-tree.txt` cannot
+  catch this drift on its own.
 - **CI runs from this branch**, materializing per job. A workflow change is
   a `mobile-src`-free root-level edit and does not move the tree hash.
