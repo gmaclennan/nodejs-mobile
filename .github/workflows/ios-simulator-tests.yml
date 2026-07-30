@@ -1,6 +1,6 @@
 name: iOS Simulator Tests
 
-# Runs the curated Tier 2 subset of the Node.js JS suite (doc_mobile/TESTING.md)
+# Runs the curated Tier 2 subset of the Node.js JS suite (docs/TESTING.md)
 # inside the testnode harness on a booted iOS simulator, via simctl. This gives
 # signal that the framework executes JS correctly on-device-like, beyond the
 # compile-only coverage of build-mobile.yml.

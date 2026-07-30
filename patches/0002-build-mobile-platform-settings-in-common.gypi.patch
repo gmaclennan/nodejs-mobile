@@ -12,26 +12,27 @@ Co-authored-by: Andre Staltz <andre@staltz.com>
 Co-authored-by: Julia Samól <j.samol@papers.ch>
 Co-authored-by: Jaime Bernardo <jaime@janeasystems.com>
 ---
- common.gypi | 156 ++++++++++++++++++++++++++++++++++++++++++++--------
- 1 file changed, 133 insertions(+), 23 deletions(-)
+ common.gypi | 157 ++++++++++++++++++++++++++++++++++++++++++++--------
+ 1 file changed, 134 insertions(+), 23 deletions(-)
 
 diff --git a/common.gypi b/common.gypi
-index c9ff09b4dc..666c69009f 100644
+index c9ff09b4dc..82b21453c0 100644
 --- a/common.gypi
 +++ b/common.gypi
-@@ -18,6 +18,11 @@
+@@ -18,6 +18,12 @@
      'node_shared%': 'false',
      'node_enable_experimentals%': 'false',
      'force_dynamic_crt%': 0,
 +
 +    # nodejs-mobile: set to 1 by android_configure.py for the size-reduced
-+    # "lite" flavor (see doc_mobile/README.md, "The lite variant"). Enables dead-code
-+    # stripping; the "full" flavor (default 0) is left byte-for-byte unchanged.
++    # "lite" flavor (see "The lite variant" in docs/BUILDING.md on the patches
++    # branch). Enables dead-code stripping; the "full" flavor (default 0) is
++    # left byte-for-byte unchanged.
 +    'node_mobile_lite%': 0,
      'node_use_v8_platform%': 'true',
      'node_use_bundled_v8%': 'true',
      'node_module_version%': '',
-@@ -110,7 +115,7 @@
+@@ -110,7 +116,7 @@
          'obj_dir%': '<(PRODUCT_DIR)/obj.target',
          'v8_base': '<(PRODUCT_DIR)/obj.target/tools/v8_gypfiles/libv8_snapshot.a',
        }],
@@ -40,7 +41,7 @@ index c9ff09b4dc..666c69009f 100644
          'obj_dir%': '<(PRODUCT_DIR)/obj.target',
          'v8_base': '<(PRODUCT_DIR)/libv8_snapshot.a',
        }],
-@@ -221,6 +226,27 @@
+@@ -221,6 +227,27 @@
                }],
              ],
            }],
@@ -48,11 +49,11 @@ index c9ff09b4dc..666c69009f 100644
 +            # nodejs-mobile: emit a GNU build-id on libnode.so so Sentry can
 +            # match the AGP-stripped runtime binary to uploaded debug files for
 +            # native crash symbolication. Behaviour-neutral; applies to both
-+            # flavors (see doc_mobile/README.md). These also reach the host
-+            # build-tools, which is harmless on the Linux build host (GNU ld);
-+            # Android is built on Linux (a macOS host can't link the cross-build
-+            # — see BUILDING.md). _toolset isn't available in load-time
-+            # conditions, so it can't be scoped out here.
++            # flavors (see docs/BUILDING.md on the patches branch). These also
++            # reach the host build-tools, which is harmless on the Linux build
++            # host (GNU ld); Android is built on Linux (a macOS host can't link
++            # the cross-build — see that same BUILDING.md). _toolset isn't
++            # available in load-time conditions, so it can't be scoped out here.
 +            'ldflags': [ '-Wl,--build-id=sha1' ],
 +            'conditions': [
 +              ['node_mobile_lite==1', {
@@ -68,7 +69,7 @@ index c9ff09b4dc..666c69009f 100644
            ['OS=="solaris"', {
              # pull in V8's postmortem metadata
              'ldflags': [ '-Wl,-z,allextract' ]
-@@ -229,7 +255,7 @@
+@@ -229,7 +256,7 @@
              # increase performance, number from experimentation
              'cflags': [ '-qINLINE=::150:100000' ]
            }],
@@ -77,7 +78,7 @@ index c9ff09b4dc..666c69009f 100644
              # -fno-omit-frame-pointer is necessary for the --perf_basic_prof
              # flag to work correctly. perf(1) gets confused about JS stack
              # frames otherwise, even with --call-graph dwarf.
-@@ -448,7 +474,7 @@
+@@ -448,7 +475,7 @@
        [ 'target_arch=="arm64"', {
          'msvs_configuration_platform': 'arm64',
        }],
@@ -86,7 +87,7 @@ index c9ff09b4dc..666c69009f 100644
          'cflags+': [
            '-fno-omit-frame-pointer',
            '-fsanitize=address',
-@@ -476,7 +502,7 @@
+@@ -476,7 +503,7 @@
            }],
          ],
        }],
@@ -95,7 +96,7 @@ index c9ff09b4dc..666c69009f 100644
          'cflags+': [
            '-fno-omit-frame-pointer',
            '-fsanitize=undefined',
-@@ -485,7 +511,7 @@
+@@ -485,7 +512,7 @@
          'cflags!': [ '-fno-omit-frame-pointer' ],
          'ldflags': [ '-fsanitize=undefined' ],
        }],
@@ -104,7 +105,7 @@ index c9ff09b4dc..666c69009f 100644
          'xcode_settings': {
            'OTHER_CFLAGS+': [
              '-fno-omit-frame-pointer',
-@@ -510,12 +536,12 @@
+@@ -510,12 +537,12 @@
        ['v8_enable_pointer_compression == 1', {
          'defines': ['V8_COMPRESS_POINTERS'],
        }],
@@ -120,7 +121,7 @@ index c9ff09b4dc..666c69009f 100644
        ['v8_enable_pointer_compression == 1 or v8_enable_31bit_smis_on_64bit_arch == 1', {
          'defines': ['V8_31BIT_SMIS_ON_64BIT_ARCH'],
        }],
-@@ -593,21 +619,18 @@
+@@ -593,21 +620,18 @@
            }],
            ['_toolset=="host"', {
              'conditions': [
@@ -147,7 +148,7 @@ index c9ff09b4dc..666c69009f 100644
                  'ldflags': [ '-m64' ],
                }],
                [ 'host_arch=="s390x" and OS=="linux"', {
-@@ -627,12 +650,7 @@
+@@ -627,12 +651,7 @@
                  'ldflags': [ '-m64' ],
                }],
                [ 'target_arch=="ppc64" and OS not in "aix os400"', {
@@ -161,7 +162,7 @@ index c9ff09b4dc..666c69009f 100644
                  'ldflags': [ '-m64' ],
                }],
                [ 'target_arch=="s390x" and OS=="linux"', {
-@@ -674,7 +692,7 @@
+@@ -674,7 +693,7 @@
              ],
            }, {                                             # else it's `AIX`
              'variables': {
@@ -170,7 +171,7 @@ index c9ff09b4dc..666c69009f 100644
              },
              # Disable the following compiler warning:
              #
-@@ -757,6 +775,98 @@
+@@ -757,6 +776,98 @@
            }],
          ],
        }],

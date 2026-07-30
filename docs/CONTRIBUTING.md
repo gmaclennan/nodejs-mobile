@@ -9,7 +9,7 @@ issue for discussion first; for minor fixes, open a pull request directly.
 ```sh
 scripts/prepare.sh                    # → ./out, a complete verified source tree
 cd out
-# ... edit, build (see BUILDING.md), run tests (see TESTING.md) ...
+# ... edit, build, run tests ...                # BUILDING.md / TESTING.md
 git commit -am "what I changed"       # any commit shape is fine
 cd ..
 scripts/regenerate-patches.py out     # fold changes back into patches/ + mobile-src/
@@ -23,6 +23,22 @@ updates its owning patch, a new file lands in `mobile-src/`, and an edit to
 an upstream file no patch owns is an error until you assign it in
 `patches/files.map`. See [PATCHES.md](./PATCHES.md) for the rules and the
 reasoning.
+
+## Documentation
+
+All project documentation lives in `docs/` on this branch, and none of it is
+overlaid into the source tree. That is deliberate: `mobile-src/` is part of
+the recipe, so a doc kept there would be inside `expected-tree.txt` — a typo
+fix would be a source-tree change needing a new tree hash, and could not be
+made from the GitHub web editor at all. Prose churn should not move the
+integrity anchor for the binaries.
+
+The generated tree therefore carries no docs of its own. When something in
+the tree needs to cite one — a comment in `mobile-src/`, or a patched
+upstream file — point at `docs/<FILE>.md on the patches branch`, or use a
+full URL for anything user-facing. Say `on the patches branch` rather than a
+bare `docs/`: upstream ships its own `doc/` directory, so an unqualified
+path is ambiguous to a reader inside the tree.
 
 ## Commit messages
 

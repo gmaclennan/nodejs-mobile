@@ -18,6 +18,10 @@ for the model. Follow the linked docs rather than duplicating them here.
   [docs/RELEASING.md](./docs/RELEASING.md).
 - **Stage explicitly** (`git add <paths>`), never `git add -A` in `out/` —
   build outputs and scratch files must not reach a commit.
+- **All docs live in `docs/`, never in `mobile-src/`.** The generated tree
+  ships no docs, so prose never moves the tree hash. In-tree citations say
+  `docs/X.md on the patches branch` (upstream has its own `doc/`).
+  → [docs/CONTRIBUTING.md](./docs/CONTRIBUTING.md#documentation)
 
 ## The loop
 
@@ -40,7 +44,7 @@ an unowned upstream edit is an error until you assign it. → [docs/CONTRIBUTING
   macOS/Xcode; produces `NodeMobile.xcframework`.
 - **Python 3.12/3.13** with `setuptools` in the venv (gyp-next needs it).
 - Flavors: default `full`; `NODEJS_MOBILE_FLAVOR=lite` for the small build.
-- → [BUILDING.md](./mobile-src/doc_mobile/BUILDING.md)
+- → [BUILDING.md](./docs/BUILDING.md)
 
 ## Test
 
@@ -54,7 +58,7 @@ scraped from logs.
 Curation caveats: tests that **spawn a child node process** can't pass on
 Android and are excluded; a test calling **`process.exit()`** is mis-scored
 by the per-process harness (libc `exit()` beats the verdict write), so none
-are in the list. → [TESTING.md](./mobile-src/doc_mobile/TESTING.md)
+are in the list. → [TESTING.md](./docs/TESTING.md)
 
 ## Upgrading upstream
 

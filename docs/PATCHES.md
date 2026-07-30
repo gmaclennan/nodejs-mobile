@@ -14,7 +14,7 @@ consistent, and why it is built this way. For the day-to-day loop see
 | `patches/*.patch` | one patch per **concern**, covering every upstream file the project modifies or deletes |
 | `patches/series` | apply order |
 | `patches/files.map` | `patch<TAB>path` for every file a patch owns — the partition that makes regeneration deterministic |
-| `mobile-src/` | files with **no upstream counterpart**, tracked as plain files (build scripts, iOS framework project, test apps and harness, shipped docs) |
+| `mobile-src/` | files with **no upstream counterpart**, tracked as plain files (build scripts, iOS framework project, test apps and harness) |
 | `expected-tree.txt` | the git tree hash the reconstruction must produce |
 | `scripts/prepare.sh` | recipe → source tree, with the hash check |
 | `scripts/regenerate-patches.py` | source tree → recipe |

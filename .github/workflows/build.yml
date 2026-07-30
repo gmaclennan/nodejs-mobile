@@ -15,7 +15,7 @@ env:
   ANDROID_TARGET_SDK_VERSION: 24
   # Flavor is a per-job matrix dimension ([full, lite]) so every Build produces
   # BOTH the shipped full binary and the size-reduced lite binary, and the
-  # Tier-2 gate covers both (see doc_mobile/README.md "The lite variant"). Each
+  # Tier-2 gate covers both (see docs/BUILDING.md "The lite variant"). Each
   # job derives NODEJS_MOBILE_FLAVOR + FLAVOR_SUFFIX from matrix.flavor (matrix
   # isn't visible at workflow-env scope). FLAVOR_SUFFIX ('' for full, '-lite'
   # for lite) keeps caches + the public combined artifacts distinct so the full
@@ -304,7 +304,7 @@ jobs:
         with:
           name: node-ios-*-${{ matrix.flavor }}
 
-  # Tier 1 on-device smoke (doc_mobile/TESTING.md): boot an emulator, run a
+  # Tier 1 on-device smoke (docs/TESTING.md): boot an emulator, run a
   # console.log via the freshly built libnode, assert it ran and exited cleanly.
   # Consumes the nodejs-mobile-android artifact, so it smoke-tests the exact
   # binary that would ship — no rebuild. ubuntu + KVM keeps it at 1x billing.
@@ -552,6 +552,15 @@ jobs:
         with:
           fetch-depth: 1
 
+      # The docs live only on this branch, and materialize replaces the
+      # workspace with the materialized tree — so lift the release notes out
+      # before that happens.
+      - name: Extract release notes from the CHANGELOG
+        run: |
+          awk '/^## /{c++} c==1{print} c==2{exit}' docs/CHANGELOG.md \
+            > "$RUNNER_TEMP/release-notes.md"
+          wc -l < "$RUNNER_TEMP/release-notes.md"
+
       - uses: ./.github/actions/materialize
 
       # Note: the materialized tree is a SHALLOW clone of nodejs/node (prepare.sh
@@ -594,7 +603,7 @@ jobs:
       - name: Create GitHub Release (prerelease)
         run: |
           TAG="v${V}"
-          NOTES=$(awk '/^## /{c++} c==1{print} c==2{exit}' doc_mobile/CHANGELOG.md)
+          NOTES=$(cat "$RUNNER_TEMP/release-notes.md")
           if [ "$DRY" = "1" ]; then
             echo "DRY RUN: would publish prerelease $TAG with:"
             ls -la out
@@ -604,6 +613,6 @@ jobs:
               --repo "$GITHUB_REPOSITORY" \
               --title "nodejs-mobile ${V}" \
               --prerelease \
-              --notes "${NOTES:-Release ${V}. See doc_mobile/CHANGELOG.md.}"
+              --notes "${NOTES:-Release ${V}. See https://github.com/${GITHUB_REPOSITORY}/blob/patches/docs/CHANGELOG.md}"
             echo "Published prerelease $TAG"
           fi

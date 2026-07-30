@@ -18,7 +18,8 @@ line per owned file):
     with a "Subject: ..." template) and re-run
 
 Patch headers (author, date, subject, body) are preserved from the existing
-.patch files, so an unchanged patch regenerates byte-identically.
+.patch files, and core.abbrev is pinned, so an unchanged patch regenerates
+byte-identically regardless of which tree it was regenerated from.
 
 Usage: scripts/regenerate-patches.py <out_dir>
 """
@@ -143,8 +144,14 @@ def main():
         for f in os.listdir(PATCHES):
             if re.match(r'\d{4}-.*\.patch$', f):
                 os.unlink(os.path.join(PATCHES, f))
-        sh('git', 'format-patch', '--output-directory', PATCHES,
-           '--zero-commit', '--no-signature', f'{base_sha}..HEAD', cwd=wt)
+        # core.abbrev is pinned because git's default auto-abbreviation scales
+        # with the object count, so the "index <old>..<new>" lines would come
+        # out 8 chars from prepare.sh's shallow clone and 10 from a full one —
+        # rewriting all 19 patches for whoever regenerates in the other kind of
+        # tree. Pinning keeps an unchanged patch byte-identical anywhere.
+        sh('git', '-c', 'core.abbrev=10', 'format-patch', '--output-directory',
+           PATCHES, '--zero-commit', '--no-signature', f'{base_sha}..HEAD',
+           cwd=wt)
     finally:
         subprocess.run(['git', 'worktree', 'remove', '--force', wt], cwd=out,
                        capture_output=True)
