@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# audit-test-edits.sh — enforce the minimal-test-edit policy (doc_mobile/TESTING.md).
+# audit-test-edits.sh — enforce the minimal-test-edit policy (docs/TESTING.md on the patches branch).
 #
 # Mobile adaptations of upstream Node tests must be small, greppable guards
 # (anchored on common.isAndroid/isIOS or a "nodejs-mobile patch:" comment) or
@@ -56,7 +56,7 @@ while IFS= read -r f; do
 done < <(git diff --name-only "${BASE}" HEAD -- 'test/parallel/*.js' 'test/sequential/*.js' 'test/message/*.js')
 
 if [ "${fail}" -ne 0 ]; then
-  echo "FAIL: an upstream test had node:test stripped. See doc_mobile/TESTING.md (minimal test-edit policy)." >&2
+  echo "FAIL: an upstream test had node:test stripped. See docs/TESTING.md on the patches branch (minimal test-edit policy)." >&2
   exit 1
 fi
 echo "Test-edit audit passed: no node:test rewrites."

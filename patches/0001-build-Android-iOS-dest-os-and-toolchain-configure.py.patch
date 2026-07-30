@@ -5,12 +5,12 @@ Subject: [PATCH 01/19] build: Android/iOS dest-os and toolchain (configure.py,
  android_configure.py)
 
 ---
- android_configure.py | 51 +++++++++++++++++++++++++++++++-------------
+ android_configure.py | 52 +++++++++++++++++++++++++++++++-------------
  configure.py         |  8 +++++++
- 2 files changed, 44 insertions(+), 15 deletions(-)
+ 2 files changed, 45 insertions(+), 15 deletions(-)
 
 diff --git a/android_configure.py b/android_configure.py
-index 5cea0393f4..052118e9f5 100644
+index 5cea0393f4..3630bf1545 100644
 --- a/android_configure.py
 +++ b/android_configure.py
 @@ -1,25 +1,14 @@
@@ -50,7 +50,7 @@ index 5cea0393f4..052118e9f5 100644
      toolchain_path = android_ndk_path + "/toolchains/llvm/prebuilt/darwin-x86_64"
  
  elif platform.system() == "Linux":
-@@ -65,13 +54,45 @@ elif platform.system() == "Linux":
+@@ -65,13 +54,46 @@ elif platform.system() == "Linux":
  os.environ['PATH'] += os.pathsep + toolchain_path + "/bin"
  os.environ['CC'] = toolchain_path + "/bin/" + TOOLCHAIN_PREFIX + android_sdk_version + "-" +  "clang"
  os.environ['CXX'] = toolchain_path + "/bin/" + TOOLCHAIN_PREFIX + android_sdk_version + "-" + "clang++"
@@ -74,7 +74,8 @@ index 5cea0393f4..052118e9f5 100644
 +GYP_DEFINES += " android_ndk_sysroot=" + toolchain_path + "/sysroot"
 +# Flavor switch (mobile-only, wrapper-level so configure.py stays upstream-clean):
 +#   full (default) — the shared build all consumers get; flags unchanged.
-+#   lite           — size-reduced subtractions (see doc_mobile/README.md, "The lite variant").
++#   lite           — size-reduced subtractions (see "The lite variant" in
++#                    docs/BUILDING.md on the patches branch).
 +# Set via env NODEJS_MOBILE_FLAVOR=lite. Android lite keeps the JIT and V8's
 +# native WASM engine (undici uses them); it only drops features that
 +# size-constrained consumers don't need, and turns on dead-code stripping.

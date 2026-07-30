@@ -1,6 +1,7 @@
-# Curated Tier 2 subset (doc_mobile/TESTING.md): single-process test/parallel
-# cases validated to pass on BOTH a real arm64 Android emulator and an iPhone
-# simulator. One test per line; blank lines and '#' comments are ignored.
+# Curated Tier 2 subset (docs/TESTING.md on the patches branch): single-process
+# test/parallel cases validated to pass on BOTH a real arm64 Android emulator
+# and an iPhone simulator. One test per line; blank lines and '#' comments are
+# ignored.
 #
 # Harvested by running pure-JS categories (buffer, events, url, querystring,
 # string-decoder, path, crypto hash/hmac/cipher, util) through the proxy on both

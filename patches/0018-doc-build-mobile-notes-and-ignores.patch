@@ -40,7 +40,7 @@ index 74eb99c815..ce1c201ce9 100644
  /deps/openssl/openssl.props
  /deps/openssl/openssl.targets
 diff --git a/README.md b/README.md
-index c2012523eb..8d7b805c1a 100644
+index c2012523eb..1d3ab7e321 100644
 --- a/README.md
 +++ b/README.md
 @@ -1,907 +1,49 @@
@@ -55,7 +55,7 @@ index c2012523eb..8d7b805c1a 100644
  
 -The Node.js project uses an [open governance model](./GOVERNANCE.md). The
 -[OpenJS Foundation][] provides support for the project.
-+* [Frequently Asked Questions](./doc_mobile/FAQ.md)
++* [Frequently Asked Questions](https://github.com/nodejs-mobile/nodejs-mobile/blob/patches/docs/FAQ.md)
 +* [Discussions](https://github.com/nodejs-mobile/nodejs-mobile/discussions)
 +* [(Old) Website](https://code.janeasystems.com/nodejs-mobile)
  
@@ -146,7 +146,7 @@ index c2012523eb..8d7b805c1a 100644
 +## Build Instructions
  
 -#### Nightly releases
-+Please see the [BUILDING.md](./doc_mobile/BUILDING.md) file in the `doc_mobile` folder in this source distribution.
++Please see [BUILDING.md](https://github.com/nodejs-mobile/nodejs-mobile/blob/patches/docs/BUILDING.md) on the project's `patches` branch.
  
 -<https://nodejs.org/download/nightly/>
 +## Running tests
@@ -155,7 +155,7 @@ index c2012523eb..8d7b805c1a 100644
 -followed by the UTC date (e.g., `20240424` for April 24, 2024),
 -and the short commit SHA of the HEAD of the release (e.g., `ddd0a9e494`).
 -For instance, a full directory name might look like `v22.0.0-nightly20240424ddd0a9e494`.
-+Please see the [TESTING.md](./doc_mobile/TESTING.md) file in the `doc_mobile` folder in this source distribution.
++Please see [TESTING.md](https://github.com/nodejs-mobile/nodejs-mobile/blob/patches/docs/TESTING.md) on the project's `patches` branch.
  
 -#### API documentation
 +## Contributing
@@ -977,4 +977,4 @@ index c2012523eb..8d7b805c1a 100644
 -[Strategic initiatives]: doc/contributing/strategic-initiatives.md
 -[Technical values and prioritization]: doc/contributing/technical-values.md
 -[Working Groups]: https://github.com/nodejs/TSC/blob/HEAD/WORKING_GROUPS.md
-+This source tree is generated from the project's `patches` branch, which holds the mobile patch series, the tooling, and the contributing/upgrading/releasing docs. See [CONTRIBUTING](https://github.com/nodejs-mobile/nodejs-mobile/blob/patches/docs/CONTRIBUTING.md).
++This source tree is generated from the project's `patches` branch, which holds the mobile patch series, the tooling, and all of the project's documentation. See [CONTRIBUTING](https://github.com/nodejs-mobile/nodejs-mobile/blob/patches/docs/CONTRIBUTING.md).

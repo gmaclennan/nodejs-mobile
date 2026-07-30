@@ -81,6 +81,10 @@ the testnode app — proving a real `.node` addon `dlopen`s and runs (the
 
 ## Running tests locally
 
+Every command in this section runs from a materialized source tree — the
+`out/` that `scripts/prepare.sh` produces (see [BUILDING.md](./BUILDING.md)),
+not from this branch.
+
 `tools/test.py` and the prepare scripts run on the host; the device/emulator
 runs the app. A specific device/emulator can be targeted with `DEVICE_ID=<id>`
 (`adb devices` / `ios-deploy --detect` / `xcrun simctl list` to find it).

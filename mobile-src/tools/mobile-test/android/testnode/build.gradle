@@ -1,4 +1,5 @@
-// Top-level build file for the Android test harness (doc_mobile/TESTING.md).
+// Top-level build file for the Android test harness
+// (docs/TESTING.md on the patches branch).
 plugins {
     id 'com.android.application' version '8.5.2' apply false
 }

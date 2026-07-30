@@ -16,9 +16,10 @@ TARGET_LIBRARY_PATH='tools/ios-framework/bin'
 NODELIB_PROJECT_PATH='tools/ios-framework'
 XCODE_PROJECT_PATH='tools/ios-framework/NodeMobile.xcodeproj/project.pbxproj'
 
-# Flavor switch (mobile-only; see doc_mobile/README.md "The lite variant"). "full"
-# (default) is unchanged; "lite" is the size-reduced build. Read here and
-# threaded into both configure blocks and the static-lib link list.
+# Flavor switch (mobile-only; see "The lite variant" in docs/BUILDING.md on the
+# patches branch). "full" (default) is unchanged; "lite" is the size-reduced
+# build. Read here and threaded into both configure blocks and the static-lib
+# link list.
 FLAVOR="${NODEJS_MOBILE_FLAVOR:-full}"
 if [ "$FLAVOR" != "full" ] && [ "$FLAVOR" != "lite" ]; then
   echo "Error: NODEJS_MOBILE_FLAVOR must be 'full' or 'lite'"; exit 1

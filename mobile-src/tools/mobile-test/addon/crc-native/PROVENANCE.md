@@ -1,7 +1,8 @@
 # Vendored N-API test fixture: crc-native
 
 A minimal, genuine **N-API** (node-api) native addon for the mobile
-native-addon release gate (see [TESTING.md](../../../../doc_mobile/TESTING.md)).
+native-addon release gate (see
+[TESTING.md](https://github.com/nodejs-mobile/nodejs-mobile/blob/patches/docs/TESTING.md)).
 Loading and calling it on a device proves the shipped libnode exports the
 `napi_*` symbol table and can `dlopen` + run a real addon end-to-end — the
 "B-1" concern that the cheaper symbol-grep smoke

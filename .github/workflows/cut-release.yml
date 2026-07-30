@@ -66,7 +66,7 @@ jobs:
           python3 - <<'EOF'
           import datetime, os, re
           v = os.environ['V']
-          p = 'mobile-src/doc_mobile/CHANGELOG.md'
+          p = 'docs/CHANGELOG.md'
           s = open(p).read()
           date = datetime.date.today().isoformat()
           section = (f'<a id="{v}"></a>\n## {date}, Version {v} (Current)\n\n'
@@ -103,7 +103,7 @@ jobs:
           git push -f origin "$BR"
           gh pr create --base patches --head "$BR" \
             --title "release: nodejs-mobile ${V}" \
-            --body "Automated release PR for **nodejs-mobile ${V}** (see mobile-src/doc_mobile/RELEASING.md).
+            --body "Automated release PR for **nodejs-mobile ${V}** (see docs/RELEASING.md).
 
           - [x] version of record bumped (revision computed from existing tags)
           - [x] \`expected-tree.txt\` re-anchored via \`prepare.sh\`

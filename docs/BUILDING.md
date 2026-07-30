@@ -52,14 +52,15 @@ sdkmanager "ndk;27.3.13750724"
 
 ### 1) Get a source tree
 
-If you are reading this inside a source tree (a release tag, or an `out/`
-produced by `scripts/prepare.sh`), you already have one — skip ahead.
-Otherwise generate one from the project's patches branch:
+This repository holds the recipe, not the source. Generate a tree from it:
 
 ```sh
 git clone -b patches https://github.com/nodejs-mobile/nodejs-mobile
 cd nodejs-mobile && scripts/prepare.sh && cd out
 ```
+
+All the build commands below run from that `out/` directory. A release tag
+(`vX.Y.Z-R`) already *is* a materialized tree, so checking one out works too.
 
 ### 2) Build with the helper script
 
@@ -97,7 +98,7 @@ Xcode with the Command Line Tools (`xcode-select --install`, which also installs
 
 ### 1) Get a source tree
 
-As above — a release tag, or `scripts/prepare.sh` from the patches branch.
+As above — `scripts/prepare.sh`, or a release tag. Commands run from `out/`.
 
 ### 2) Build with the helper script
 
