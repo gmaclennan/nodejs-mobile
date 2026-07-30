@@ -8,18 +8,29 @@ name: iOS Simulator Tests
 # Uses simctl (not ios-deploy, which is physical-device only). simctl launch
 # doesn't return the app's exit code, so the app writes the test's real exit code
 # to a per-launch verdict file in its sandbox that the proxy reads. A simulator
-# run builds the framework and the app and runs the subset serially (~20-30 min
-# of macos runner time), so it is gated behind a nightly cron, the 'mobile-test'
-# PR label, and workflow_dispatch.
+# run reuses the framework build.yml already produced and runs the subset
+# serially (~20-30 min of macos runner time).
+#
+# Called from build.yml on every event that produces artifacts — PR, push and
+# release alike. It is advisory on PRs (not part of ci-required) because
+# simulator lifecycles flake; it is blocking on the release chain, where
+# publish needs: it.
 on:
-  # Called from build.yml on release commits (Tier-2 gate); build_run_id
-  # points at the calling run so the artifact fetch targets it directly.
+  # Called from build.yml; build_run_id points at the calling run so the
+  # artifact fetch targets it directly.
   workflow_call:
     inputs:
       build_run_id:
         type: string
         required: false
         default: ''
+      # JSON array of flavors to test. build.yml passes full-only on
+      # pull_request to stay inside the hosted macOS concurrency cap; pushes
+      # and releases pass both.
+      flavors:
+        type: string
+        required: false
+        default: '["full","lite"]'
   workflow_dispatch:
 
 env:
@@ -32,7 +43,6 @@ permissions:
 
 jobs:
   ios-simulator-tests:
-    # On pull_request, only run when the 'mobile-test' label is present.
     # Both flavors run the SAME curated list (true full-parity, no exclusions):
     # verified all 151 pass on a local lite build despite iOS lite dropping the
     # WebAssembly + Intl globals (--v8-lite-mode + intl=none) — the ICU tests
@@ -42,7 +52,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        flavor: [full, lite]
+        flavor: ${{ fromJSON(inputs.flavors || '["full","lite"]') }}
 
     # macos-26 is Apple Silicon with current Xcode, matching build-mobile.yml.
     runs-on: macos-26
@@ -72,7 +82,7 @@ jobs:
           [ -n "$RUN" ] || RUN=$(gh run list --repo "$GITHUB_REPOSITORY" --workflow build.yml \
                   --commit "$SHA" --status success --limit 1 --json databaseId -q '.[0].databaseId')
           if [ -z "$RUN" ]; then
-            echo "::error::No successful Build run found for $SHA. Build only runs on push to its branch globs (main, icu, mobile/**, claude/**) or workflow_dispatch; dispatch/await Build for this SHA before the Tier-2 tests."
+            echo "::error::No successful Build run found for $SHA. Build runs on push to 'patches', on pull_request against 'patches', and on workflow_dispatch; dispatch/await Build for this SHA before running the Tier-2 tests standalone."
             exit 1
           fi
           # The matrix Build produces both flavors in one run, so fetch this

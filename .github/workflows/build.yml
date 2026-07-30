@@ -1,12 +1,31 @@
 name: Build
 
 on:
-  # push-only: a same-repo PR head also matches these globs, so adding
-  # pull_request would run every commit twice. (Add a fork-only-guarded
-  # pull_request if external contributors ever open PRs.)
+  # Both events, without double-running: the push trigger is scoped to
+  # `patches` only, and PR head branches (claude/**, release/**, forks) don't
+  # match it — so a PR commit produces exactly one run, and the merge produces
+  # one more. Cross-compiling on the PR is the point: neither the host build
+  # nor the per-patch ./android-configure in verify-patches.yml compiles a line
+  # of target code, so a platform-guard regression (the `#if TARGET_OS_OSX`
+  # class of bug docs/UPGRADING.md warns about) is otherwise invisible until
+  # after merge. Most PRs pay very little for it — the libnode cache key below
+  # is derived from the build inputs only, so a docs/CI/test-infra PR reuses
+  # the binary the patches build already produced.
+  #
+  # `pull_request`, never `pull_request_target`: fork PRs must not get the
+  # BrowserStack secrets or contents:write.
   push:
     branches: [patches]
+  pull_request:
+    branches: [patches]
   workflow_dispatch:
+
+# One run per PR/branch. cancel-in-progress ONLY for pull_request: a push to
+# patches may be carrying the release gate chain and must never be cancelled
+# mid-flight.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
   SCCACHE_GHA_ENABLED: 'true'
@@ -28,11 +47,37 @@ permissions:
   contents: read
 
 jobs:
+  # Which flavors each platform builds for this event. Android is always both:
+  # ubuntu+KVM runners are 1x-billed and plentiful. iOS drops to full-only on
+  # pull_request because hosted macOS concurrency is capped far below Linux on
+  # every plan — the full release chain wants 8 concurrent macOS jobs, so two
+  # PRs running the complete iOS matrix can saturate the pool and queue the
+  # release pipeline behind them. What lite-on-iOS uniquely catches is
+  # lite-specific configure/link breakage, and build-ios still catches that at
+  # compile time on the merge run; the Tier-2 lists are identical across
+  # flavors (see the note in ios-simulator-tests.yml), so the runtime signal
+  # from the lite leg is near-duplicate. Pushes and releases run both.
+  flavors:
+    runs-on: ubuntu-24.04
+    outputs:
+      android: ${{ steps.f.outputs.android }}
+      ios: ${{ steps.f.outputs.ios }}
+    steps:
+      - id: f
+        run: |
+          echo 'android=["full","lite"]' >> "$GITHUB_OUTPUT"
+          if [ "$GITHUB_EVENT_NAME" = pull_request ]; then
+            echo 'ios=["full"]' >> "$GITHUB_OUTPUT"
+          else
+            echo 'ios=["full","lite"]' >> "$GITHUB_OUTPUT"
+          fi
+
   build-android:
+    needs: flavors
     strategy:
       fail-fast: false
       matrix:
-        flavor: [full, lite]
+        flavor: ${{ fromJSON(needs.flavors.outputs.android) }}
         config:
           - { os: ubuntu-24.04, target_arch: arm }
           - { os: ubuntu-24.04, target_arch: arm64 }
@@ -110,10 +155,11 @@ jobs:
           path: out_android
 
   build-ios:
+    needs: flavors
     strategy:
       fail-fast: false
       matrix:
-        flavor: [full, lite]
+        flavor: ${{ fromJSON(needs.flavors.outputs.ios) }}
         config:
           # macos-26 is Apple Silicon with current Xcode (matches local dev).
           # x86_64 (Intel Mac) simulator support was dropped for v24 — Intel
@@ -173,9 +219,9 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        flavor: [full, lite]
+        flavor: ${{ fromJSON(needs.flavors.outputs.android) }}
     runs-on: ubuntu-24.04
-    needs: build-android
+    needs: [flavors, build-android]
     env:
       NODEJS_MOBILE_FLAVOR: ${{ matrix.flavor }}
       FLAVOR_SUFFIX: ${{ matrix.flavor == 'lite' && '-lite' || '' }}
@@ -223,13 +269,19 @@ jobs:
   # dlopen'd addon resolves against. Reuses combine-android's artifact (no
   # rebuild — was a separate full build in mobile-napi-smoke.yml). The stronger
   # real-addon dlopen+run check lives in android-emulator-tests.yml.
+  # Runs per flavor: lite changes the configure flags that decide what gets
+  # linked in, so "full exports napi_*" is not evidence that lite does.
   napi-smoke-android:
-    needs: combine-android
+    needs: [flavors, combine-android]
+    strategy:
+      fail-fast: false
+      matrix:
+        flavor: ${{ fromJSON(needs.flavors.outputs.android) }}
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/download-artifact@v4
         with:
-          name: nodejs-mobile-android
+          name: nodejs-mobile-android${{ matrix.flavor == 'lite' && '-lite' || '' }}
           path: artifacts
 
       - name: Assert NAPI symbols are exported
@@ -256,9 +308,9 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        flavor: [full, lite]
+        flavor: ${{ fromJSON(needs.flavors.outputs.ios) }}
     runs-on: macos-26
-    needs: build-ios
+    needs: [flavors, build-ios]
     env:
       NODEJS_MOBILE_FLAVOR: ${{ matrix.flavor }}
       FLAVOR_SUFFIX: ${{ matrix.flavor == 'lite' && '-lite' || '' }}
@@ -309,11 +361,11 @@ jobs:
   # Consumes the nodejs-mobile-android artifact, so it smoke-tests the exact
   # binary that would ship — no rebuild. ubuntu + KVM keeps it at 1x billing.
   smoke-android:
-    needs: combine-android
+    needs: [flavors, combine-android]
     strategy:
       fail-fast: false
       matrix:
-        flavor: [full, lite]
+        flavor: ${{ fromJSON(needs.flavors.outputs.android) }}
     runs-on: ubuntu-24.04
     env:
       NODEJS_MOBILE_FLAVOR: ${{ matrix.flavor }}
@@ -372,11 +424,11 @@ jobs:
   # Tier 1 on-device smoke for iOS: install the testnode app on a booted
   # simulator and run a console.log via the freshly built NodeMobile.xcframework.
   smoke-ios:
-    needs: combine-ios
+    needs: [flavors, combine-ios]
     strategy:
       fail-fast: false
       matrix:
-        flavor: [full, lite]
+        flavor: ${{ fromJSON(needs.flavors.outputs.ios) }}
     runs-on: macos-26
     env:
       NODEJS_MOBILE_FLAVOR: ${{ matrix.flavor }}
@@ -428,6 +480,36 @@ jobs:
           xcrun simctl shutdown "${{ steps.sim.outputs.udid }}" || true
           xcrun simctl delete "${{ steps.sim.outputs.udid }}" || true
 
+  # The single required status check for this workflow. Branch protection
+  # should require `ci-required` rather than the individual jobs: the build
+  # matrix produces check names like "build-android (full, ubuntu-24.04,
+  # arm64)" that change whenever the matrix changes, so a hand-maintained
+  # required list silently stops enforcing the moment someone edits it.
+  #
+  # if: always() so this still runs (and fails) when something upstream of it
+  # failed; the explicit result check is what makes a skipped or cancelled job
+  # fail closed instead of passing vacuously. Tier-2 is intentionally absent —
+  # see the emulator-tests comment.
+  ci-required:
+    if: always()
+    needs:
+      - build-android
+      - build-ios
+      - combine-android
+      - combine-ios
+      - napi-smoke-android
+      - smoke-android
+      - smoke-ios
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Assert every required job succeeded
+        run: |
+          RESULTS='${{ join(needs.*.result, ' ') }}'
+          echo "results: $RESULTS"
+          for r in $RESULTS; do
+            [ "$r" = success ] || { echo "::error::a required job did not succeed ($r)"; exit 1; }
+          done
+
   # Decide whether this push is a release. A release happens whenever the
   # version of record (mobile-src/src/node_mobile_version.h) is NOT yet
   # tagged -- content-derived and idempotent: no magic commit wording, and a
@@ -435,7 +517,14 @@ jobs:
   # scheme (vX.Y.Z-R) and the legacy one (nodejs-mobile-X.Y.Z-R) count as
   # released. A commit subject starting 'release-dryrun:' forces the full
   # gate chain with publish in dry mode regardless of tag state.
+  # NEVER on pull_request. The release trigger is "version of record is not yet
+  # tagged", which is exactly the state of the release PR that Cut release
+  # opens — so without this guard, pushing the CHANGELOG edit that
+  # docs/RELEASING.md asks for would satisfy release-check on the PR branch and
+  # let `publish` tag and release from an unmerged PR. Skipping this job also
+  # skips device-smoke and publish, which need: it.
   release-check:
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-24.04
     permissions:
       contents: read
@@ -479,7 +568,10 @@ jobs:
     if: >-
       needs.release-check.outputs.release == 'true' ||
       needs.release-check.outputs.dryrun == 'true'
-    needs: [release-check, combine-android, combine-ios]
+    # Also needs the Tier-1 boot smokes: BrowserStack device minutes are the
+    # one genuinely metered resource here, so don't spend them on a binary that
+    # has already failed to start on an emulator.
+    needs: [release-check, combine-android, combine-ios, smoke-android, smoke-ios]
     # The called workflow needs actions:read (artifact download); a called
     # workflow cannot elevate beyond the caller's permissions, so grant it
     # here (the workflow default is contents:read only).
@@ -491,16 +583,19 @@ jobs:
     with:
       build_run_id: ${{ github.run_id }}
 
-  # Tier-2 gates: the curated JS subset on an Android emulator and an iOS
-  # simulator, run as part of this Build on release commits (they consume the
-  # combine artifacts of this run). This replaces the old mobile-test label
-  # contract, which cannot work under the patches model (release pushes have
-  # no mergeable PR to label).
+  # Tier-2: the curated JS subset on an Android emulator and an iOS simulator,
+  # consuming the combine artifacts of this run. Runs on EVERY event that gets
+  # this far — PR, push, release — because it is the project's only functional
+  # coverage of the mobile runtime, and gating it on releases meant a JS
+  # regression from an ordinary PR surfaced at tag time with a bisect surface
+  # of every commit since the last release.
+  #
+  # Deliberately NOT in ci-required. Emulator/simulator lifecycles (AVD boot,
+  # simctl races, adb disconnects) are the flakiest thing in this system, and a
+  # required check that flakes trains everyone to re-run or bypass — which
+  # costs more than the check is worth. Read it, don't merge through a red one.
   emulator-tests:
-    if: >-
-      needs.release-check.outputs.release == 'true' ||
-      needs.release-check.outputs.dryrun == 'true'
-    needs: [release-check, combine-android]
+    needs: combine-android
     permissions:
       contents: read
       actions: read
@@ -509,16 +604,14 @@ jobs:
       build_run_id: ${{ github.run_id }}
 
   simulator-tests:
-    if: >-
-      needs.release-check.outputs.release == 'true' ||
-      needs.release-check.outputs.dryrun == 'true'
-    needs: [release-check, combine-ios]
+    needs: [flavors, combine-ios]
     permissions:
       contents: read
       actions: read
     uses: ./.github/workflows/ios-simulator-tests.yml
     with:
       build_run_id: ${{ github.run_id }}
+      flavors: ${{ needs.flavors.outputs.ios }}
 
   # Publish: on a release commit, once every gate in this run is green, tag
   # the materialized tree and publish the GitHub prerelease with this run's

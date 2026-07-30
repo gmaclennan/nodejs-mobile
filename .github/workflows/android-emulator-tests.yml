@@ -3,15 +3,19 @@
 # testnode app, and drives test/parallel cases through the proxy harness.
 #
 # Runs on ubuntu + KVM (1x billing) rather than a macOS runner: the x86_64
-# system image runs natively under KVM, so the emulator is fast and cheap. Still
-# gated behind a nightly cron, the 'mobile-test' PR label, and workflow_dispatch
-# because a full libnode build plus an emulator session is ~30-45 min.
+# system image runs natively under KVM, so the emulator is fast and cheap. It
+# reuses the libnode build.yml already produced, so the session is ~30-45 min.
+#
+# Called from build.yml on every event that produces artifacts — PR, push and
+# release alike. It is advisory on PRs (not part of ci-required) because
+# emulator lifecycles flake; it is blocking on the release chain, where publish
+# needs: it.
 
 name: Android Emulator Tests
 
 on:
-  # Called from build.yml on release commits (Tier-2 gate); build_run_id
-  # points at the calling run so the artifact fetch targets it directly.
+  # Called from build.yml; build_run_id points at the calling run so the
+  # artifact fetch targets it directly.
   workflow_call:
     inputs:
       build_run_id:
@@ -40,8 +44,6 @@ permissions:
 
 jobs:
   android-emulator-tests:
-    # Cron and manual dispatch always run; on pull_request only when the
-    # triggering label is exactly 'mobile-test'.
     # Both flavors run the SAME curated list: it has no sqlite/inspector/
     # strip-types tests, the ICU tests self-skip via common.hasIntl (false under
     # intl=none), and the lone WebAssembly-named test only inspects a string
@@ -94,7 +96,7 @@ jobs:
           [ -n "$RUN" ] || RUN=$(gh run list --repo "$GITHUB_REPOSITORY" --workflow build.yml \
                   --commit "$SHA" --status success --limit 1 --json databaseId -q '.[0].databaseId')
           if [ -z "$RUN" ]; then
-            echo "::error::No successful Build run found for $SHA. Build only runs on push to its branch globs (main, icu, mobile/**, claude/**) or workflow_dispatch; dispatch/await Build for this SHA before the Tier-2 tests."
+            echo "::error::No successful Build run found for $SHA. Build runs on push to 'patches', on pull_request against 'patches', and on workflow_dispatch; dispatch/await Build for this SHA before running the Tier-2 tests standalone."
             exit 1
           fi
           # The matrix Build produces both flavors in one run, so fetch this
