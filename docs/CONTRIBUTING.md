@@ -65,20 +65,42 @@ upstream has made a patch obsolete. Platform-specific work should say so
 ## Review process
 
 Open PRs against the `patches` branch. Diffs are small by construction —
-patch files, `mobile-src/` files, and the tree hash — so review is a normal
-code review, not an archaeology exercise. CI is tiered:
+patch files, `mobile-src/` files, and the tree hash.
 
-- **on the PR** (minutes): byte-for-byte reconstruction (`verify`), per-patch
-  `./android-configure` validation, and the host smoke build;
-- **on merge**: the full build matrix, both flavors, plus the Tier-1 boot
-  smokes and the NAPI symbol smoke;
-- **on release**: everything above plus the Tier-2 emulator/simulator suites
-  and the Tier-3 real-device smoke, all gating an automated publish (see
-  [RELEASING.md](./RELEASING.md)).
+But a change to a `.patch` file is a **diff of a diff**, which is not what
+anyone wants to review. So every PR gets a `tree-diff` job that materializes
+both the base and the head of the PR and diffs the two reconstructed trees.
+The summary lands on the job page and the full patch is attached as the
+`materialized-tree-diff` artifact — read that to see the actual source change.
+It is a review aid and never fails the PR; `verify` is what gates.
+
+(On an upgrade PR — one that moves `upstream-base.txt` — that diff necessarily
+contains the whole upstream delta as well. The summary says so. Review the
+patch files directly in that case and use the tree diff only to confirm the
+fork-owned files survived the rebase.)
+
+The reviewer does **not** have to take the author's word for
+`expected-tree.txt`: `verify` recomputes it from a fresh upstream clone on
+every PR and fails with the correct hash. That's the one check no human can
+substitute for.
+
+CI is tiered:
+
+- **on the PR**: byte-for-byte reconstruction (`verify`), per-patch
+  `./android-configure` validation, the host build running the curated JS
+  list, the full cross-compile matrix, and the Tier-1 boot smokes — plus the
+  Tier-2 emulator/simulator suites, which run but are advisory;
+- **on merge**: the same, all of it blocking, with both flavors on both
+  platforms;
+- **on release**: everything above plus the Tier-3 real-device smoke, all
+  gating an automated publish (see [RELEASING.md](./RELEASING.md)).
+
+See [TESTING.md](./TESTING.md#what-ci-runs) for the job-by-job table and why
+Tier 2 is advisory rather than required.
 
 A clean `git am` is not proof of correctness — when a patch touches C++ or
-the build system, let the post-merge matrix finish before assuming an
-upgrade is sound.
+the build system, let the cross-compile matrix finish before assuming an
+upgrade is sound. Nothing before it compiles a line of target code.
 
 ## Upgrading to a newer upstream Node.js
 
