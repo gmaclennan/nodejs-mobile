@@ -46,9 +46,9 @@ Covered by test/parallel/test-mobile-fetch, which runs in the curated
 Tier-2 subset on both platforms and on the host build under --jitless
 (host-smoke), the configuration that reproduces the iOS engine.
 ---
- LICENSE                               | 23 ++++++++++++
- lib/internal/process/pre_execution.js | 54 +++++++++++++++++++++++++++
- 2 files changed, 77 insertions(+)
+ LICENSE                               | 23 +++++++++++
+ lib/internal/process/pre_execution.js | 55 +++++++++++++++++++++++++++
+ 2 files changed, 78 insertions(+)
 
 diff --git a/LICENSE b/LICENSE
 index 2842efa128..58e2bea8b3 100644
@@ -82,7 +82,7 @@ index 2842efa128..58e2bea8b3 100644
 +    SOFTWARE.
 +  """
 diff --git a/lib/internal/process/pre_execution.js b/lib/internal/process/pre_execution.js
-index e9ab2b2a89..fb3b52f3c0 100644
+index e9ab2b2a89..71dd143c51 100644
 --- a/lib/internal/process/pre_execution.js
 +++ b/lib/internal/process/pre_execution.js
 @@ -109,6 +109,7 @@ function prepareExecution(options) {
@@ -93,7 +93,7 @@ index e9ab2b2a89..fb3b52f3c0 100644
    setupTraceCategoryState();
    setupInspectorHooks();
    setupNetworkInspection();
-@@ -363,6 +364,59 @@ function setupEventsource() {
+@@ -363,6 +364,60 @@ function setupEventsource() {
    }
  }
  
@@ -105,7 +105,8 @@ index e9ab2b2a89..fb3b52f3c0 100644
 +// WebAssembly build of llhttp -- the failure is `WebAssembly is not defined`
 +// on the first request. Install the bundled pure-JS polyfill (deps/polywasm,
 +// which compiles wasm to JS with `new Function`, allowed under jitless) as a
-+// stand-in so those work out of the box. See doc_mobile/FAQ.md.
++// stand-in so those work out of the box. See docs/FAQ.md on the patches
++// branch.
 +//
 +// Runs here rather than in internal/bootstrap/* on purpose: the engine that
 +// builds the startup snapshot is the host's, which does have WebAssembly, so

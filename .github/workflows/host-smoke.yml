@@ -49,7 +49,7 @@ jobs:
       # without it undici's llhttp can't load and fetch() is dead. Passing
       # --jitless to the host build reproduces that engine exactly, so this
       # gates the polyfill on every push instead of only on device runs.
-      # See doc_mobile/TESTING.md "The fetch / WebAssembly gate".
+      # See docs/TESTING.md, "The fetch / WebAssembly gate".
       # NODEJS_MOBILE_EXPECT_WASM_IMPL makes the test assert which
       # implementation it actually ran on, so this stays a real gate: if a
       # future V8 kept WebAssembly under --jitless, or the install stopped

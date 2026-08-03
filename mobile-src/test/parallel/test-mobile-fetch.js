@@ -1,6 +1,7 @@
 'use strict';
 
-// Mobile gate for the global `fetch()` (doc_mobile/FAQ.md, "fetch on iOS").
+// Mobile gate for the global `fetch()` (see "Does fetch() work? What about
+// WebAssembly?" in docs/FAQ.md on the patches branch).
 //
 // undici parses HTTP with a WebAssembly build of llhttp, and the iOS build
 // runs V8 jitless -- Apple forbids JIT -- which leaves V8 with no WebAssembly

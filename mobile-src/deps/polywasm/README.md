@@ -15,7 +15,7 @@ build of llhttp — and so is everything undici backs (`Response`, `Request`,
 function to JavaScript with `new Function()`, which jitless V8 allows: the
 restriction is on machine code, not on parsing source.
 
-See [doc_mobile/FAQ.md](../../doc_mobile/FAQ.md#does-fetch-work-what-about-webassembly)
+See [FAQ.md](https://github.com/nodejs-mobile/nodejs-mobile/blob/patches/docs/FAQ.md#does-fetch-work-what-about-webassembly)
 for the user-facing behaviour and the polyfill's limits (no SIMD,
 threads/atomics, exception handling or GC; much slower than a real engine).
 
