@@ -145,6 +145,16 @@ jobs:
       - name: Stage NAPI/addon headers
         run: ./tools/copy_libnode_headers.sh android
 
+      # KNOWN ISSUE, not fixed here: on Android sccache is wired correctly
+      # (android_configure.py wraps CC/CXX) and reads work — a real run showed
+      # 3619 hits, 62.39% — but "Cache write errors" equalled "Cache misses"
+      # exactly, i.e. every new object failed to store. That is why a cache
+      # miss still costs the full ~25-30 min and why the hit rate never climbs
+      # past what an older run happened to populate. Reads succeed and writes
+      # fail, which points at the ghac backend rather than the wiring; the
+      # repo's 10 GB Actions cache quota is the first thing to check, since
+      # the actions/cache entries for out_android/out_ios are large and
+      # numerous. Diagnose from this step's output before changing anything.
       - name: sccache stats
         if: always()
         run: sccache --show-stats || true
@@ -200,15 +210,33 @@ jobs:
           path: out_ios_${{ env.TARGET_ARCH }}
           key: libnode-ios-${{ env.TARGET_ARCH }}${{ env.FLAVOR_SUFFIX }}-v1-${{ steps.ck.outputs.key }}
 
+      # This job has run sccache-action since it was written, but nothing ever
+      # wrapped the compiler with it: the fork's sccache wiring lives in
+      # android_configure.py only, and ios_framework_prepare.sh goes through
+      # plain ./configure (configure.py has no such wiring) and sets no
+      # CC/CXX of its own. So the server started and cached nothing. Set the
+      # wrapper here, the way node documents for ccache. CC_host/CXX_host are
+      # separate because this is a cross-compile: gyp builds mksnapshot and
+      # torque for the host, and those are a real slice of the build.
+      #
       # gyp-next needs setuptools at build time and a bare venv doesn't bundle
       # it (distutils was removed from the stdlib); install it explicitly.
       - name: Build
         if: steps.libnode-cache.outputs.cache-hit != 'true'
+        env:
+          CC: sccache clang
+          CXX: sccache clang++
+          CC_host: sccache clang
+          CXX_host: sccache clang++
         run: |
           python3.12 -m venv .
           source bin/activate
           python3.12 -m pip install setuptools
           ./tools/ios_framework_prepare.sh $TARGET_ARCH
+
+      - name: sccache stats
+        if: always()
+        run: sccache --show-stats || true
 
       - uses: actions/upload-artifact@v4
         with:
