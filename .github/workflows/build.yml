@@ -517,14 +517,26 @@ jobs:
   # scheme (vX.Y.Z-R) and the legacy one (nodejs-mobile-X.Y.Z-R) count as
   # released. A commit subject starting 'release-dryrun:' forces the full
   # gate chain with publish in dry mode regardless of tag state.
-  # NEVER on pull_request. The release trigger is "version of record is not yet
-  # tagged", which is exactly the state of the release PR that Cut release
-  # opens — so without this guard, pushing the CHANGELOG edit that
-  # docs/RELEASING.md asks for would satisfy release-check on the PR branch and
-  # let `publish` tag and release from an unmerged PR. Skipping this job also
-  # skips device-smoke and publish, which need: it.
+  # ONLY on a push to patches — the sole path by which a release is ever meant
+  # to happen (docs/RELEASING.md: the merge push is the release trigger, and a
+  # failed run self-heals on the *next push* because the version is still
+  # untagged). Both other events are live hazards, because the trigger is
+  # "version of record is not yet tagged" and that is true of any branch cut
+  # from a release PR before its tag exists:
+  #
+  #   - pull_request: Cut release opens a PR with the version already bumped,
+  #     and docs/RELEASING.md tells the maintainer to push a CHANGELOG edit to
+  #     it. That push would satisfy release-check on the PR branch.
+  #   - workflow_dispatch: Build is dispatchable against ANY ref. Dispatching
+  #     it on a feature branch to test something would otherwise run
+  #     device-smoke (real BrowserStack spend) and publish (tag + GitHub
+  #     release) from that branch.
+  #
+  # Skipping this job also skips device-smoke and publish, which need: it.
+  # Belt and braces: a deployment branch rule on the `release` Environment
+  # restricting it to patches would stop publish independently of this.
   release-check:
-    if: github.event_name != 'pull_request'
+    if: github.event_name == 'push' && github.ref == 'refs/heads/patches'
     runs-on: ubuntu-24.04
     permissions:
       contents: read
