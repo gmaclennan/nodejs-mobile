@@ -17,3 +17,4 @@
 0017-test-skip-adapt-parallel-and-sequential-tests-for-mo.patch
 0018-doc-build-mobile-notes-and-ignores.patch
 0019-ci-remove-upstream-only-workflows-and-config.patch
+0020-lib-install-a-WebAssembly-polyfill-when-the-engine-h.patch

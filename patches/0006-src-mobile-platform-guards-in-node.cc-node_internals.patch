@@ -1,7 +1,7 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Gregor MacLennan <gmaclennan@gmail.com>
 Date: Tue, 28 Jul 2026 19:20:27 +0000
-Subject: [PATCH 06/19] src: mobile platform guards in node.cc /
+Subject: [PATCH 06/20] src: mobile platform guards in node.cc /
  node_internals.h
 MIME-Version: 1.0
 Content-Type: text/plain; charset=UTF-8

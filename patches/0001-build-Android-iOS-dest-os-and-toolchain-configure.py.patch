@@ -1,7 +1,7 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Gregor MacLennan <gmaclennan@gmail.com>
 Date: Tue, 28 Jul 2026 19:20:24 +0000
-Subject: [PATCH 01/19] build: Android/iOS dest-os and toolchain (configure.py,
+Subject: [PATCH 01/20] build: Android/iOS dest-os and toolchain (configure.py,
  android_configure.py)
 
 ---

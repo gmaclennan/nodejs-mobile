@@ -40,6 +40,19 @@ full URL for anything user-facing. Say `on the patches branch` rather than a
 bare `docs/`: upstream ships its own `doc/` directory, so an unqualified
 path is ambiguous to a reader inside the tree.
 
+## Third-party code
+
+Third-party code is **vendored**, the way upstream Node vendors `deps/`:
+checked in, covered by `expected-tree.txt`, and updated by a script that
+downloads and verifies rather than by hand. There is one such dependency
+today — [`mobile-src/deps/polywasm`](../mobile-src/deps/polywasm/README.md),
+the WebAssembly polyfill iOS needs for `fetch()`; its README records the exact
+provenance (version, hashes, the single local edit) and the update procedure.
+
+Neither the build nor `scripts/prepare.sh` may depend on a package registry:
+reconstruction has to stay deterministic and offline-capable, and a dependency
+fetched at build time would sit outside the tree hash that anchors it.
+
 ## Commit messages
 
 Follow the [Node.js commit message guidelines](https://github.com/nodejs/node/blob/main/CONTRIBUTING.md#commit-message-guidelines):

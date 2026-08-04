@@ -105,3 +105,5 @@
 0019-ci-remove-upstream-only-workflows-and-config.patch	.github/workflows/tools.yml
 0019-ci-remove-upstream-only-workflows-and-config.patch	.github/workflows/update-openssl.yml
 0019-ci-remove-upstream-only-workflows-and-config.patch	.github/workflows/update-v8.yml
+0020-lib-install-a-WebAssembly-polyfill-when-the-engine-h.patch	LICENSE
+0020-lib-install-a-WebAssembly-polyfill-when-the-engine-h.patch	lib/internal/process/pre_execution.js

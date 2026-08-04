@@ -109,6 +109,13 @@ parallel/test-eventtarget-custom-inspect-does-not-throw
 parallel/test-eventtarget-memoryleakwarning
 parallel/test-eventtarget-once-twice
 parallel/test-fs-readfile
+# Fork-only, and the one entry here that is NOT pure JS: a global fetch()
+# against an in-process HTTP server. It is the gate for the WebAssembly
+# polyfill the iOS binary needs for fetch() to work at all (docs/FAQ.md on
+# the patches branch).
+# Verified on a host build run --jitless (the same engine iOS gets, gated by
+# host-smoke); the Tier-2 emulator/simulator run is what confirms it on device.
+parallel/test-mobile-fetch
 parallel/test-os-eol
 parallel/test-path-basename
 parallel/test-path-dirname

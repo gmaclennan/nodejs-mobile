@@ -43,7 +43,7 @@ for building one — about 1.5 MB instead of a 1 GB fork:
 | | |
 |---|---|
 | `upstream-base.txt` | the pinned upstream release tag (`v24.18.0`) |
-| `patches/` | 19 per-concern patches to upstream files, plus `series` (apply order) and `files.map` (which patch owns which file) |
+| `patches/` | 20 per-concern patches to upstream files, plus `series` (apply order) and `files.map` (which patch owns which file) |
 | `mobile-src/` | files that have no upstream counterpart — build scripts, the iOS framework project, test apps and harness |
 | `expected-tree.txt` | the git tree hash the reconstruction must produce |
 | `scripts/` | `prepare.sh` (recipe → source tree) and `regenerate-patches.py` (source tree → recipe) |

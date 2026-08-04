@@ -35,7 +35,7 @@ Every workflow that consumes a binary builds and tests **both flavors**
 |---|---|---|---|
 | `verify-patches.yml` → `verify` | ubuntu | push `patches` | the patch series + `mobile-src/` reconstruct the recorded tree byte-for-byte from a fresh upstream clone |
 | `verify-patches.yml` → `patch-stack-configure` | ubuntu | push `patches` | every patch passes `./android-configure` individually (~1 min/patch) |
-| `host-smoke.yml` | ubuntu | push `patches` | C++ patches compile; `node -e` runs on the host build |
+| `host-smoke.yml` | ubuntu | push `patches` | C++ patches compile; `node -e` runs on the host build; `test-mobile-fetch` passes on that build run `--jitless` (see below) |
 | `build.yml` → `smoke-{android,ios}` + `napi-smoke-android` | ubuntu+KVM / macos | push `patches` | the exact shipping artifact boots and runs JS (Tier 1); NAPI symbols in `.dynsym` |
 | `build.yml` → `emulator-tests` / `simulator-tests` | ubuntu+KVM / macos | releases (untagged version of record; required to publish) · dispatch | curated `test/parallel` subset + crc-native addon load on an x86_64 emulator and arm64 simulator (Tier 2) |
 | `build.yml` → `device-smoke` | ubuntu / macos-15 + BrowserStack | releases (untagged version of record; required to publish) · dispatch | boot smoke + crc-native addon load on **physical devices** — Android arm64 (Pixel 9, 16 KB pages) via Espresso and iPhone via XCUITest (Tier 3). Needs `BROWSERSTACK_USER`/`BROWSERSTACK_PW` secrets. |
@@ -71,6 +71,31 @@ deadline. Tests that can't run on mobile (`child_process`, `cluster`, `fork`,
 signals, OpenSSL-CLI, …) are skipped via the upstream
 `[$system==android]` / `[$system==ios]` sections of `test/*/*.status` — kept out
 of the test bodies.
+
+### The fetch / WebAssembly gate
+
+`test/parallel/test-mobile-fetch` is the one fork-only test in the curated
+list, and the one that isn't pure JS: it runs a `fetch()` against an
+in-process HTTP server. That exercises undici's WebAssembly build of llhttp,
+which on iOS runs on the bundled polywasm polyfill because a jitless V8 has no
+WebAssembly of its own ([FAQ](./FAQ.md#does-fetch-work-what-about-webassembly)).
+
+It also runs on **every push**, without a device: `host-smoke.yml` runs it on
+the host build with `--jitless`, which makes V8 drop its WebAssembly exactly
+as the iOS build does — so a regression in the polyfill or in its install path
+fails in ~10 minutes instead of waiting for a release-gated device run.
+
+```sh
+NODEJS_MOBILE_EXPECT_WASM_IMPL=polyfill ./out/Release/node --jitless \
+  test/parallel/test-mobile-fetch.js                              # host, polyfill path
+NODEJS_MOBILE_EXPECT_WASM_IMPL=engine ./out/Release/node \
+  test/parallel/test-mobile-fetch.js                              # host, V8's own wasm
+```
+
+The test reports which implementation it ran on, and asserts it when
+`NODEJS_MOBILE_EXPECT_WASM_IMPL` is set (`polyfill` | `engine`) -- so the
+jitless step can't silently degrade into testing native wasm if a future V8
+keeps WebAssembly under `--jitless`. The device runs leave it unset.
 
 ### The NAPI addon gate
 
