@@ -28,7 +28,13 @@ permissions:
 jobs:
   smoke-host:
     runs-on: ubuntu-24.04
-    timeout-minutes: 90
+    # Nothing wires a compiler cache into this build, so every run compiles V8
+    # from cold: ~75-85 min on a 4-core runner before a single test executes,
+    # then ~30 min for the suites below. 180 leaves real headroom while still
+    # catching a genuine hang, which the 360-minute default never would.
+    # Wiring up sccache here (build.yml installs it, but nothing sets the
+    # compiler wrapper) would cut this a lot and is worth doing separately.
+    timeout-minutes: 180
 
     steps:
       - uses: actions/checkout@v4
