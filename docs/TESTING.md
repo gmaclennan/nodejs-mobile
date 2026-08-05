@@ -26,6 +26,12 @@ normally. A test that calls `process.exit()` routes through libc `exit()` before
 node unwinds, so only an `atexit` `FAIL` fallback fires — such a test would be
 mis-scored. None of the curated tests call `process.exit()`.
 
+**Caveat:** `test-process-getactiveresources` asserts the exact set of active
+handles, which depends on what stdout *is*: no handle when it's a file (how
+`tools/test.py` runs every test), a `PipeWrap`/`TTYWrap` on a pipe or terminal.
+Running that one file by hand fails on stock upstream node the same way — run
+it through `tools/test.py`.
+
 ## What CI runs
 
 | Workflow (on the `patches` branch) | Runner | Trigger | Proves |
