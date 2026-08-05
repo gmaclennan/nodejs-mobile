@@ -143,6 +143,19 @@ jobs:
         run: |
           ./out/Release/node test/parallel/test-mobile-fetch.js
 
+      # --frozen-intrinsics is the one caller that inspects the polyfill's
+      # *shape* instead of just calling it: internal/freeze_intrinsics.js reads
+      # seven WebAssembly.*.prototype values as soon as the global exists, so a
+      # member polywasm doesn't implement doesn't break fetch() -- it stops the
+      # runtime from booting. That is how the missing LinkError/RuntimeError
+      # were found. Cheap to keep, and the only gate that covers it: the full
+      # parallel suite below is advisory, and mobile .status skips this test.
+      # See docs/TESTING.md, "The fetch / WebAssembly gate".
+      - name: frozen-intrinsics gate (jitless, polyfill path)
+        run: |
+          ./out/Release/node --jitless --frozen-intrinsics \
+            test/parallel/test-freeze-intrinsics.js
+
       # The same curated list the Tier-2 mobile workflows run, executed on the
       # host build. Everything in it is an upstream test that passes on mobile,
       # so it passes on a host build too unless a patch actually broke it —

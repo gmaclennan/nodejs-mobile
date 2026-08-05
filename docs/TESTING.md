@@ -26,6 +26,12 @@ normally. A test that calls `process.exit()` routes through libc `exit()` before
 node unwinds, so only an `atexit` `FAIL` fallback fires — such a test would be
 mis-scored. None of the curated tests call `process.exit()`.
 
+**Caveat:** `test-process-getactiveresources` asserts the exact set of active
+handles, which depends on what stdout *is*: no handle when it's a file (how
+`tools/test.py` runs every test), a `PipeWrap`/`TTYWrap` on a pipe or terminal.
+Running that one file by hand fails on stock upstream node the same way — run
+it through `tools/test.py`.
+
 ## What CI runs
 
 | Workflow (on the `patches` branch) | Runner | Trigger | Proves |
@@ -120,6 +126,22 @@ The test reports which implementation it ran on, and asserts it when
 `NODEJS_MOBILE_EXPECT_WASM_IMPL` is set (`polyfill` | `engine`) -- so the
 jitless step can't silently degrade into testing native wasm if a future V8
 keeps WebAssembly under `--jitless`. The device runs leave it unset.
+
+A third step runs upstream's `test-freeze-intrinsics` under the same jitless
+engine:
+
+```sh
+./out/Release/node --jitless --frozen-intrinsics \
+  test/parallel/test-freeze-intrinsics.js
+```
+
+`--frozen-intrinsics` is the one code path that reaches into the polyfill's
+shape rather than just calling it: `internal/freeze_intrinsics.js` reads seven
+`WebAssembly.*.prototype`s the moment the global exists, so a member the
+polyfill doesn't implement doesn't fail a `fetch()` — it stops the runtime from
+booting at all. That is how `LinkError` and `RuntimeError` missing from
+polywasm were found; keeping the step means the next such gap fails here
+instead of in an embedder's app.
 
 ### The NAPI addon gate
 

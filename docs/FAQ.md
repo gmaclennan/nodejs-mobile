@@ -67,6 +67,15 @@ Worth knowing:
 - **The supported subset is the wasm MVP plus some post-MVP proposals.** No
   SIMD, threads/atomics, exception handling, or GC. A module using those
   throws when the offending function is first called.
+- **The namespace itself is not quite complete.** polywasm provides `Module`,
+  `Instance`, `Memory`, `Table`, `Global`, `CompileError` and the
+  `compile`/`instantiate`/`validate` functions. `LinkError` and `RuntimeError`
+  are supplied on install, because they are part of the JS-API that node's own
+  internals construct (`internal/modules/esm/translators.js`) and that
+  `--frozen-intrinsics` reads the prototypes of at startup. `WebAssembly.Tag`
+  and `WebAssembly.Exception` are simply absent — code that feature-detects
+  them sees `undefined` rather than a thrown error, which is consistent with
+  exception handling being unsupported above.
 - **`UNDICI_NO_WASM_SIMD` is set to `1`** when the polyfill is installed.
   undici otherwise picks a SIMD build of llhttp, which polywasm compiles
   happily and then trips over on the first request (`Unsupported instruction:
