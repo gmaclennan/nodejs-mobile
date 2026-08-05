@@ -86,22 +86,18 @@ jobs:
       # node-android-* artifacts after combining, so pull the surviving combined
       # artifact (nodejs-mobile-android: bin/<abi>/libnode.so + headers) and stage
       # the ABI the emulator runs. Requires a successful Build for this SHA first.
-      - name: Fetch libnode (Android) from the latest Build run
-        env:
-          GH_TOKEN: ${{ github.token }}
+      # The matrix Build produces both flavors in one run, so fetch this
+      # flavor's combined artifact (nodejs-mobile-android[-lite]).
+      - name: Fetch libnode (Android) from the Build run
+        uses: ./.github/actions/fetch-build-artifact
+        with:
+          name: nodejs-mobile-android${{ env.FLAVOR_SUFFIX }}
+          dest: nm-android
+          build_run_id: ${{ inputs.build_run_id }}
+          token: ${{ github.token }}
+
+      - name: Stage libnode for the emulator ABI
         run: |
-          SHA="$GITHUB_SHA"
-          RUN='${{ inputs.build_run_id }}'
-          [ -n "$RUN" ] || RUN=$(gh run list --repo "$GITHUB_REPOSITORY" --workflow build.yml \
-                  --commit "$SHA" --status success --limit 1 --json databaseId -q '.[0].databaseId')
-          if [ -z "$RUN" ]; then
-            echo "::error::No successful Build run found for $SHA. Build runs on push to 'patches', on pull_request against 'patches', and on workflow_dispatch; dispatch/await Build for this SHA before running the Tier-2 tests standalone."
-            exit 1
-          fi
-          # The matrix Build produces both flavors in one run, so fetch this
-          # flavor's combined artifact (nodejs-mobile-android[-lite]).
-          echo "Reusing ${NODEJS_MOBILE_FLAVOR} libnode from Build run $RUN"
-          gh run download "$RUN" --repo "$GITHUB_REPOSITORY" --name "nodejs-mobile-android${FLAVOR_SUFFIX}" --dir nm-android
           mkdir -p "out_android/${TARGET_ARCH}"
           cp "nm-android/bin/${TARGET_ARCH}/libnode.so" "out_android/${TARGET_ARCH}/libnode.so"
           test -f "out_android/${TARGET_ARCH}/libnode.so" \

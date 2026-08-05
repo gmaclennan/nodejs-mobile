@@ -9,11 +9,36 @@ description: >
 runs:
   using: composite
   steps:
+    # A release run materializes in ~15 jobs, each cloning nodejs/node from
+    # GitHub — the longest gate chain's biggest network-flake surface. Cache
+    # one shallow clone per base tag and let prepare.sh clone from it locally.
+    # The integrity story is unchanged: prepare.sh still verifies the tree
+    # hash, and verify-patches.yml still reconstructs from a fresh GitHub
+    # clone on every push, so a poisoned cache cannot pass unnoticed.
+    - name: Read upstream base
+      id: base
+      shell: bash
+      run: echo "tag=$(grep -Ev '^\s*(#|$)' upstream-base.txt | head -n1 | tr -d '[:space:]')" >> "$GITHUB_OUTPUT"
+
+    - name: Cache upstream clone
+      uses: actions/cache@v4
+      with:
+        path: ${{ runner.temp }}/upstream-${{ steps.base.outputs.tag }}
+        key: upstream-${{ steps.base.outputs.tag }}
+
     - name: Reconstruct + swap into workspace
       shell: bash
+      env:
+        BASE_TAG: ${{ steps.base.outputs.tag }}
       run: |
         set -euo pipefail
-        scripts/prepare.sh "$RUNNER_TEMP/matsrc"
+        UP="$RUNNER_TEMP/upstream-$BASE_TAG"
+        if [ ! -d "$UP/.git" ]; then
+          git clone --depth 1 --branch "$BASE_TAG" https://github.com/nodejs/node.git "$UP"
+        fi
+        # file:// so git treats the shallow cache as a proper transport
+        # (a bare local path refuses to clone from a shallow repository).
+        UPSTREAM_REPO="file://$UP" scripts/prepare.sh "$RUNNER_TEMP/matsrc"
         # Replace the (tiny) patches checkout with the materialized tree.
         # The running workflow/action definitions were already loaded, so
         # deleting them from disk is safe.

@@ -70,22 +70,18 @@ jobs:
       # combining, so pull the surviving combined artifact (nodejs-mobile-ios: the
       # device+simulator NodeMobile.xcframework) and use it directly at the path
       # the testnode project references. Requires a successful Build for this SHA.
-      - name: Fetch NodeMobile.xcframework from the latest Build run
-        env:
-          GH_TOKEN: ${{ github.token }}
+      # The matrix Build produces both flavors in one run, so fetch this
+      # flavor's combined artifact (nodejs-mobile-ios[-lite]).
+      - name: Fetch NodeMobile.xcframework from the Build run
+        uses: ./.github/actions/fetch-build-artifact
+        with:
+          name: nodejs-mobile-ios${{ env.FLAVOR_SUFFIX }}
+          dest: nm-ios
+          build_run_id: ${{ inputs.build_run_id }}
+          token: ${{ github.token }}
+
+      - name: Stage xcframework
         run: |
-          SHA="$GITHUB_SHA"
-          RUN='${{ inputs.build_run_id }}'
-          [ -n "$RUN" ] || RUN=$(gh run list --repo "$GITHUB_REPOSITORY" --workflow build.yml \
-                  --commit "$SHA" --status success --limit 1 --json databaseId -q '.[0].databaseId')
-          if [ -z "$RUN" ]; then
-            echo "::error::No successful Build run found for $SHA. Build runs on push to 'patches', on pull_request against 'patches', and on workflow_dispatch; dispatch/await Build for this SHA before running the Tier-2 tests standalone."
-            exit 1
-          fi
-          # The matrix Build produces both flavors in one run, so fetch this
-          # flavor's combined artifact (nodejs-mobile-ios[-lite]).
-          echo "Reusing ${NODEJS_MOBILE_FLAVOR} NodeMobile.xcframework from Build run $RUN"
-          gh run download "$RUN" --repo "$GITHUB_REPOSITORY" --name "nodejs-mobile-ios${FLAVOR_SUFFIX}" --dir nm-ios
           mkdir -p out_ios
           rm -rf out_ios/NodeMobile.xcframework
           cp -R nm-ios/NodeMobile.xcframework out_ios/NodeMobile.xcframework
@@ -94,18 +90,9 @@ jobs:
 
       - name: Boot iPhone simulator
         id: boot-sim
-        run: |
-          # Newest available iOS runtime + the highest-numbered iPhone device
-          # type. Picking the *last* iPhone in simctl's (unsorted) list can grab
-          # an old model the newest runtime doesn't support, failing
-          # `simctl create` with SimError 403.
-          RUNTIME=$(xcrun simctl list runtimes -j | python3 -c "import json,sys; rs=sorted([x for x in json.load(sys.stdin)['runtimes'] if x.get('platform')=='iOS' and x.get('isAvailable')], key=lambda x:[int(n) for n in x['version'].split('.')]); print(rs[-1]['identifier'] if rs else '')")
-          DEVICE_TYPE=$(xcrun simctl list devicetypes -j | python3 -c "import json,sys,re; ds=sorted([x for x in json.load(sys.stdin)['devicetypes'] if re.match(r'iPhone \d', x['name'])], key=lambda x:int(re.match(r'iPhone (\d+)', x['name']).group(1))); print(ds[-1]['identifier'] if ds else '')")
-          echo "Using device=$DEVICE_TYPE runtime=$RUNTIME"
-          test -n "$DEVICE_TYPE" && test -n "$RUNTIME"
-          UDID=$(xcrun simctl create "nodejs-mobile-test" "$DEVICE_TYPE" "$RUNTIME")
-          xcrun simctl bootstatus "$UDID" -b
-          echo "udid=$UDID" >> "$GITHUB_OUTPUT"
+        uses: ./.github/actions/boot-ios-simulator
+        with:
+          device_name: nodejs-mobile-test
 
       - name: Prepare tests on simulator
         env:

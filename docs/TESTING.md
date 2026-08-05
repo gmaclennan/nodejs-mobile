@@ -39,9 +39,9 @@ it through `tools/test.py`.
 | `verify-patches.yml` → `verify` | ubuntu | PR · push `patches` | the patch series + `mobile-src/` reconstruct the recorded tree byte-for-byte from a fresh upstream clone |
 | `verify-patches.yml` → `patch-stack-configure` | ubuntu | PR · push `patches` | every patch passes `./android-configure` individually (~1 min/patch) |
 | `verify-patches.yml` → `tree-diff` | ubuntu | PR | *not a gate* — publishes the diff between the base and head **materialized trees** as a job summary + artifact, so review isn't a diff-of-a-diff |
-| `host-smoke.yml` | ubuntu | PR · push `patches` | C++ patches compile; `node -e` runs; `test-mobile-fetch` passes on that build run `--jitless` (see below); the curated list passes on the host build (plus the full `parallel` suite, advisory) |
+| `build.yml` → `smoke-host` | ubuntu | PR · push `patches` | C++ patches compile; `node -e` runs; `test-mobile-fetch` passes on that build run `--jitless` (see below); the curated list passes on the host build (plus the full `parallel` suite, advisory). Gates `ci-required` and `publish` |
 | `build.yml` → `build-*` / `combine-*` | ubuntu / macos | PR · push `patches` | the cross-compile actually succeeds — the only check that compiles target code |
-| `build.yml` → `smoke-{android,ios}` + `napi-smoke-android` | ubuntu+KVM / macos | PR · push `patches` | the exact shipping artifact boots and runs JS (Tier 1); NAPI symbols in `.dynsym` |
+| `build.yml` → `smoke-{android,ios}` (+ the NAPI symbol assert in `combine-android`) | ubuntu+KVM / macos | PR · push `patches` | the exact shipping artifact boots and runs JS (Tier 1); NAPI symbols in `.dynsym` |
 | `build.yml` → `emulator-tests` / `simulator-tests` | ubuntu+KVM / macos | PR · push `patches` · releases | curated `test/parallel` subset + crc-native addon load on an x86_64 emulator and arm64 simulator (Tier 2) |
 | `build.yml` → `device-smoke` | ubuntu / macos-15 + BrowserStack | releases (untagged version of record; required to publish) · dispatch | boot smoke + crc-native addon load on **physical devices** — Android arm64 (Pixel 9, 16 KB pages) via Espresso and iPhone via XCUITest (Tier 3). Needs `BROWSERSTACK_USER`/`BROWSERSTACK_PW` secrets. |
 
@@ -110,7 +110,7 @@ in-process HTTP server. That exercises undici's WebAssembly build of llhttp,
 which on iOS runs on the bundled polywasm polyfill because a jitless V8 has no
 WebAssembly of its own ([FAQ](./FAQ.md#does-fetch-work-what-about-webassembly)).
 
-It also runs on **every PR and push**, without a device: `host-smoke.yml` runs
+It also runs on **every PR and push**, without a device: `build.yml`'s `smoke-host` job runs
 it on the host build with `--jitless`, which makes V8 drop its WebAssembly
 exactly as the iOS build does — so a regression in the polyfill or in its
 install path fails in ~10 minutes, at the PR boundary.

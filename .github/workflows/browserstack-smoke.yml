@@ -59,16 +59,16 @@ jobs:
           fetch-depth: 1
       - uses: ./.github/actions/materialize
 
-      - name: Fetch libnode (Android) from the latest Build run
-        env:
-          GH_TOKEN: ${{ github.token }}
+      - name: Fetch libnode (Android) from the Build run
+        uses: ./.github/actions/fetch-build-artifact
+        with:
+          name: nodejs-mobile-android
+          dest: nm-android
+          build_run_id: ${{ inputs.build_run_id }}
+          token: ${{ github.token }}
+
+      - name: Stage libnode for the device ABI
         run: |
-          SHA="$GITHUB_SHA"
-          RUN='${{ inputs.build_run_id }}'
-          [ -n "$RUN" ] || RUN=$(gh run list --repo "$GITHUB_REPOSITORY" --workflow build.yml \
-                  --commit "$SHA" --status success --limit 1 --json databaseId -q '.[0].databaseId')
-          [ -n "$RUN" ] || { echo "::error::No successful Build run for $SHA — run Build first."; exit 1; }
-          gh run download "$RUN" --repo "$GITHUB_REPOSITORY" --name nodejs-mobile-android --dir nm-android
           mkdir -p "out_android/${TARGET_ABI}"
           cp "nm-android/bin/${TARGET_ABI}/libnode.so" "out_android/${TARGET_ABI}/libnode.so"
 
@@ -140,16 +140,16 @@ jobs:
           fetch-depth: 1
       - uses: ./.github/actions/materialize
 
-      - name: Fetch NodeMobile.xcframework from the latest Build run
-        env:
-          GH_TOKEN: ${{ github.token }}
+      - name: Fetch NodeMobile.xcframework from the Build run
+        uses: ./.github/actions/fetch-build-artifact
+        with:
+          name: nodejs-mobile-ios
+          dest: nm-ios
+          build_run_id: ${{ inputs.build_run_id }}
+          token: ${{ github.token }}
+
+      - name: Stage xcframework
         run: |
-          SHA="$GITHUB_SHA"
-          RUN='${{ inputs.build_run_id }}'
-          [ -n "$RUN" ] || RUN=$(gh run list --repo "$GITHUB_REPOSITORY" --workflow build.yml \
-                  --commit "$SHA" --status success --limit 1 --json databaseId -q '.[0].databaseId')
-          [ -n "$RUN" ] || { echo "::error::No successful Build run for $SHA — run Build first."; exit 1; }
-          gh run download "$RUN" --repo "$GITHUB_REPOSITORY" --name nodejs-mobile-ios --dir nm-ios
           mkdir -p out_ios
           rm -rf out_ios/NodeMobile.xcframework
           cp -R nm-ios/NodeMobile.xcframework out_ios/NodeMobile.xcframework
