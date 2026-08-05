@@ -163,9 +163,11 @@ jobs:
             # arch) must exceed the proxy's 120s verdict poll so the PROXY is the
             # authoritative deadline and emits its no-verdict diagnostic before
             # test.py kills it (default 120s is co-equal on an x86_64 host -> race).
-            # pipefail + count guard: a missing/emptied list must fail loudly, not
-            # run zero tests and pass.
-            set -o pipefail
+            # Count guard: a missing/emptied list must fail loudly, not run zero
+            # tests and pass. NB: android-emulator-runner runs each line as a
+            # separate `/usr/bin/sh -c` (dash) — `set -o pipefail` is an illegal
+            # option there and set state wouldn't persist across lines anyway;
+            # the one-line guard alone covers the missing/empty-list case.
             test "$(grep -cvE '^[[:space:]]*#|^[[:space:]]*$' tools/mobile-test/tier2-parallel-tests.txt)" -ge 100 || { echo "::error::curated list missing or implausibly small"; exit 1; }
             grep -vE '^[[:space:]]*#|^[[:space:]]*$' tools/mobile-test/tier2-parallel-tests.txt | xargs ./tools/test.py -j 1 --flaky-tests=skip --timeout=300 --arch android
 
