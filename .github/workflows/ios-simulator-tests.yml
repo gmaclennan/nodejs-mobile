@@ -41,7 +41,7 @@ permissions:
 jobs:
   ios-simulator-tests:
     # Both flavors run the SAME curated list (true full-parity, no exclusions):
-    # verified all 151 pass on a local lite build despite iOS lite dropping the
+    # verified the whole list passes on a local lite build despite iOS lite dropping the
     # WebAssembly + Intl globals (--v8-lite-mode + intl=none) — the ICU tests
     # self-skip via common.hasIntl and the WebAssembly-named test only inspects
     # a string fixture. Each flavor fetches its own framework from the same
@@ -121,6 +121,14 @@ jobs:
           # arch) must exceed the proxy's 120s verdict poll so the PROXY is the
           # authoritative deadline and emits its no-verdict diagnostic before
           # test.py kills it.
+          #
+          # pipefail + count guard: without them a missing/emptied list file
+          # passes vacuously — grep's failure is masked by the pipe, and BSD
+          # xargs runs nothing (exit 0) on empty input.
+          set -o pipefail
+          COUNT=$(grep -cvE '^[[:space:]]*#|^[[:space:]]*$' tools/mobile-test/tier2-parallel-tests.txt)
+          [ "$COUNT" -ge 100 ] || { echo "::error::curated list missing or implausibly small ($COUNT entries)"; exit 1; }
+          echo "running $COUNT curated tests"
           grep -vE '^[[:space:]]*#|^[[:space:]]*$' tools/mobile-test/tier2-parallel-tests.txt \
             | xargs ./tools/test.py -j 1 --flaky-tests=skip --timeout=300 \
                 --arch ios --shell="./tools/mobile-test/ios/node-ios-sim-proxy.sh"

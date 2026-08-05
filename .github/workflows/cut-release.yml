@@ -39,9 +39,21 @@ jobs:
         id: v
         run: |
           XYZ=$(grep -Ev '^\s*(#|$)' upstream-base.txt | head -n1 | tr -d '[:space:]' | sed 's/^v//')
+          # Only a real 404 counts as "revision free". A transient API failure
+          # must abort — reading it as absence reuses a taken -R, and the
+          # release PR then merges into a silent no-op (release-check sees the
+          # existing tag and never publishes).
+          tag_exists() {
+            local out
+            if out=$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/tags/$1" 2>&1); then
+              return 0
+            fi
+            printf '%s' "$out" | grep -q 'HTTP 404' && return 1
+            echo "::error::tag probe for $1 failed (not a 404): $out"
+            exit 1
+          }
           R=0
-          while gh api "repos/${GITHUB_REPOSITORY}/git/ref/tags/v${XYZ}-${R}" >/dev/null 2>&1 \
-             || gh api "repos/${GITHUB_REPOSITORY}/git/ref/tags/nodejs-mobile-${XYZ}-${R}" >/dev/null 2>&1; do
+          while tag_exists "v${XYZ}-${R}" || tag_exists "nodejs-mobile-${XYZ}-${R}"; do
             R=$((R + 1))
           done
           V="${XYZ}-${R}"

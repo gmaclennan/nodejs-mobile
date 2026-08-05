@@ -27,8 +27,98 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # The tree-hash check (prepare.sh) proves the recipe reproduces the
+      # reviewed tree, but not that the recipe's own bookkeeping is coherent —
+      # a hand-edited .patch (banned but unpoliced) can pass the hash while
+      # breaking the next contributor's regenerate loop.
+      - name: Lint the recipe partition
+        run: |
+          python3 - <<'EOF'
+          import os, re, sys
+          fail = []
+          series = [l.strip() for l in open('patches/series')
+                    if l.strip() and not l.startswith('#')]
+          on_disk = sorted(f for f in os.listdir('patches')
+                           if re.match(r'\d{4}-.*\.patch$', f))
+          if sorted(series) != on_disk:
+              fail.append(f'series/on-disk mismatch: only-in-series='
+                          f'{sorted(set(series) - set(on_disk))} '
+                          f'orphan-files={sorted(set(on_disk) - set(series))}')
+          owned = {}
+          for line in open('patches/files.map'):
+              line = line.rstrip('\n')
+              if not line or line.startswith('#'):
+                  continue
+              patch, path = line.split('\t', 1)
+              if patch not in series:
+                  fail.append(f'files.map references unknown patch: {patch}')
+              if path in owned:
+                  fail.append(f'{path} owned by both {owned[path]} and {patch}')
+              owned[path] = patch
+          # Each patch's diff paths must exactly match its files.map lines.
+          for p in series:
+              diffed = set()
+              for line in open(os.path.join('patches', p)):
+                  m = re.match(r'^diff --git a/(.*) b/', line)
+                  if m:
+                      diffed.add(m.group(1))
+              mapped = {path for path, patch in owned.items() if patch == p}
+              if diffed != mapped:
+                  fail.append(f'{p}: diff paths != files.map '
+                              f'(diff-only={sorted(diffed - mapped)}, '
+                              f'map-only={sorted(mapped - diffed)})')
+          # A path owned by a patch must not also be a fork-only file — the
+          # mobile-src overlay would silently overwrite the patched version.
+          ms = {l[len('mobile-src/'):] for l in
+                os.popen('git ls-files -- mobile-src').read().splitlines() if l}
+          both = ms & set(owned)
+          if both:
+              fail.append(f'paths in both files.map and mobile-src/: {sorted(both)}')
+          if fail:
+              print('\n'.join('::error::' + f for f in fail))
+              sys.exit(1)
+          print(f'recipe partition OK: {len(series)} patches, '
+                f'{len(owned)} owned paths, {len(ms)} fork-only files')
+          EOF
+
       - name: Reconstruct + verify
         run: scripts/prepare.sh out
+
+      # The curated Tier-2 list is the functional gate; validate it against
+      # the materialized tree so an upstream bump can't silently shrink it.
+      # tools/test.py ignores a path that matches nothing, so a deleted or
+      # renamed upstream test would otherwise vanish from the gate while every
+      # job stays green. process.exit() is banned by the harness contract
+      # (libc exit() beats the verdict write — docs/TESTING.md).
+      - name: Lint the curated Tier-2 list
+        run: |
+          set -euo pipefail
+          cd out
+          fail=0
+          count=0
+          while IFS= read -r t; do
+            case "$t" in ''|\#*) continue ;; esac
+            count=$((count + 1))
+            if [ ! -f "test/$t.js" ] && [ ! -f "test/$t.mjs" ]; then
+              echo "::error::curated entry has no test file: $t"
+              fail=1
+              continue
+            fi
+            f="test/$t.js"; [ -f "$f" ] || f="test/$t.mjs"
+            if grep -qE 'process\.exit\(' "$f"; then
+              echo "::error::curated entry calls process.exit() (mis-scored by the per-process harness): $t"
+              fail=1
+            fi
+          done < tools/mobile-test/tier2-parallel-tests.txt
+          echo "curated list: $count entries validated"
+          [ "$count" -ge 100 ] || { echo "::error::curated list implausibly small ($count)"; fail=1; }
+          [ "$fail" -eq 0 ]
+
+      # Minimal-test-edit policy (docs/TESTING.md): the script says it fails
+      # CI, so CI must actually run it. The prepare.sh clone carries the
+      # upstream base tag the audit diffs against.
+      - name: Audit test edits
+        run: cd out && ./tools/mobile-test/audit-test-edits.sh
 
       - name: Report
         if: always()
@@ -72,9 +162,12 @@ jobs:
       - name: Diff the reconstructed trees
         run: |
           cd "$RUNNER_TEMP"
-          # --no-index exits 1 when the trees differ, which is the normal case.
-          git diff --no-index --stat mat-base mat-head > tree-diff.stat || true
-          git diff --no-index          mat-base mat-head > tree-diff.patch || true
+          # --no-index exits 1 when the trees differ (the normal case), but a
+          # real git failure (exit > 1) must not silently publish an empty
+          # diff a reviewer could mistake for "no source change".
+          rc0() { local rc=0; "$@" || rc=$?; [ "$rc" -le 1 ] || exit "$rc"; }
+          rc0 git diff --no-index --stat mat-base mat-head > tree-diff.stat
+          rc0 git diff --no-index          mat-base mat-head > tree-diff.patch
 
           BB=$(grep -Ev '^\s*(#|$)' "$GITHUB_WORKSPACE/base/upstream-base.txt" | head -n1 | tr -d '[:space:]')
           HB=$(grep -Ev '^\s*(#|$)' "$GITHUB_WORKSPACE/head/upstream-base.txt" | head -n1 | tr -d '[:space:]')

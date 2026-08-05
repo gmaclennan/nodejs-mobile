@@ -32,7 +32,7 @@ git -C "${OUT}" config user.name  "${GIT_AUTHOR_NAME:-nodejs-mobile}"
 git -C "${OUT}" config user.email "${GIT_AUTHOR_EMAIL:-nodejs-mobile@invalid}"
 
 echo "2/4 Applying $(wc -l < "${HERE}/patches/series" | tr -d ' ') patches..."
-while IFS= read -r p; do
+while IFS= read -r p || [ -n "${p}" ]; do
   [ -z "${p}" ] && continue
   case "${p}" in \#*) continue ;; esac
   # --3way: merge via embedded blob context when upstream drifted; real
@@ -43,7 +43,14 @@ while IFS= read -r p; do
 done < "${HERE}/patches/series"
 
 echo "3/4 Overlaying mobile-src/ (fork-only files)..."
-( cd "${HERE}/mobile-src" && tar cf - . ) | ( cd "${OUT}" && tar xf - )
+# Enumerate via git, not the raw working dir: an untracked-and-ignored file
+# (.DS_Store, editor droppings) must not enter the product tree — it would
+# change the tree hash to one CI's clean checkout can never reproduce.
+# --cached picks up tracked files (working-tree content), --others
+# --exclude-standard picks up new not-yet-committed files from the
+# regenerate loop while honoring the gitignores.
+( cd "${HERE}/mobile-src" && git ls-files -z --cached --others --exclude-standard . \
+  | tar cf - --null -T - ) | ( cd "${OUT}" && tar xf - )
 # -f: some tracked fork files (Xcode project internals) match the tree's own
 # .gitignore patterns; the overlay must land them all regardless.
 git -C "${OUT}" add -A -f

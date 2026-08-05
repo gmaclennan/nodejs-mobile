@@ -164,6 +164,11 @@ jobs:
       - name: Run the curated Tier-2 list on the host build
         run: |
           source bin/activate
+          # pipefail + count guard: a missing/emptied list must fail loudly,
+          # not run the wrong suite (GNU xargs) or nothing (BSD xargs).
+          set -o pipefail
+          COUNT=$(grep -cvE '^[[:space:]]*#|^[[:space:]]*$' tools/mobile-test/tier2-parallel-tests.txt)
+          [ "$COUNT" -ge 100 ] || { echo "::error::curated list missing or implausibly small ($COUNT entries)"; exit 1; }
           grep -vE '^[[:space:]]*#|^[[:space:]]*$' tools/mobile-test/tier2-parallel-tests.txt \
             | xargs ./tools/test.py -j "$(nproc)" --flaky-tests=skip
 
