@@ -99,6 +99,12 @@ jobs:
       TARGET_ARCH: ${{ matrix.config.target_arch }}
       NODEJS_MOBILE_FLAVOR: ${{ matrix.flavor }}
       FLAVOR_SUFFIX: ${{ matrix.flavor == 'lite' && '-lite' || '' }}
+      # Job-level (not step-level on Build) so the cache key can hash it: a
+      # change to these flags must invalidate the cached libnode, or every
+      # later run — including a release — restores and ships a binary built
+      # with the old flags. Still never in workflow env: it would leak into
+      # the iOS link, which Apple's ld rejects ("ld: unknown options: -z").
+      ANDROID_LDFLAGS: '-Wl,-z,max-page-size=16384'
 
     steps:
       - uses: actions/checkout@v4
@@ -129,8 +135,12 @@ jobs:
       - name: Compute libnode cache key
         id: ck
         run: |
+          # The trailing printf folds in the build parameters that live in this
+          # workflow file (LDFLAGS, target SDK) — they change the shipped
+          # binary, so they must change the key.
           H=$( { git rev-parse "HEAD:src" "HEAD:deps" "HEAD:lib" "HEAD:tools/v8_gypfiles" "HEAD:tools/gyp" "HEAD:tools/icu"; \
                  git hash-object node.gyp node.gypi common.gypi configure configure.py android-configure android_configure.py tools/android_build.sh tools/copy_libnode_headers.sh; \
+                 printf '%s\n' "$ANDROID_LDFLAGS" "$ANDROID_TARGET_SDK_VERSION"; \
                } | git hash-object --stdin )
           echo "key=$H" >> "$GITHUB_OUTPUT"
 
@@ -145,7 +155,7 @@ jobs:
         if: steps.libnode-cache.outputs.cache-hit != 'true'
         env:
           MY_ANDROID_NDK_HOME: ${{ steps.setup-ndk.outputs.ndk-path }}
-          LDFLAGS: '-Wl,-z,max-page-size=16384'
+          LDFLAGS: ${{ env.ANDROID_LDFLAGS }}
           # sccache's R2 backend. Scoped to this step rather than workflow env so
           # the credentials are never in scope for the third-party actions the
           # other jobs run (setup-ndk, upload-artifact, the BrowserStack smoke).
@@ -245,13 +255,15 @@ jobs:
         uses: mozilla-actions/sccache-action@9e7fa8a12102821edf02ca5dbea1acd0f89a2696 # v0.0.10
 
       # See build-android: key the built framework on the git tree of the build
-      # inputs so test-infra-only pushes reuse it. Bump -vN if the macos runner
-      # image's Xcode/SDK changes (the iOS toolchain isn't pinned like the NDK).
+      # inputs so test-infra-only pushes reuse it. The Xcode version is folded
+      # into the key so a silent runner-image Xcode/SDK bump rebuilds instead
+      # of restoring a framework built by the previous toolchain.
       - name: Compute libnode cache key
         id: ck
         run: |
           H=$( { git rev-parse "HEAD:src" "HEAD:deps" "HEAD:lib" "HEAD:tools/v8_gypfiles" "HEAD:tools/gyp" "HEAD:tools/icu"; \
                  git hash-object node.gyp node.gypi common.gypi configure configure.py tools/ios_framework_prepare.sh tools/copy_libnode_headers.sh; \
+                 xcodebuild -version; \
                } | git hash-object --stdin )
           echo "key=$H" >> "$GITHUB_OUTPUT"
 
@@ -374,10 +386,14 @@ jobs:
           done
           cp -R out_android/libnode/include/* artifacts/include
 
+      # overwrite: artifacts are immutable within a run, and that includes
+      # re-run attempts — without this, "Re-run all jobs" (the standard answer
+      # to Tier-1/2 flake, including on a release run) 409s right here.
       - uses: actions/upload-artifact@v4
         with:
           name: nodejs-mobile-android${{ env.FLAVOR_SUFFIX }}
           path: artifacts
+          overwrite: true
 
       # Delete only this flavor's per-arch artifacts so the other flavor's
       # combine leg (running in parallel) can still find its inputs.
@@ -412,7 +428,7 @@ jobs:
           nm -D --defined-only artifacts/bin/arm64-v8a/libnode.so > exported_symbols.txt
           missing=0
           for sym in napi_get_cb_info napi_create_string_utf8 napi_throw_error; do
-            if grep -qE "T $sym" exported_symbols.txt; then
+            if grep -qE "T ${sym}\$" exported_symbols.txt; then
               echo "OK: $sym is exported"
             else
               echo "MISSING: $sym is not exported"
@@ -467,10 +483,12 @@ jobs:
           ./tools/copy_libnode_headers.sh ios
           cp -R out_ios/libnode/include/* artifacts/include
 
+      # overwrite: see the note on combine-android's upload.
       - uses: actions/upload-artifact@v4
         with:
           name: nodejs-mobile-ios${{ env.FLAVOR_SUFFIX }}
           path: artifacts
+          overwrite: true
 
       - uses: geekyeggo/delete-artifact@176a747ab7e287e3ff4787bf8a148716375ca118 # v6.0.0
         with:
@@ -682,9 +700,15 @@ jobs:
           case "$(git log -1 --format=%s)" in release-dryrun:*) DR=true ;; esac
           REL=true
           for t in "v${V}" "nodejs-mobile-${V}"; do
-            if gh api "repos/${GITHUB_REPOSITORY}/git/ref/tags/${t}" >/dev/null 2>&1; then
+            # Only a real 404 means "not tagged". A transient API failure must
+            # not be read as absence — that would start a release run for an
+            # already-released version.
+            if out=$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/tags/${t}" 2>&1); then
               echo "tag ${t} exists"
               REL=false
+            elif ! printf '%s' "$out" | grep -q 'HTTP 404'; then
+              echo "::error::tag probe for ${t} failed (not a 404): $out"
+              exit 1
             fi
           done
           [ "$DR" = "true" ] && REL=false
@@ -785,6 +809,18 @@ jobs:
           awk '/^## /{c++} c==1{print} c==2{exit}' docs/CHANGELOG.md \
             > "$RUNNER_TEMP/release-notes.md"
           wc -l < "$RUNNER_TEMP/release-notes.md"
+          # The first CHANGELOG section must actually be this release's, and
+          # the cut-release TODO stub must have been filled in — otherwise the
+          # published notes are wrong/placeholder text. Advisory on a dry run
+          # (a release-dryrun: push legitimately predates the CHANGELOG stub).
+          bad=""
+          head -1 "$RUNNER_TEMP/release-notes.md" | grep -qF "Version ${V}" \
+            || bad="first CHANGELOG section is not for ${V}"
+          grep -q 'TODO' "$RUNNER_TEMP/release-notes.md" \
+            && bad="release notes still contain the cut-release TODO stub — fill in docs/CHANGELOG.md"
+          if [ -n "$bad" ]; then
+            if [ "$DRY" = "1" ]; then echo "::warning::$bad"; else echo "::error::$bad"; exit 1; fi
+          fi
 
       - uses: ./.github/actions/materialize
 
@@ -816,6 +852,19 @@ jobs:
           pack() { # $1 = artifact name, $2 = zip basename
             local src="dl/$1"
             [ -d "$src" ] || { echo "::error::artifact $1 missing from this run"; exit 1; }
+            # The payload the plugins consume must actually be inside before
+            # this becomes a public release asset.
+            case "$1" in
+              nodejs-mobile-android*)
+                for abi in arm64-v8a armeabi-v7a x86_64; do
+                  [ -f "$src/bin/$abi/libnode.so" ] \
+                    || { echo "::error::$1: bin/$abi/libnode.so missing"; exit 1; }
+                done ;;
+              nodejs-mobile-ios*)
+                [ -f "$src/NodeMobile.xcframework/Info.plist" ] \
+                  || { echo "::error::$1: NodeMobile.xcframework/Info.plist missing"; exit 1; } ;;
+            esac
+            [ -d "$src/include" ] || { echo "::error::$1: include/ missing"; exit 1; }
             ( cd "$src" && zip -qr "$GITHUB_WORKSPACE/out/$2-${V}.zip" . )
             echo "packed $2-${V}.zip"
           }

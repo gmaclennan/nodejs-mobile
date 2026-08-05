@@ -115,8 +115,12 @@ jobs:
         env:
           BROWSERSTACK_USER: ${{ secrets.BROWSERSTACK_USER }}
           BROWSERSTACK_PW: ${{ secrets.BROWSERSTACK_PW }}
+          # Via env, not inline interpolation: a quote in the dispatch input
+          # must not be able to break out into this shell (which holds the
+          # BrowserStack credentials).
+          DEVICES_INPUT: ${{ inputs.android_devices }}
         run: |
-          DEVICES='${{ inputs.android_devices }}'
+          DEVICES="$DEVICES_INPUT"
           [ -n "$DEVICES" ] || DEVICES="$DEFAULT_ANDROID_DEVICES"
           ./tools/mobile-test/browserstack/run-bs-build.sh espresso \
             tools/mobile-test/android/testnode/app/build/outputs/apk/debug/app-debug.apk \
@@ -196,8 +200,10 @@ jobs:
         env:
           BROWSERSTACK_USER: ${{ secrets.BROWSERSTACK_USER }}
           BROWSERSTACK_PW: ${{ secrets.BROWSERSTACK_PW }}
+          # Via env — see the Android leg.
+          DEVICES_INPUT: ${{ inputs.ios_devices }}
         run: |
-          DEVICES='${{ inputs.ios_devices }}'
+          DEVICES="$DEVICES_INPUT"
           [ -n "$DEVICES" ] || DEVICES="$DEFAULT_IOS_DEVICES"
           ./tools/mobile-test/browserstack/run-bs-build.sh xcuitest \
             tools/mobile-test/ios/testnode/testnode.ipa \

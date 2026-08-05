@@ -76,6 +76,28 @@ def main():
     out = os.path.abspath(sys.argv[1])
     base = read_base()
 
+    # Emitted patches must not depend on whoever runs this: a user-level
+    # format.* or diff.* setting (format.suffix, format.coverLetter,
+    # diff.srcPrefix, ...) changes format-patch's output enough to corrupt
+    # series/files.map on rewrite. Repo-local config (the identity prepare.sh
+    # sets in out/) still applies; provide a fallback ident for trees that
+    # lack one, since the synthesized committer never reaches the patches.
+    os.environ['GIT_CONFIG_GLOBAL'] = os.devnull
+    os.environ['GIT_CONFIG_SYSTEM'] = os.devnull
+    os.environ.setdefault('GIT_COMMITTER_NAME', 'nodejs-mobile')
+    os.environ.setdefault('GIT_COMMITTER_EMAIL', 'nodejs-mobile@invalid')
+    os.environ.setdefault('GIT_AUTHOR_NAME', 'nodejs-mobile')
+    os.environ.setdefault('GIT_AUTHOR_EMAIL', 'nodejs-mobile@invalid')
+
+    # Uncommitted edits in out/ would be silently left out of the regenerated
+    # patches (only base..HEAD is read) while the printed tree hash looks
+    # authoritative — refuse instead.
+    dirty = sh('git', 'status', '--porcelain', '--untracked-files=no', cwd=out)
+    if dirty.strip():
+        sys.exit('error: uncommitted changes in ' + out +
+                 ' — commit them there first (any shape of commits is fine):\n'
+                 + dirty)
+
     series = [l.strip() for l in open(os.path.join(PATCHES, 'series'))
               if l.strip() and not l.startswith('#')]
     owned = {}   # path -> patch
@@ -111,6 +133,17 @@ def main():
     if stray:
         sys.exit(f'error: files.map references patches missing from series: {stray}')
 
+    # A path both owned by a patch and present in mobile-src/ would be
+    # double-processed here and silently last-writer-wins in prepare.sh's
+    # overlay — the partition must stay disjoint.
+    ms_tracked = {p[len('mobile-src/'):]
+                  for p in sh('git', '-C', HERE, 'ls-files', '--',
+                              'mobile-src').splitlines() if p}
+    collide = ms_tracked & set(owned)
+    if collide:
+        sys.exit('error: paths owned by a patch also exist in mobile-src/ '
+                 '(the partition must be disjoint): ' + ', '.join(sorted(collide)))
+
     # Re-synthesize one commit per patch in a throwaway worktree, preserving
     # each patch's stored author/date/message so unchanged patches regenerate
     # byte-identically under format-patch --zero-commit --no-signature.
@@ -140,6 +173,20 @@ def main():
             r = subprocess.run(args, cwd=wt, env=env, capture_output=True, text=True)
             if r.returncode:
                 sys.exit(f'commit failed for {patch}: {r.stderr}')
+            # An empty patch either vanishes from the emission (older gits,
+            # silently renumbering the series) or emits a diff-less file that
+            # kills the next `git am`. It means the patch's owned files no
+            # longer differ from upstream — usually a regenerate against the
+            # wrong tree (partial `git am`, `am --skip`), sometimes upstream
+            # absorbing the patch. Either way it needs a human: fix the tree,
+            # or retire the patch by deleting its series and files.map lines.
+            if subprocess.run(['git', 'diff', '--quiet', 'HEAD^', 'HEAD'],
+                              cwd=wt, capture_output=True).returncode == 0:
+                sys.exit(f'error: {patch} would become empty — its owned files '
+                         'no longer differ from the upstream base. If the out/ '
+                         'tree is correct and upstream really absorbed it, '
+                         'retire the patch: remove its lines from '
+                         'patches/series and patches/files.map, then re-run.')
         # Export the new series.
         for f in os.listdir(PATCHES):
             if re.match(r'\d{4}-.*\.patch$', f):
@@ -149,9 +196,11 @@ def main():
         # out 8 chars from prepare.sh's shallow clone and 10 from a full one —
         # rewriting all 19 patches for whoever regenerates in the other kind of
         # tree. Pinning keeps an unchanged patch byte-identical anywhere.
-        sh('git', '-c', 'core.abbrev=10', 'format-patch', '--output-directory',
-           PATCHES, '--zero-commit', '--no-signature', f'{base_sha}..HEAD',
-           cwd=wt)
+        # --no-renames: a rename diff would emit `diff --git a/X b/Y`, whose
+        # b-path the files.map rewrite below never captures.
+        sh('git', '-c', 'core.abbrev=10', 'format-patch', '--no-renames',
+           '--output-directory', PATCHES, '--zero-commit', '--no-signature',
+           f'{base_sha}..HEAD', cwd=wt)
     finally:
         subprocess.run(['git', 'worktree', 'remove', '--force', wt], cwd=out,
                        capture_output=True)
@@ -171,6 +220,19 @@ def main():
 
     # Sync fork-only files back into mobile-src/ (adds + edits of existing).
     ms_root = os.path.join(HERE, 'mobile-src')
+
+    # Deletions must round-trip too: a fork-only file removed (or renamed) in
+    # out/ appears nowhere in base..HEAD, but leaving its old copy in
+    # mobile-src/ would make prepare.sh re-overlay it and mismatch the printed
+    # tree hash with no hint why.
+    fork_only = {p for p, st in changed.items() if st == 'A' and p not in owned}
+    stale = sorted(ms_tracked - fork_only)
+    for path in stale:
+        full = os.path.join(ms_root, path)
+        if os.path.exists(full):
+            os.unlink(full)
+        print(f'removed stale mobile-src/{path} (no longer in the out tree)')
+
     synced = 0
     for path in sorted(set(mobile_src)
                        | {p for p in changed

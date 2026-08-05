@@ -46,7 +46,7 @@ jobs:
     # Both flavors run the SAME curated list: it has no sqlite/inspector/
     # strip-types tests, the ICU tests self-skip via common.hasIntl (false under
     # intl=none), and the lone WebAssembly-named test only inspects a string
-    # fixture — verified all 151 pass on a local lite build. So lite is true
+    # fixture — verified the whole list passes on a local lite build. So lite is true
     # full-parity with no exclusions. Each flavor fetches its own libnode from
     # the same matrix Build run (which produces both).
     strategy:
@@ -163,6 +163,10 @@ jobs:
             # arch) must exceed the proxy's 120s verdict poll so the PROXY is the
             # authoritative deadline and emits its no-verdict diagnostic before
             # test.py kills it (default 120s is co-equal on an x86_64 host -> race).
+            # pipefail + count guard: a missing/emptied list must fail loudly, not
+            # run zero tests and pass.
+            set -o pipefail
+            test "$(grep -cvE '^[[:space:]]*#|^[[:space:]]*$' tools/mobile-test/tier2-parallel-tests.txt)" -ge 100 || { echo "::error::curated list missing or implausibly small"; exit 1; }
             grep -vE '^[[:space:]]*#|^[[:space:]]*$' tools/mobile-test/tier2-parallel-tests.txt | xargs ./tools/test.py -j 1 --flaky-tests=skip --timeout=300 --arch android
 
             # Native-addon gate: stage the prebuilt addon into the (primed) app and run it.
