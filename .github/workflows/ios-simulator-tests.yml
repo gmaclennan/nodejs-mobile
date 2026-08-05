@@ -33,9 +33,6 @@ on:
         default: '["full","lite"]'
   workflow_dispatch:
 
-env:
-  SCCACHE_GHA_ENABLED: 'true'
-
 permissions:
   contents: read
   # Needed to list/download the libnode artifact from the Build workflow run.
