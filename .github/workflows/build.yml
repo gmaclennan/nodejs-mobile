@@ -267,19 +267,30 @@ jobs:
       # android_configure.py only, and ios_framework_prepare.sh goes through
       # plain ./configure (configure.py has no such wiring) and sets no
       # CC/CXX of its own. So the server started and cached nothing. Set the
-      # wrapper here, the way node documents for ccache. CC_host/CXX_host are
-      # separate because this is a cross-compile: gyp builds mksnapshot and
-      # torque for the host, and those are a real slice of the build.
+      # wrapper here, the way node documents for ccache.
       #
       # gyp-next needs setuptools at build time and a bare venv doesn't bundle
       # it (distutils was removed from the stdlib); install it explicitly.
+      #
+      # CC/CXX are set to *wrapper scripts*, not to "sccache clang", because
+      # ios_framework_prepare.sh has two consumers of them and they disagree.
+      # make word-splits the value, so "sccache clang" works there; xcodebuild,
+      # which the script runs afterwards to build the NodeMobile framework
+      # target, treats the whole value as one executable name and dies with
+      #
+      #   error: unable to spawn process 'sccache clang'
+      #     (No such file or directory) (in target 'NodeMobile')
+      #
+      # A one-line script is a real executable path, so both are satisfied.
+      # This never fired before: the value has been set since the sccache wiring
+      # landed, but every push since then changed only .github/, which leaves
+      # the libnode cache key untouched, so this whole step was skipped and
+      # xcodebuild ran against a restored out_ios_* with nothing left to
+      # compile. The first PR to touch lib/ or src/ misses the cache, actually
+      # builds, and hits it.
       - name: Build
         if: steps.libnode-cache.outputs.cache-hit != 'true'
         env:
-          CC: sccache clang
-          CXX: sccache clang++
-          CC_host: sccache clang
-          CXX_host: sccache clang++
           # Same R2 backend, same reasoning, as build-android's Build step.
           SCCACHE_BUCKET: ${{ secrets.R2_ACCESS_KEY_ID != '' && vars.R2_BUCKET || '' }}
           SCCACHE_REGION: auto
@@ -287,6 +298,21 @@ jobs:
           AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
         run: |
+          mkdir -p "$RUNNER_TEMP/sccache-wrappers"
+          printf '#!/bin/sh\nexec sccache clang "$@"\n' \
+            > "$RUNNER_TEMP/sccache-wrappers/cc"
+          printf '#!/bin/sh\nexec sccache clang++ "$@"\n' \
+            > "$RUNNER_TEMP/sccache-wrappers/cxx"
+          chmod +x "$RUNNER_TEMP/sccache-wrappers/cc" \
+                   "$RUNNER_TEMP/sccache-wrappers/cxx"
+          export CC="$RUNNER_TEMP/sccache-wrappers/cc"
+          export CXX="$RUNNER_TEMP/sccache-wrappers/cxx"
+          # Separate from CC/CXX because this is a cross-compile: gyp builds
+          # mksnapshot and torque for the host, and those are a real slice of
+          # the build. Same wrappers — the host here is also macOS/clang.
+          export CC_host="$CC"
+          export CXX_host="$CXX"
+
           python3.12 -m venv .
           source bin/activate
           python3.12 -m pip install setuptools
