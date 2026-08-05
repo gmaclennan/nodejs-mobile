@@ -39,10 +39,17 @@ runs:
         # file:// so git treats the shallow cache as a proper transport
         # (a bare local path refuses to clone from a shallow repository).
         UPSTREAM_REPO="file://$UP" scripts/prepare.sh "$RUNNER_TEMP/matsrc"
-        # Replace the (tiny) patches checkout with the materialized tree.
-        # The running workflow/action definitions were already loaded, so
-        # deleting them from disk is safe.
+        # Replace the (tiny) patches checkout with the materialized tree —
+        # but keep this branch's local actions on disk: the runner re-reads
+        # action.yml from the workspace both for post steps (actions/cache's
+        # save above) and for any later `uses: ./.github/actions/*` step, so
+        # deleting them fails the job at its end. They stay untracked in the
+        # materialized repo and never reach a tree hash or a tag.
+        cp -R "$GITHUB_WORKSPACE/.github/actions" "$RUNNER_TEMP/local-actions-keep"
         shopt -s dotglob
         find "$GITHUB_WORKSPACE" -mindepth 1 -maxdepth 1 -exec rm -rf {} +
         mv "$RUNNER_TEMP/matsrc"/* "$GITHUB_WORKSPACE"/
+        mkdir -p "$GITHUB_WORKSPACE/.github"
+        rm -rf "$GITHUB_WORKSPACE/.github/actions"
+        mv "$RUNNER_TEMP/local-actions-keep" "$GITHUB_WORKSPACE/.github/actions"
         echo "Materialized $(git -C "$GITHUB_WORKSPACE" rev-parse 'HEAD^{tree}') into workspace"
