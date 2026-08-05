@@ -30,6 +30,14 @@ concurrency:
 env:
   SCCACHE_GHA_ENABLED: 'true'
   SCCACHE_IDLE_TIMEOUT: '0'   # keep the sccache server alive through long builds
+  # Surface the reason a cache write failed. sccache reports write failures only
+  # as a counter in --show-stats; the HTTP status behind them (429 vs 4xx vs
+  # auth) lives in the server log, which otherwise goes nowhere. Both vars must
+  # be set before the server starts, and the server inherits the env of whatever
+  # first spawns it, so they belong at workflow scope rather than on a step.
+  # 'warn' is enough to log the error chain and keeps the file small.
+  SCCACHE_LOG: warn
+  SCCACHE_ERROR_LOG: /tmp/sccache-errors.log
   ANDROID_NDK_VERSION: r27d
   ANDROID_TARGET_SDK_VERSION: 24
   # Flavor is a per-job matrix dimension ([full, lite]) so every Build produces
@@ -145,19 +153,42 @@ jobs:
       - name: Stage NAPI/addon headers
         run: ./tools/copy_libnode_headers.sh android
 
-      # KNOWN ISSUE, not fixed here: on Android sccache is wired correctly
-      # (android_configure.py wraps CC/CXX) and reads work — a real run showed
-      # 3619 hits, 62.39% — but "Cache write errors" equalled "Cache misses"
-      # exactly, i.e. every new object failed to store. That is why a cache
-      # miss still costs the full ~25-30 min and why the hit rate never climbs
-      # past what an older run happened to populate. Reads succeed and writes
-      # fail, which points at the ghac backend rather than the wiring; the
-      # repo's 10 GB Actions cache quota is the first thing to check, since
-      # the actions/cache entries for out_android/out_ios are large and
-      # numerous. Diagnose from this step's output before changing anything.
+      # KNOWN ISSUE, not fixed here: most sccache writes fail, so a cache miss
+      # still costs the full ~25-30 min and the hit rate sits around 55-60%
+      # instead of climbing. It is NOT the 10 GB Actions cache quota (an
+      # over-quota repo gets LRU eviction, not failed writes) and NOT the
+      # wiring — android_configure.py wraps CC/CXX correctly.
+      #
+      # It is GitHub's cache-upload rate limit, 200 new cache entries per
+      # minute per repository, added 2026-01-16:
+      #   https://github.blog/changelog/2026-01-16-rate-limiting-for-actions-cache-entries/
+      # The limit applies to uploads only and explicitly exempts downloads,
+      # which is exactly the reads-work/writes-fail split seen here. sccache
+      # stores one cache entry per object file and does not retry a 429 (the
+      # changelog names sccache-action as needing a fix), so every throttled
+      # write is counted as a "Cache write error" and dropped.
+      #
+      # The arithmetic says this backend cannot serve this workload: six
+      # concurrent Android jobs each miss ~2500 objects over a ~19 min compile
+      # window, i.e. ~800 uploads/min against a 200/min repo-wide budget.
+      # Measured on run 30950327884, all three sampled jobs landed at ~11%
+      # writes stored (299/2626, 294/2464, 196/1905) — a steady throttle, not
+      # a cliff. Even a correct Retry-After implementation upstream would only
+      # pace the same ~15000 entries/run through a ~3800/run budget.
+      #
+      # Fixing it means not storing one cache entry per object: either point
+      # SCCACHE_DIR at a local dir cached as a single actions/cache entry per
+      # job (watch the 10 GB quota — that is where quota actually bites), or
+      # move to an S3-compatible bucket, which has neither limit.
       - name: sccache stats
         if: always()
-        run: sccache --show-stats || true
+        run: |
+          sccache --show-stats || true
+          # The counters above say how many writes failed; this says why.
+          if [ -s /tmp/sccache-errors.log ]; then
+            echo '--- sccache server log (unique messages) ---'
+            sort /tmp/sccache-errors.log | uniq -c | sort -rn | head -40
+          fi
 
       - uses: actions/upload-artifact@v4
         with:
@@ -234,9 +265,17 @@ jobs:
           python3.12 -m pip install setuptools
           ./tools/ios_framework_prepare.sh $TARGET_ARCH
 
+      # Now that this job actually wraps the compiler, its writes count against
+      # the same repo-wide 200/min cache-upload budget the Android matrix is
+      # already exceeding — see the note on build-android's sccache stats step.
       - name: sccache stats
         if: always()
-        run: sccache --show-stats || true
+        run: |
+          sccache --show-stats || true
+          if [ -s /tmp/sccache-errors.log ]; then
+            echo '--- sccache server log (unique messages) ---'
+            sort /tmp/sccache-errors.log | uniq -c | sort -rn | head -40
+          fi
 
       - uses: actions/upload-artifact@v4
         with:
