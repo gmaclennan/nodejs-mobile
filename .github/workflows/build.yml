@@ -58,7 +58,8 @@ permissions:
   contents: read
 
 jobs:
-  # Which flavors each platform builds for this event. Android is always both:
+  # Flavor matrices are inline expressions, not a helper job (a full VM boot
+  # to echo two constants earns nothing). Android is always both flavors:
   # ubuntu+KVM runners are 1x-billed and plentiful. iOS drops to full-only on
   # pull_request because hosted macOS concurrency is capped far below Linux on
   # every plan — the full release chain wants 8 concurrent macOS jobs, so two
@@ -68,27 +69,11 @@ jobs:
   # compile time on the merge run; the Tier-2 lists are identical across
   # flavors (see the note in ios-simulator-tests.yml), so the runtime signal
   # from the lite leg is near-duplicate. Pushes and releases run both.
-  flavors:
-    runs-on: ubuntu-24.04
-    outputs:
-      android: ${{ steps.f.outputs.android }}
-      ios: ${{ steps.f.outputs.ios }}
-    steps:
-      - id: f
-        run: |
-          echo 'android=["full","lite"]' >> "$GITHUB_OUTPUT"
-          if [ "$GITHUB_EVENT_NAME" = pull_request ]; then
-            echo 'ios=["full"]' >> "$GITHUB_OUTPUT"
-          else
-            echo 'ios=["full","lite"]' >> "$GITHUB_OUTPUT"
-          fi
-
   build-android:
-    needs: flavors
     strategy:
       fail-fast: false
       matrix:
-        flavor: ${{ fromJSON(needs.flavors.outputs.android) }}
+        flavor: [full, lite]
         config:
           - { os: ubuntu-24.04, target_arch: arm }
           - { os: ubuntu-24.04, target_arch: arm64 }
@@ -227,11 +212,10 @@ jobs:
           path: out_android
 
   build-ios:
-    needs: flavors
     strategy:
       fail-fast: false
       matrix:
-        flavor: ${{ fromJSON(needs.flavors.outputs.ios) }}
+        flavor: ${{ github.event_name == 'pull_request' && fromJSON('["full"]') || fromJSON('["full","lite"]') }}
         config:
           # macos-26 is Apple Silicon with current Xcode (matches local dev).
           # x86_64 (Intel Mac) simulator support was dropped for v24 — Intel
@@ -351,9 +335,9 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        flavor: ${{ fromJSON(needs.flavors.outputs.android) }}
+        flavor: [full, lite]
     runs-on: ubuntu-24.04
-    needs: [flavors, build-android]
+    needs: [build-android]
     env:
       NODEJS_MOBILE_FLAVOR: ${{ matrix.flavor }}
       FLAVOR_SUFFIX: ${{ matrix.flavor == 'lite' && '-lite' || '' }}
@@ -386,40 +370,13 @@ jobs:
           done
           cp -R out_android/libnode/include/* artifacts/include
 
-      # overwrite: artifacts are immutable within a run, and that includes
-      # re-run attempts — without this, "Re-run all jobs" (the standard answer
-      # to Tier-1/2 flake, including on a release run) 409s right here.
-      - uses: actions/upload-artifact@v4
-        with:
-          name: nodejs-mobile-android${{ env.FLAVOR_SUFFIX }}
-          path: artifacts
-          overwrite: true
-
-      # Delete only this flavor's per-arch artifacts so the other flavor's
-      # combine leg (running in parallel) can still find its inputs.
-      - uses: geekyeggo/delete-artifact@176a747ab7e287e3ff4787bf8a148716375ca118 # v6.0.0
-        with:
-          name: node-android-*-${{ matrix.flavor }}
-
-  # B-1 tripwire: the shipped Android libnode.so must export the NAPI symbols a
-  # dlopen'd addon resolves against. Reuses combine-android's artifact (no
-  # rebuild — was a separate full build in mobile-napi-smoke.yml). The stronger
-  # real-addon dlopen+run check lives in android-emulator-tests.yml.
-  # Runs per flavor: lite changes the configure flags that decide what gets
-  # linked in, so "full exports napi_*" is not evidence that lite does.
-  napi-smoke-android:
-    needs: [flavors, combine-android]
-    strategy:
-      fail-fast: false
-      matrix:
-        flavor: ${{ fromJSON(needs.flavors.outputs.android) }}
-    runs-on: ubuntu-24.04
-    steps:
-      - uses: actions/download-artifact@v4
-        with:
-          name: nodejs-mobile-android${{ matrix.flavor == 'lite' && '-lite' || '' }}
-          path: artifacts
-
+      # B-1 tripwire: the shipped libnode.so must export the NAPI symbols a
+      # dlopen'd addon resolves against. A step here (the artifacts are
+      # already on disk) rather than a standalone job — was a full runner
+      # boot for one nm|grep. The stronger real-addon dlopen+run check lives
+      # in android-emulator-tests.yml. Runs per flavor: lite changes the
+      # configure flags that decide what gets linked in, so "full exports
+      # napi_*" is not evidence that lite does.
       - name: Assert NAPI symbols are exported
         run: |
           # arm64-v8a is the Android ABI folder for arm64 (see android_build.sh).
@@ -440,13 +397,28 @@ jobs:
             exit 1
           fi
 
+      # overwrite: artifacts are immutable within a run, and that includes
+      # re-run attempts — without this, "Re-run all jobs" (the standard answer
+      # to Tier-1/2 flake, including on a release run) 409s right here.
+      - uses: actions/upload-artifact@v4
+        with:
+          name: nodejs-mobile-android${{ env.FLAVOR_SUFFIX }}
+          path: artifacts
+          overwrite: true
+
+      # Delete only this flavor's per-arch artifacts so the other flavor's
+      # combine leg (running in parallel) can still find its inputs.
+      - uses: geekyeggo/delete-artifact@176a747ab7e287e3ff4787bf8a148716375ca118 # v6.0.0
+        with:
+          name: node-android-*-${{ matrix.flavor }}
+
   combine-ios:
     strategy:
       fail-fast: false
       matrix:
-        flavor: ${{ fromJSON(needs.flavors.outputs.ios) }}
+        flavor: ${{ github.event_name == 'pull_request' && fromJSON('["full"]') || fromJSON('["full","lite"]') }}
     runs-on: macos-26
-    needs: [flavors, build-ios]
+    needs: [build-ios]
     env:
       NODEJS_MOBILE_FLAVOR: ${{ matrix.flavor }}
       FLAVOR_SUFFIX: ${{ matrix.flavor == 'lite' && '-lite' || '' }}
@@ -499,11 +471,11 @@ jobs:
   # Consumes the nodejs-mobile-android artifact, so it smoke-tests the exact
   # binary that would ship — no rebuild. ubuntu + KVM keeps it at 1x billing.
   smoke-android:
-    needs: [flavors, combine-android]
+    needs: [combine-android]
     strategy:
       fail-fast: false
       matrix:
-        flavor: ${{ fromJSON(needs.flavors.outputs.android) }}
+        flavor: [full, lite]
     runs-on: ubuntu-24.04
     env:
       NODEJS_MOBILE_FLAVOR: ${{ matrix.flavor }}
@@ -562,11 +534,11 @@ jobs:
   # Tier 1 on-device smoke for iOS: install the testnode app on a booted
   # simulator and run a console.log via the freshly built NodeMobile.xcframework.
   smoke-ios:
-    needs: [flavors, combine-ios]
+    needs: [combine-ios]
     strategy:
       fail-fast: false
       matrix:
-        flavor: ${{ fromJSON(needs.flavors.outputs.ios) }}
+        flavor: ${{ github.event_name == 'pull_request' && fromJSON('["full"]') || fromJSON('["full","lite"]') }}
     runs-on: macos-26
     env:
       NODEJS_MOBILE_FLAVOR: ${{ matrix.flavor }}
@@ -593,18 +565,9 @@ jobs:
 
       - name: Boot simulator
         id: sim
-        run: |
-          # Newest available iOS runtime + the highest-numbered iPhone device
-          # type. Picking the *last* iPhone in simctl's (unsorted) list can grab
-          # an old model (e.g. iPhone 6s Plus) that the newest runtime doesn't
-          # support, failing `simctl create` with SimError 403.
-          RUNTIME=$(xcrun simctl list runtimes -j | python3 -c "import json,sys; rs=sorted([x for x in json.load(sys.stdin)['runtimes'] if x.get('platform')=='iOS' and x.get('isAvailable')], key=lambda x:[int(n) for n in x['version'].split('.')]); print(rs[-1]['identifier'] if rs else '')")
-          DEVICE_TYPE=$(xcrun simctl list devicetypes -j | python3 -c "import json,sys,re; ds=sorted([x for x in json.load(sys.stdin)['devicetypes'] if re.match(r'iPhone \d', x['name'])], key=lambda x:int(re.match(r'iPhone (\d+)', x['name']).group(1))); print(ds[-1]['identifier'] if ds else '')")
-          echo "Using device=$DEVICE_TYPE runtime=$RUNTIME"
-          test -n "$DEVICE_TYPE" && test -n "$RUNTIME"
-          UDID=$(xcrun simctl create "nodejs-mobile-smoke" "$DEVICE_TYPE" "$RUNTIME")
-          xcrun simctl bootstatus "$UDID" -b
-          echo "udid=$UDID" >> "$GITHUB_OUTPUT"
+        uses: ./.github/actions/boot-ios-simulator
+        with:
+          device_name: nodejs-mobile-smoke
 
       - name: Run smoke on simulator
         run: |
@@ -617,6 +580,154 @@ jobs:
         run: |
           xcrun simctl shutdown "${{ steps.sim.outputs.udid }}" || true
           xcrun simctl delete "${{ steps.sim.outputs.udid }}" || true
+
+  # Host build + JS test suite (folded in from the former host-smoke.yml so
+  # it can gate ci-required and publish via needs:, which a separate workflow
+  # cannot). Builds Node natively on the runner (no cross-compile) and runs
+  # the upstream JS tests against it — the PR boundary's fastest real signal.
+  # It does NOT prove anything mobile-specific; the rest of this workflow
+  # owns that. Builds only the 'node' target with -j, so no cctest/addons.
+  smoke-host:
+    runs-on: ubuntu-24.04
+    # Measured at 82 min end to end with no compiler cache at all: ~75 of that
+    # was V8, before a single test executed. sccache is wired below now, so a
+    # warm run should be far shorter — but the cold number is what the timeout
+    # has to survive, and a cache miss still pays it. 180 leaves real headroom
+    # while still catching a genuine hang, which the 360-minute default never
+    # would.
+    timeout-minutes: 180
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+      - uses: ./.github/actions/materialize
+
+      - name: Run sccache-cache
+        uses: mozilla-actions/sccache-action@9e7fa8a12102821edf02ca5dbea1acd0f89a2696 # v0.0.10
+
+      # The fork wraps the compiler in sccache from android_configure.py, but
+      # only there — configure.py carries no such wiring, so the host build
+      # compiled V8 cold on every single run: ~75 min before a test could
+      # start. Set the wrapper here instead, which node's configure honours
+      # the same way it honours CC="ccache gcc". CC_host/CXX_host matter
+      # because gyp builds host tools (mksnapshot, torque) with those.
+      #
+      # gyp-next needs setuptools at build time and a bare venv doesn't bundle
+      # it (distutils was removed from the stdlib); install it explicitly.
+      #
+      # The R2 backend has to be set here as well as on the build step, not just
+      # on the build: ./configure runs compiler checks, so the sccache server is
+      # spawned during Configure and keeps whatever backend config it started
+      # with. Setting it only on the build step would leave the server already
+      # running with no backend and cache nothing.
+      - name: Configure
+        env:
+          CC: sccache cc
+          CXX: sccache c++
+          CC_host: sccache cc
+          CXX_host: sccache c++
+          SCCACHE_BUCKET: ${{ secrets.R2_ACCESS_KEY_ID != '' && vars.R2_BUCKET || '' }}
+          SCCACHE_REGION: auto
+          SCCACHE_ENDPOINT: https://${{ secrets.R2_ACCOUNT_ID }}.r2.cloudflarestorage.com
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+        run: |
+          python3.12 -m venv .
+          source bin/activate
+          python3.12 -m pip install setuptools
+          ./configure
+
+      - name: Build node target
+        env:
+          CC: sccache cc
+          CXX: sccache c++
+          CC_host: sccache cc
+          CXX_host: sccache c++
+          SCCACHE_BUCKET: ${{ secrets.R2_ACCESS_KEY_ID != '' && vars.R2_BUCKET || '' }}
+          SCCACHE_REGION: auto
+          SCCACHE_ENDPOINT: https://${{ secrets.R2_ACCOUNT_ID }}.r2.cloudflarestorage.com
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+        run: |
+          source bin/activate
+          make -j"$(nproc)" node
+
+      - name: sccache stats
+        if: always()
+        run: |
+          sccache --show-stats || true
+          if [ -s /tmp/sccache-errors.log ]; then
+            echo '--- sccache server log (unique messages) ---'
+            sort /tmp/sccache-errors.log | uniq -c | sort -rn | head -40
+          fi
+
+      - name: Smoke test
+        run: |
+          ./out/Release/node -e "console.log(process.versions); process.exit(0)"
+
+      # The iOS binary runs V8 jitless, and a jitless V8 exposes no
+      # WebAssembly -- which is why the library bundles the polywasm polyfill
+      # (deps/polywasm, installed by lib/internal/process/pre_execution.js):
+      # without it undici's llhttp can't load and fetch() is dead. Passing
+      # --jitless to the host build reproduces that engine exactly, so this
+      # gates the polyfill on every push instead of only on device runs.
+      # See docs/TESTING.md, "The fetch / WebAssembly gate".
+      # NODEJS_MOBILE_EXPECT_WASM_IMPL makes the test assert which
+      # implementation it actually ran on, so this stays a real gate: if a
+      # future V8 kept WebAssembly under --jitless, or the install stopped
+      # firing, the step fails instead of quietly testing the wrong path.
+      - name: fetch/WebAssembly gate (jitless, polyfill path)
+        env:
+          NODEJS_MOBILE_EXPECT_WASM_IMPL: polyfill
+        run: |
+          ./out/Release/node --jitless test/parallel/test-mobile-fetch.js
+
+      - name: fetch/WebAssembly gate (V8's own WebAssembly)
+        env:
+          NODEJS_MOBILE_EXPECT_WASM_IMPL: engine
+        run: |
+          ./out/Release/node test/parallel/test-mobile-fetch.js
+
+      # --frozen-intrinsics is the one caller that inspects the polyfill's
+      # *shape* instead of just calling it: internal/freeze_intrinsics.js reads
+      # seven WebAssembly.*.prototype values as soon as the global exists, so a
+      # member polywasm doesn't implement doesn't break fetch() -- it stops the
+      # runtime from booting. That is how the missing LinkError/RuntimeError
+      # were found. Cheap to keep, and the only gate that covers it: the full
+      # parallel suite below is advisory, and mobile .status skips this test.
+      # See docs/TESTING.md, "The fetch / WebAssembly gate".
+      - name: frozen-intrinsics gate (jitless, polyfill path)
+        run: |
+          ./out/Release/node --jitless --frozen-intrinsics \
+            test/parallel/test-freeze-intrinsics.js
+
+      # The same curated list the Tier-2 mobile workflows run, executed on the
+      # host build. Everything in it is an upstream test that passes on mobile,
+      # so it passes on a host build too unless a patch actually broke it —
+      # which makes this a zero-flake blocking check that catches lib/ and
+      # src/ regressions minutes into a PR instead of at the Tier-2 stage.
+      - name: Run the curated Tier-2 list on the host build
+        run: |
+          source bin/activate
+          # pipefail + count guard: a missing/emptied list must fail loudly,
+          # not run the wrong suite (GNU xargs) or nothing (BSD xargs).
+          set -o pipefail
+          COUNT=$(grep -cvE '^[[:space:]]*#|^[[:space:]]*$' tools/mobile-test/tier2-parallel-tests.txt)
+          [ "$COUNT" -ge 100 ] || { echo "::error::curated list missing or implausibly small ($COUNT entries)"; exit 1; }
+          grep -vE '^[[:space:]]*#|^[[:space:]]*$' tools/mobile-test/tier2-parallel-tests.txt \
+            | xargs ./tools/test.py -j "$(nproc)" --flaky-tests=skip
+
+      # The full parallel suite is far broader than the curated list and is the
+      # real prize here. It is advisory for now: `make node` alone doesn't build
+      # cctest or the addon fixtures, so a handful of cases may need extra
+      # targets or a skip list. Promote to blocking (drop continue-on-error)
+      # once a few runs confirm the pass-set — see docs/TESTING.md.
+      - name: Run the full parallel suite on the host build (advisory)
+        continue-on-error: true
+        run: |
+          source bin/activate
+          ./tools/test.py -j "$(nproc)" --flaky-tests=skip parallel
 
   # The single required status check for this workflow. Branch protection
   # should require `ci-required` rather than the individual jobs: the build
@@ -635,9 +746,9 @@ jobs:
       - build-ios
       - combine-android
       - combine-ios
-      - napi-smoke-android
       - smoke-android
       - smoke-ios
+      - smoke-host
     runs-on: ubuntu-24.04
     steps:
       - name: Assert every required job succeeded
@@ -760,14 +871,14 @@ jobs:
       build_run_id: ${{ github.run_id }}
 
   simulator-tests:
-    needs: [flavors, combine-ios]
+    needs: [combine-ios]
     permissions:
       contents: read
       actions: read
     uses: ./.github/workflows/ios-simulator-tests.yml
     with:
       build_run_id: ${{ github.run_id }}
-      flavors: ${{ needs.flavors.outputs.ios }}
+      flavors: ${{ github.event_name == 'pull_request' && '["full"]' || '["full","lite"]' }}
 
   # Publish: on a release commit, once every gate in this run is green, tag
   # the materialized tree and publish the GitHub prerelease with this run's
@@ -782,7 +893,7 @@ jobs:
       - release-check
       - smoke-android
       - smoke-ios
-      - napi-smoke-android
+      - smoke-host
       - emulator-tests
       - simulator-tests
       - device-smoke
