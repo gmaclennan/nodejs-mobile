@@ -1,7 +1,11 @@
-# Fast host smoke test: builds Node natively on the runner (no cross-compile)
-# and asserts the binary runs. Catches gross regressions in lib/internal and
-# src/api introduced by the mobile patches before the slower cross-compile
-# build-mobile workflow runs. Builds only the 'node' target with -j.
+# Host build + JS test suite: builds Node natively on the runner (no
+# cross-compile) and runs the upstream JS tests against it. This is the PR
+# boundary's fastest real signal — the patch stack touches lib/ and src/, and a
+# host runner can execute the suite with no emulator, simulator or device in
+# the loop. It does NOT prove anything mobile-specific (no cross-compile, no
+# on-device loader); build.yml owns that.
+#
+# Builds only the 'node' target with -j, so no cctest/addons are produced.
 
 name: Host smoke
 
@@ -12,12 +16,25 @@ on:
     branches: [patches]
   workflow_dispatch:
 
+# One run per PR/branch; a new PR commit supersedes the previous run. Pushes to
+# patches are never cancelled — a release run must be allowed to finish.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 permissions:
   contents: read
 
 jobs:
   smoke-host:
     runs-on: ubuntu-24.04
+    # Nothing wires a compiler cache into this build, so every run compiles V8
+    # from cold: ~75-85 min on a 4-core runner before a single test executes,
+    # then ~30 min for the suites below. 180 leaves real headroom while still
+    # catching a genuine hang, which the 360-minute default never would.
+    # Wiring up sccache here (build.yml installs it, but nothing sets the
+    # compiler wrapper) would cut this a lot and is worth doing separately.
+    timeout-minutes: 180
 
     steps:
       - uses: actions/checkout@v4
@@ -65,3 +82,25 @@ jobs:
           NODEJS_MOBILE_EXPECT_WASM_IMPL: engine
         run: |
           ./out/Release/node test/parallel/test-mobile-fetch.js
+
+      # The same curated list the Tier-2 mobile workflows run, executed on the
+      # host build. Everything in it is an upstream test that passes on mobile,
+      # so it passes on a host build too unless a patch actually broke it —
+      # which makes this a zero-flake blocking check that catches lib/ and
+      # src/ regressions minutes into a PR instead of at the Tier-2 stage.
+      - name: Run the curated Tier-2 list on the host build
+        run: |
+          source bin/activate
+          grep -vE '^[[:space:]]*#|^[[:space:]]*$' tools/mobile-test/tier2-parallel-tests.txt \
+            | xargs ./tools/test.py -j "$(nproc)" --flaky-tests=skip
+
+      # The full parallel suite is far broader than the curated list and is the
+      # real prize here. It is advisory for now: `make node` alone doesn't build
+      # cctest or the addon fixtures, so a handful of cases may need extra
+      # targets or a skip list. Promote to blocking (drop continue-on-error)
+      # once a few runs confirm the pass-set — see docs/TESTING.md.
+      - name: Run the full parallel suite on the host build (advisory)
+        continue-on-error: true
+        run: |
+          source bin/activate
+          ./tools/test.py -j "$(nproc)" --flaky-tests=skip parallel

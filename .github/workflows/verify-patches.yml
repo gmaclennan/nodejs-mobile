@@ -11,6 +11,12 @@ on:
     branches: [patches]
   workflow_dispatch:
 
+# One run per PR/branch; a new PR commit supersedes the previous run. Pushes to
+# patches are never cancelled — a release run must be allowed to finish.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 permissions:
   contents: read
 
@@ -30,6 +36,77 @@ jobs:
           echo "base:     $(grep -Ev '^\s*(#|$)' upstream-base.txt | head -n1)"
           echo "expected: $(grep -Ev '^\s*(#|$)' expected-tree.txt | head -n1)"
           [ -d out ] && echo "got:      $(git -C out rev-parse 'HEAD^{tree}' 2>/dev/null || echo n/a)"
+
+  # Review aid, not a gate: a PR to this branch is a diff *of a diff* — the
+  # change to a .patch file, not the change to the source. Materialize the base
+  # and the head of the PR and diff the two reconstructed trees, so a reviewer
+  # can read the actual source change. Never fails the PR (the `verify` job
+  # above is what gates); it only publishes the diff.
+  #
+  # An upgrade PR (one that moves upstream-base.txt) legitimately produces an
+  # enormous diff — the whole upstream delta lands in it. The summary says so
+  # rather than pretending the result is reviewable.
+  tree-diff:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: head
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+          path: base
+
+      # SKIP_VERIFY on both sides: this job reconstructs trees to compare them,
+      # it does not re-gate the hash. `verify` owns that, and a base whose
+      # expected-tree.txt has drifted must not block the reviewer's diff.
+      - name: Materialize both sides
+        run: |
+          SKIP_VERIFY=1 base/scripts/prepare.sh "$RUNNER_TEMP/mat-base"
+          SKIP_VERIFY=1 head/scripts/prepare.sh "$RUNNER_TEMP/mat-head"
+          # Drop the per-tree git metadata so the diff is purely about content.
+          rm -rf "$RUNNER_TEMP/mat-base/.git" "$RUNNER_TEMP/mat-head/.git"
+
+      - name: Diff the reconstructed trees
+        run: |
+          cd "$RUNNER_TEMP"
+          # --no-index exits 1 when the trees differ, which is the normal case.
+          git diff --no-index --stat mat-base mat-head > tree-diff.stat || true
+          git diff --no-index          mat-base mat-head > tree-diff.patch || true
+
+          BB=$(grep -Ev '^\s*(#|$)' "$GITHUB_WORKSPACE/base/upstream-base.txt" | head -n1 | tr -d '[:space:]')
+          HB=$(grep -Ev '^\s*(#|$)' "$GITHUB_WORKSPACE/head/upstream-base.txt" | head -n1 | tr -d '[:space:]')
+
+          {
+            echo "## Materialized source diff"
+            echo
+            if [ "$BB" != "$HB" ]; then
+              echo "> **Upstream base moved: \`$BB\` → \`$HB\`.** This diff therefore"
+              echo "> contains the entire upstream delta as well as the fork's changes."
+              echo "> Review the patch/mobile-src diff in the Files tab instead; use this"
+              echo "> only to confirm the fork-owned files came through the rebase."
+              echo
+            fi
+            echo '```'
+            # The stat can itself be huge on an upgrade; cap what goes inline.
+            head -c 60000 tree-diff.stat
+            echo '```'
+            if [ "$(wc -c < tree-diff.stat)" -gt 60000 ]; then
+              echo
+              echo "_Summary truncated — see the \`materialized-tree-diff\` artifact for the full diff._"
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          ls -la tree-diff.stat tree-diff.patch
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: materialized-tree-diff
+          path: |
+            ${{ runner.temp }}/tree-diff.stat
+            ${{ runner.temp }}/tree-diff.patch
 
   # Per-patch build-system validation (successor to the retired
   # validate-patch-stack workflow on the materialized branch): apply the

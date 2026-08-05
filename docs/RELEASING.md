@@ -9,9 +9,18 @@ Releasing is a button, a review, and (optionally) an approval:
    section, re-anchors `expected-tree.txt` by running `prepare.sh`, and
    opens a **release PR**.
 2. **Fill in the CHANGELOG entry, review, and merge.** Merging is the
-   release sign-off; any merge method works. (PR checks don't run on the
-   bot-pushed branch — a `GITHUB_TOKEN` limitation — but nothing publishes
-   unverified: every gate re-runs on the merge push.)
+   release sign-off. (The bot's own push doesn't trigger PR checks — a
+   `GITHUB_TOKEN` limitation — but your CHANGELOG commit does, and nothing
+   publishes unverified either way: every gate re-runs on the merge push,
+   and `release-check` is guarded off `pull_request` so the release chain
+   can never fire from the unmerged PR.)
+
+   **Use squash or rebase, not a merge commit.** `release-check` reads
+   `git log -1 --format=%s` to spot a `release-dryrun:` rehearsal, and a
+   merge commit replaces that subject with `Merge pull request #N from …`,
+   silently turning a rehearsal into a normal push. The *release* trigger
+   itself is content-derived and unaffected — it's the dry run that breaks.
+   Requiring linear history on `patches` enforces this.
 3. The merge push makes the version of record **untagged at HEAD**, which
    is the release trigger (`release-check` in `build.yml` — content-derived
    and idempotent; no magic commit wording). One run then carries the full
