@@ -26,8 +26,13 @@ permissions:
   contents: read
 
 env:
-  SCCACHE_GHA_ENABLED: 'true'
+  # No SCCACHE_GHA_ENABLED: the backend is R2, set per compiling step below.
+  # ghac outranks s3 in sccache's backend precedence, so leaving the flag set
+  # would silently send writes back to the rate-limited Actions cache. See the
+  # long note on build.yml's build-android sccache stats step.
   SCCACHE_IDLE_TIMEOUT: '0'   # keep the sccache server alive through long builds
+  SCCACHE_LOG: warn
+  SCCACHE_ERROR_LOG: /tmp/sccache-errors.log
 
 jobs:
   smoke-host:
@@ -59,12 +64,23 @@ jobs:
       #
       # gyp-next needs setuptools at build time and a bare venv doesn't bundle
       # it (distutils was removed from the stdlib); install it explicitly.
+      #
+      # The R2 backend has to be set here as well as on the build step, not just
+      # on the build: ./configure runs compiler checks, so the sccache server is
+      # spawned during Configure and keeps whatever backend config it started
+      # with. Setting it only on the build step would leave the server already
+      # running with no backend and cache nothing.
       - name: Configure
         env:
           CC: sccache cc
           CXX: sccache c++
           CC_host: sccache cc
           CXX_host: sccache c++
+          SCCACHE_BUCKET: ${{ secrets.R2_ACCESS_KEY_ID != '' && vars.R2_BUCKET || '' }}
+          SCCACHE_REGION: auto
+          SCCACHE_ENDPOINT: https://${{ secrets.R2_ACCOUNT_ID }}.r2.cloudflarestorage.com
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
         run: |
           python3.12 -m venv .
           source bin/activate
@@ -77,16 +93,28 @@ jobs:
           CXX: sccache c++
           CC_host: sccache cc
           CXX_host: sccache c++
+          SCCACHE_BUCKET: ${{ secrets.R2_ACCESS_KEY_ID != '' && vars.R2_BUCKET || '' }}
+          SCCACHE_REGION: auto
+          SCCACHE_ENDPOINT: https://${{ secrets.R2_ACCOUNT_ID }}.r2.cloudflarestorage.com
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
         run: |
           source bin/activate
           make -j"$(nproc)" node
 
       # Always print the stats: this is the only way the cache's effectiveness
-      # is visible at all. build-android has had this step and it is how the
-      # 100%-cache-write-failure described in this PR was found.
+      # is visible at all. build-android has had this step, and it is what
+      # exposed the near-total write failure that moved this build off the
+      # GitHub Actions cache backend and onto R2.
       - name: sccache stats
         if: always()
-        run: sccache --show-stats || true
+        run: |
+          sccache --show-stats || true
+          # The counters above say how many writes failed; this says why.
+          if [ -s /tmp/sccache-errors.log ]; then
+            echo '--- sccache server log (unique messages) ---'
+            sort /tmp/sccache-errors.log | uniq -c | sort -rn | head -40
+          fi
 
       - name: Smoke test
         run: |

@@ -28,8 +28,19 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
-  SCCACHE_GHA_ENABLED: 'true'
+  # No SCCACHE_GHA_ENABLED here on purpose: the backend is Cloudflare R2, set
+  # per Build step (see build-android). sccache picks a backend by precedence
+  # and ghac outranks s3, so leaving the GHA flag set would silently keep
+  # writing into the rate-limited Actions cache and look like it worked.
   SCCACHE_IDLE_TIMEOUT: '0'   # keep the sccache server alive through long builds
+  # Surface the reason a cache write failed. sccache reports write failures only
+  # as a counter in --show-stats; the HTTP status behind them (429 vs 4xx vs
+  # auth) lives in the server log, which otherwise goes nowhere. Both vars must
+  # be set before the server starts, and the server inherits the env of whatever
+  # first spawns it, so they belong at workflow scope rather than on a step.
+  # 'warn' is enough to log the error chain and keeps the file small.
+  SCCACHE_LOG: warn
+  SCCACHE_ERROR_LOG: /tmp/sccache-errors.log
   ANDROID_NDK_VERSION: r27d
   ANDROID_TARGET_SDK_VERSION: 24
   # Flavor is a per-job matrix dimension ([full, lite]) so every Build produces
@@ -135,6 +146,21 @@ jobs:
         env:
           MY_ANDROID_NDK_HOME: ${{ steps.setup-ndk.outputs.ndk-path }}
           LDFLAGS: '-Wl,-z,max-page-size=16384'
+          # sccache's R2 backend. Scoped to this step rather than workflow env so
+          # the credentials are never in scope for the third-party actions the
+          # other jobs run (setup-ndk, upload-artifact, the BrowserStack smoke).
+          # sccache-action only installs the binary and exports ACTIONS_*; it
+          # never starts the server, so the server is spawned lazily by the first
+          # compile below and inherits these.
+          #
+          # A fork PR gets no secrets. Leaving SCCACHE_BUCKET empty in that case
+          # makes sccache fall back to its local disk cache, instead of taking a
+          # 403 on every single object and pacing the build behind the retries.
+          SCCACHE_BUCKET: ${{ secrets.R2_ACCESS_KEY_ID != '' && vars.R2_BUCKET || '' }}
+          SCCACHE_REGION: auto
+          SCCACHE_ENDPOINT: https://${{ secrets.R2_ACCOUNT_ID }}.r2.cloudflarestorage.com
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
         run: |
           ./tools/android_build.sh $MY_ANDROID_NDK_HOME $ANDROID_TARGET_SDK_VERSION $TARGET_ARCH
 
@@ -145,19 +171,45 @@ jobs:
       - name: Stage NAPI/addon headers
         run: ./tools/copy_libnode_headers.sh android
 
-      # KNOWN ISSUE, not fixed here: on Android sccache is wired correctly
-      # (android_configure.py wraps CC/CXX) and reads work — a real run showed
-      # 3619 hits, 62.39% — but "Cache write errors" equalled "Cache misses"
-      # exactly, i.e. every new object failed to store. That is why a cache
-      # miss still costs the full ~25-30 min and why the hit rate never climbs
-      # past what an older run happened to populate. Reads succeed and writes
-      # fail, which points at the ghac backend rather than the wiring; the
-      # repo's 10 GB Actions cache quota is the first thing to check, since
-      # the actions/cache entries for out_android/out_ios are large and
-      # numerous. Diagnose from this step's output before changing anything.
+      # Why this build caches to R2 and not to the GitHub Actions cache.
+      #
+      # On ghac almost every write failed: measured on run 30950327884, the
+      # sampled Android jobs stored 299/2626, 294/2464 and 196/1905 objects —
+      # a steady ~11%, not a cliff — so a miss still cost the full ~25-30 min
+      # and the hit rate sat at 55-60% instead of climbing.
+      #
+      # It was never the 10 GB quota (an over-quota repo gets LRU eviction, not
+      # failed writes) and never the wiring (android_configure.py wraps CC/CXX
+      # correctly). It was GitHub's cache-upload rate limit, 200 new entries
+      # per minute per repository, added 2026-01-16:
+      #   https://github.blog/changelog/2026-01-16-rate-limiting-for-actions-cache-entries/
+      # That limit covers uploads and explicitly exempts downloads, which is
+      # exactly the reads-work/writes-fail split the stats showed. sccache
+      # stores one cache entry per object and drops a 429 rather than honouring
+      # Retry-After, so each throttled write landed in "Cache write errors".
+      #
+      # ghac cannot serve this workload at any tuning: six concurrent Android
+      # jobs each miss ~2500 objects over a ~19 min compile window, ~800
+      # uploads/min against a 200/min repo-wide budget. Even a correct
+      # Retry-After upstream would just pace ~15000 entries/run through ~3800.
+      #
+      # R2 has neither a request-rate limit nor the 10 GB cap, so objects are
+      # stored individually — one entry per object, as sccache intends. Do not
+      # "optimise" this into tarring SCCACHE_DIR into a single object: six jobs
+      # finishing minutes apart would each upload a whole-cache blob to one key
+      # and the last writer would silently discard the rest.
+      #
+      # sccache never evicts from S3, so bucket growth is bounded by an R2
+      # lifecycle rule, not by anything in this workflow.
       - name: sccache stats
         if: always()
-        run: sccache --show-stats || true
+        run: |
+          sccache --show-stats || true
+          # The counters above say how many writes failed; this says why.
+          if [ -s /tmp/sccache-errors.log ]; then
+            echo '--- sccache server log (unique messages) ---'
+            sort /tmp/sccache-errors.log | uniq -c | sort -rn | head -40
+          fi
 
       - uses: actions/upload-artifact@v4
         with:
@@ -228,15 +280,29 @@ jobs:
           CXX: sccache clang++
           CC_host: sccache clang
           CXX_host: sccache clang++
+          # Same R2 backend, same reasoning, as build-android's Build step.
+          SCCACHE_BUCKET: ${{ secrets.R2_ACCESS_KEY_ID != '' && vars.R2_BUCKET || '' }}
+          SCCACHE_REGION: auto
+          SCCACHE_ENDPOINT: https://${{ secrets.R2_ACCOUNT_ID }}.r2.cloudflarestorage.com
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
         run: |
           python3.12 -m venv .
           source bin/activate
           python3.12 -m pip install setuptools
           ./tools/ios_framework_prepare.sh $TARGET_ARCH
 
+      # These writes used to count against the same repo-wide 200/min upload
+      # budget the Android matrix was already blowing through; on R2 they no
+      # longer compete — see the note on build-android's sccache stats step.
       - name: sccache stats
         if: always()
-        run: sccache --show-stats || true
+        run: |
+          sccache --show-stats || true
+          if [ -s /tmp/sccache-errors.log ]; then
+            echo '--- sccache server log (unique messages) ---'
+            sort /tmp/sccache-errors.log | uniq -c | sort -rn | head -40
+          fi
 
       - uses: actions/upload-artifact@v4
         with:
