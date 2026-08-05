@@ -25,15 +25,19 @@ concurrency:
 permissions:
   contents: read
 
+env:
+  SCCACHE_GHA_ENABLED: 'true'
+  SCCACHE_IDLE_TIMEOUT: '0'   # keep the sccache server alive through long builds
+
 jobs:
   smoke-host:
     runs-on: ubuntu-24.04
-    # Nothing wires a compiler cache into this build, so every run compiles V8
-    # from cold: ~75-85 min on a 4-core runner before a single test executes,
-    # then ~30 min for the suites below. 180 leaves real headroom while still
-    # catching a genuine hang, which the 360-minute default never would.
-    # Wiring up sccache here (build.yml installs it, but nothing sets the
-    # compiler wrapper) would cut this a lot and is worth doing separately.
+    # Measured at 82 min end to end with no compiler cache at all: ~75 of that
+    # was V8, before a single test executed. sccache is wired below now, so a
+    # warm run should be far shorter — but the cold number is what the timeout
+    # has to survive, and a cache miss still pays it. 180 leaves real headroom
+    # while still catching a genuine hang, which the 360-minute default never
+    # would.
     timeout-minutes: 180
 
     steps:
@@ -42,9 +46,25 @@ jobs:
           fetch-depth: 1
       - uses: ./.github/actions/materialize
 
+      - name: Run sccache-cache
+        uses: mozilla-actions/sccache-action@9e7fa8a12102821edf02ca5dbea1acd0f89a2696 # v0.0.10
+
+      # The fork wraps the compiler in sccache from android_configure.py, but
+      # only there — configure.py carries no such wiring, so the host build
+      # (and the iOS build, which also goes through configure.py) compiled V8
+      # cold on every single run: ~75 min before a test could start. Set the
+      # wrapper here instead, which node's configure honours the same way it
+      # honours CC="ccache gcc". CC_host/CXX_host matter because gyp builds
+      # host tools (mksnapshot, torque) with those.
+      #
       # gyp-next needs setuptools at build time and a bare venv doesn't bundle
       # it (distutils was removed from the stdlib); install it explicitly.
       - name: Configure
+        env:
+          CC: sccache cc
+          CXX: sccache c++
+          CC_host: sccache cc
+          CXX_host: sccache c++
         run: |
           python3.12 -m venv .
           source bin/activate
@@ -52,9 +72,21 @@ jobs:
           ./configure
 
       - name: Build node target
+        env:
+          CC: sccache cc
+          CXX: sccache c++
+          CC_host: sccache cc
+          CXX_host: sccache c++
         run: |
           source bin/activate
           make -j"$(nproc)" node
+
+      # Always print the stats: this is the only way the cache's effectiveness
+      # is visible at all. build-android has had this step and it is how the
+      # 100%-cache-write-failure described in this PR was found.
+      - name: sccache stats
+        if: always()
+        run: sccache --show-stats || true
 
       - name: Smoke test
         run: |
