@@ -31,14 +31,18 @@ CONTAINER="$(xcrun simctl get_app_container "$UDID" "$BUNDLE" data 2>/dev/null |
 DOCS="$CONTAINER/Documents"
 LOG="$(mktemp)"
 
-# Per-launch token names the verdict file (Documents/result-<token>.txt) so a
-# stale file or a spawned child (never gets --run-token) can't be confused for
-# this launch. Lowercased uuid -> [0-9a-f], uniform with the Android token.
-RUN_TOKEN="$(/usr/bin/uuidgen | tr 'A-F' 'a-f' | tr -d '-')"
-RESULT_FILE="$DOCS/result-${RUN_TOKEN}.txt"
 RESULT=1
 verdict=""
 for attempt in $(seq 1 "$LAUNCH_ATTEMPTS"); do
+  # Per-launch token names the verdict file (Documents/result-<token>.txt) so a
+  # stale file or a spawned child (never gets --run-token) can't be confused for
+  # this launch. Lowercased uuid -> [0-9a-f], uniform with the Android token.
+  # Fresh per attempt: a prior attempt's app instance (launch mis-classified as
+  # failed, torn down by --terminate-running-process) may still write a FAIL
+  # verdict for ITS token as it dies; reusing one token would let that stale
+  # write race this attempt's poll.
+  RUN_TOKEN="$(/usr/bin/uuidgen | tr 'A-F' 'a-f' | tr -d '-')"
+  RESULT_FILE="$DOCS/result-${RUN_TOKEN}.txt"
   rm -f "$RESULT_FILE"
   : >| "$LOG"
   # main.m consumes --run-token into the env (NodeRunner builds the verdict path)

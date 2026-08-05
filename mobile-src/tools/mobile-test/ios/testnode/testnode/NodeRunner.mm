@@ -99,6 +99,11 @@ static void NodeRunnerAtExitHook(void) {
         NSString* docs = [NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES) firstObject];
         NSString* rf = [docs stringByAppendingPathComponent:[NSString stringWithFormat:@"result-%s.txt", tok]];
         strncpy(g_result_file, [rf UTF8String], sizeof(g_result_file) - 1);
+        //Consume the token: a child spawned via process.execPath inherits the
+        //environment and re-enters main.m; with the token still set it would
+        //write PASS/FAIL to the parent's verdict file while the parent is
+        //still running (a false-PASS vector). Only this launch may hold it.
+        unsetenv("NODE_MOBILE_RUN_TOKEN");
         atexit(NodeRunnerAtExitHook);
     }
 

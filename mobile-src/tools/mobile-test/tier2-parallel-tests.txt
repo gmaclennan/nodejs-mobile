@@ -132,6 +132,9 @@ parallel/test-path-relative
 parallel/test-path-resolve
 parallel/test-path-win32-exists
 parallel/test-path-zero-length-strings
+# Executes the mobile-adapted process.versions assertion (patch 0009's
+# `mobile` key) on-device — the only place that assertion actually runs.
+parallel/test-process-versions
 parallel/test-querystring
 parallel/test-querystring-escape
 parallel/test-querystring-maxKeys-non-finite
