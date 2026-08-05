@@ -13,10 +13,10 @@ Co-authored-by: Julia Samól <j.samol@papers.ch>
 Co-authored-by: Jaime Bernardo <jaime@janeasystems.com>
 ---
  tools/gyp/pylib/gyp/common.py          |   2 +-
- tools/gyp/pylib/gyp/generator/make.py  |  38 ++++----
- tools/gyp/pylib/gyp/generator/ninja.py | 115 ++++++++++++++++---------
+ tools/gyp/pylib/gyp/generator/make.py  |  38 ++++-----
+ tools/gyp/pylib/gyp/generator/ninja.py | 108 ++++++++++++++++---------
  tools/gyp/pylib/gyp/xcode_emulation.py |  17 +++-
- 4 files changed, 106 insertions(+), 66 deletions(-)
+ 4 files changed, 102 insertions(+), 63 deletions(-)
 
 diff --git a/tools/gyp/pylib/gyp/common.py b/tools/gyp/pylib/gyp/common.py
 index 223ce47b00..52e35b74d8 100644
@@ -200,7 +200,7 @@ index 16b6f4e80b..41c34c3c28 100644
  
          writer = MakefileWriter(generator_flags, flavor)
 diff --git a/tools/gyp/pylib/gyp/generator/ninja.py b/tools/gyp/pylib/gyp/generator/ninja.py
-index 3ceaf470ce..0bd412656c 100644
+index 3ceaf470ce..f47d00e599 100644
 --- a/tools/gyp/pylib/gyp/generator/ninja.py
 +++ b/tools/gyp/pylib/gyp/generator/ninja.py
 @@ -42,7 +42,8 @@ generator_default_variables = {
@@ -286,19 +286,7 @@ index 3ceaf470ce..0bd412656c 100644
              link_deps = collections.defaultdict(list)
  
          compile_deps = self.target.actions_stamp or actions_depends
-@@ -809,8 +823,9 @@ class NinjaWriter:
-                 outputs = [self.GypPathToNinja(o, env) for o in outputs]
-                 if self.flavor == "win":
-                     # WriteNewNinjaRule uses unique_name to create a rsp file on win.
--                    unique_name = hashlib.sha256(outputs[0].encode("utf-8")).hexdigest()
--                    extra_bindings.append(("unique_name", unique_name))
-+                    extra_bindings.append(
-+                        ("unique_name", hashlib.md5(outputs[0]).hexdigest())
-+                    )
- 
-                 self.ninja.build(
-                     outputs,
-@@ -1026,7 +1041,8 @@ class NinjaWriter:
+@@ -1026,7 +1040,8 @@ class NinjaWriter:
              self.ninja.variable("nm", "$nm_host")
              self.ninja.variable("readelf", "$readelf_host")
  
@@ -308,7 +296,7 @@ index 3ceaf470ce..0bd412656c 100644
              return self.WriteSourcesForArch(
                  self.ninja,
                  config_name,
-@@ -1065,7 +1081,8 @@ class NinjaWriter:
+@@ -1065,7 +1080,8 @@ class NinjaWriter:
          """Write build rules to compile all of |sources|."""
  
          extra_defines = []
@@ -318,7 +306,7 @@ index 3ceaf470ce..0bd412656c 100644
              cflags = self.xcode_settings.GetCflags(config_name, arch=arch)
              cflags_c = self.xcode_settings.GetCflagsC(config_name)
              cflags_cc = self.xcode_settings.GetCflagsCC(config_name)
-@@ -1173,7 +1190,8 @@ class NinjaWriter:
+@@ -1173,7 +1189,8 @@ class NinjaWriter:
              )
  
          pch_commands = precompiled_header.GetPchBuildCommands(arch)
@@ -328,7 +316,7 @@ index 3ceaf470ce..0bd412656c 100644
              # Most targets use no precompiled headers, so only write these if needed.
              for ext, var in [
                  ("c", "cflags_pch_c"),
-@@ -1194,7 +1212,8 @@ class NinjaWriter:
+@@ -1194,7 +1211,8 @@ class NinjaWriter:
          self.WriteVariableList(
              ninja_file, "cflags_cc", map(self.ExpandSpecial, cflags_cc)
          )
@@ -338,7 +326,7 @@ index 3ceaf470ce..0bd412656c 100644
              self.WriteVariableList(
                  ninja_file, "cflags_objc", map(self.ExpandSpecial, cflags_objc)
              )
-@@ -1225,9 +1244,11 @@ class NinjaWriter:
+@@ -1225,9 +1243,11 @@ class NinjaWriter:
                  # Add the _asm suffix as msvs is capable of handling .cc and
                  # .asm files of the same name without collision.
                  obj_ext = "_asm.obj"
@@ -352,7 +340,7 @@ index 3ceaf470ce..0bd412656c 100644
                  command = "objcxx"
                  self.target.uses_cpp = True
              elif self.flavor == "win" and ext == "rc":
-@@ -1302,8 +1323,9 @@ class NinjaWriter:
+@@ -1302,8 +1322,9 @@ class NinjaWriter:
              ninja_file.build(gch, cmd, input, variables=[(var_name, lang_flag)])
  
      def WriteLink(self, spec, config_name, config, link_deps, compile_deps):
@@ -364,7 +352,7 @@ index 3ceaf470ce..0bd412656c 100644
              return self.WriteLinkForArch(
                  self.ninja, spec, config_name, config, link_deps, compile_deps
              )
-@@ -1346,7 +1368,7 @@ class NinjaWriter:
+@@ -1346,7 +1367,7 @@ class NinjaWriter:
      def WriteLinkForArch(
          self, ninja_file, spec, config_name, config, link_deps, compile_deps, arch=None
      ):
@@ -373,7 +361,7 @@ index 3ceaf470ce..0bd412656c 100644
          command = {
              "executable": "link",
              "loadable_module": "solink_module",
-@@ -1419,7 +1441,8 @@ class NinjaWriter:
+@@ -1419,7 +1440,8 @@ class NinjaWriter:
          elif self.toolset == "host":
              env_ldflags = os.environ.get("LDFLAGS_host", "").split()
  
@@ -383,7 +371,7 @@ index 3ceaf470ce..0bd412656c 100644
              ldflags = self.xcode_settings.GetLdflags(
                  config_name,
                  self.ExpandSpecial(generator_default_variables["PRODUCT_DIR"]),
-@@ -1491,7 +1514,8 @@ class NinjaWriter:
+@@ -1491,7 +1513,8 @@ class NinjaWriter:
          libraries = gyp.common.uniquer(
              map(self.ExpandSpecial, spec.get("libraries", []))
          )
@@ -393,7 +381,7 @@ index 3ceaf470ce..0bd412656c 100644
              libraries = self.xcode_settings.AdjustLibraries(libraries, config_name)
          elif self.flavor == "win":
              libraries = self.msvs_settings.AdjustLibraries(libraries)
-@@ -1598,7 +1622,8 @@ class NinjaWriter:
+@@ -1598,7 +1621,8 @@ class NinjaWriter:
                      )
                      variables.append(("libflags", libflags))
  
@@ -403,7 +391,7 @@ index 3ceaf470ce..0bd412656c 100644
                      self.AppendPostbuildVariable(
                          variables, spec, self.target.binary, self.target.binary
                      )
-@@ -1754,9 +1779,11 @@ class NinjaWriter:
+@@ -1754,9 +1778,11 @@ class NinjaWriter:
              + " && ".join([ninja_syntax.escape(command) for command in postbuilds])
          )
          command_string = (
@@ -417,7 +405,7 @@ index 3ceaf470ce..0bd412656c 100644
          )
          if is_command_start:
              return "(" + command_string + " && "
-@@ -1847,7 +1874,7 @@ class NinjaWriter:
+@@ -1847,7 +1873,7 @@ class NinjaWriter:
  
          if (
              arch is None
@@ -426,7 +414,7 @@ index 3ceaf470ce..0bd412656c 100644
              and type
              in ("static_library", "executable", "shared_library", "loadable_module")
          ):
-@@ -1862,7 +1889,7 @@ class NinjaWriter:
+@@ -1862,7 +1888,7 @@ class NinjaWriter:
          # Some products go into the output root, libraries go into shared library
          # dir, and everything else goes into the normal place.
          type_in_output_root = ["executable", "loadable_module"]
@@ -435,7 +423,7 @@ index 3ceaf470ce..0bd412656c 100644
              type_in_output_root += ["shared_library", "static_library"]
          elif self.flavor == "win" and self.toolset == "target":
              type_in_output_root += ["shared_library"]
-@@ -1908,7 +1935,8 @@ class NinjaWriter:
+@@ -1908,7 +1934,8 @@ class NinjaWriter:
              description = self.msvs_settings.ConvertVSMacros(
                  description, config=self.config_name
              )
@@ -445,7 +433,7 @@ index 3ceaf470ce..0bd412656c 100644
              # |env| is an empty list on non-mac.
              args = [gyp.xcode_emulation.ExpandEnvVars(arg, env) for arg in args]
              description = gyp.xcode_emulation.ExpandEnvVars(description, env)
-@@ -1945,8 +1973,7 @@ class NinjaWriter:
+@@ -1945,8 +1972,7 @@ class NinjaWriter:
                  )
              else:
                  rspfile_content = gyp.msvs_emulation.EncodeRspFileList(
@@ -455,7 +443,7 @@ index 3ceaf470ce..0bd412656c 100644
              command = (
                  "%s gyp-win-tool action-wrapper $arch " % sys.executable
                  + rspfile
-@@ -1980,8 +2007,9 @@ def CalculateVariables(default_variables, params):
+@@ -1980,8 +2006,9 @@ def CalculateVariables(default_variables, params):
      global generator_additional_non_configuration_keys
      global generator_additional_path_sections
      flavor = gyp.common.GetFlavor(params)
@@ -467,7 +455,7 @@ index 3ceaf470ce..0bd412656c 100644
          default_variables.setdefault("SHARED_LIB_SUFFIX", ".dylib")
          default_variables.setdefault(
              "SHARED_LIB_DIR", generator_default_variables["PRODUCT_DIR"]
-@@ -2083,7 +2111,6 @@ def GetDefaultConcurrentLinks():
+@@ -2083,7 +2110,6 @@ def GetDefaultConcurrentLinks():
          return pool_size
  
      if sys.platform in ("win32", "cygwin"):
@@ -475,7 +463,7 @@ index 3ceaf470ce..0bd412656c 100644
          class MEMORYSTATUSEX(ctypes.Structure):
              _fields_ = [
                  ("dwLength", ctypes.c_ulong),
-@@ -2103,8 +2130,8 @@ def GetDefaultConcurrentLinks():
+@@ -2103,8 +2129,8 @@ def GetDefaultConcurrentLinks():
  
          # VS 2015 uses 20% more working set than VS 2013 and can consume all RAM
          # on a 64 GiB machine.
@@ -486,7 +474,7 @@ index 3ceaf470ce..0bd412656c 100644
          return min(mem_limit, hard_cap)
      elif sys.platform.startswith("linux"):
          if os.path.exists("/proc/meminfo"):
-@@ -2115,14 +2142,14 @@ def GetDefaultConcurrentLinks():
+@@ -2115,14 +2141,14 @@ def GetDefaultConcurrentLinks():
                      if not match:
                          continue
                      # Allow 8Gb per link on Linux because Gold is quite memory hungry
@@ -503,7 +491,7 @@ index 3ceaf470ce..0bd412656c 100644
          except subprocess.CalledProcessError:
              return 1
      else:
-@@ -2345,7 +2372,8 @@ def GenerateOutputForConfig(target_list, target_dicts, data, params, config_name
+@@ -2345,7 +2371,8 @@ def GenerateOutputForConfig(target_list, target_dicts, data, params, config_name
          master_ninja.variable("ld", CommandWithWrapper("LINK", wrappers, ld))
          master_ninja.variable("ldxx", CommandWithWrapper("LINK", wrappers, ldxx))
          master_ninja.variable("ar", GetEnvironFallback(["AR_target", "AR"], ar))
@@ -513,7 +501,7 @@ index 3ceaf470ce..0bd412656c 100644
              # Mac does not use readelf/nm for .TOC generation, so avoiding polluting
              # the master ninja with extra unused variables.
              master_ninja.variable("nm", GetEnvironFallback(["NM_target", "NM"], nm))
-@@ -2411,7 +2439,8 @@ def GenerateOutputForConfig(target_list, target_dicts, data, params, config_name
+@@ -2411,7 +2438,8 @@ def GenerateOutputForConfig(target_list, target_dicts, data, params, config_name
              "cc_s",
              description="CC $out",
              command=(
@@ -523,7 +511,7 @@ index 3ceaf470ce..0bd412656c 100644
              ),
          )
          master_ninja.rule(
-@@ -2522,7 +2551,8 @@ def GenerateOutputForConfig(target_list, target_dicts, data, params, config_name
+@@ -2522,7 +2550,8 @@ def GenerateOutputForConfig(target_list, target_dicts, data, params, config_name
              "solink",
              description="SOLINK $lib",
              restat=True,
@@ -533,7 +521,7 @@ index 3ceaf470ce..0bd412656c 100644
              rspfile="$link_file_list",
              rspfile_content=(
                  "-Wl,--whole-archive $in $solibs -Wl,--no-whole-archive $libs"
-@@ -2707,7 +2737,7 @@ def GenerateOutputForConfig(target_list, target_dicts, data, params, config_name
+@@ -2707,7 +2736,7 @@ def GenerateOutputForConfig(target_list, target_dicts, data, params, config_name
              command="$env %(python)s gyp-mac-tool compile-ios-framework-header-map "
              "$out $framework $in && $env %(python)s gyp-mac-tool "
              "copy-ios-framework-headers $framework $copy_headers"
@@ -542,7 +530,7 @@ index 3ceaf470ce..0bd412656c 100644
          )
          master_ninja.rule(
              "mac_tool",
-@@ -2791,7 +2821,8 @@ def GenerateOutputForConfig(target_list, target_dicts, data, params, config_name
+@@ -2791,7 +2820,8 @@ def GenerateOutputForConfig(target_list, target_dicts, data, params, config_name
          )
  
          spec = target_dicts[qualified_target]
@@ -552,16 +540,7 @@ index 3ceaf470ce..0bd412656c 100644
              gyp.xcode_emulation.MergeGlobalXcodeSettingsToSpec(data[build_file], spec)
  
          # If build_file is a symlink, we must not follow it because there's a chance
-@@ -2803,7 +2834,7 @@ def GenerateOutputForConfig(target_list, target_dicts, data, params, config_name
-             build_file, name, toolset
-         )
-         qualified_target_for_hash = qualified_target_for_hash.encode("utf-8")
--        hash_for_rules = hashlib.sha256(qualified_target_for_hash).hexdigest()
-+        hash_for_rules = hashlib.md5(qualified_target_for_hash).hexdigest()
- 
-         base_path = os.path.dirname(build_file)
-         obj = "obj"
-@@ -2954,4 +2985,4 @@ def GenerateOutput(target_list, target_dicts, data, params):
+@@ -2954,4 +2984,4 @@ def GenerateOutput(target_list, target_dicts, data, params):
              for config_name in config_names:
                  GenerateOutputForConfig(
                      target_list, target_dicts, data, params, config_name

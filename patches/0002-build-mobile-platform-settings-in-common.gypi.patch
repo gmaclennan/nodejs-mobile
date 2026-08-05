@@ -12,11 +12,11 @@ Co-authored-by: Andre Staltz <andre@staltz.com>
 Co-authored-by: Julia Samól <j.samol@papers.ch>
 Co-authored-by: Jaime Bernardo <jaime@janeasystems.com>
 ---
- common.gypi | 157 ++++++++++++++++++++++++++++++++++++++++++++--------
- 1 file changed, 134 insertions(+), 23 deletions(-)
+ common.gypi | 135 +++++++++++++++++++++++++++++++++++++++++++++++++---
+ 1 file changed, 128 insertions(+), 7 deletions(-)
 
 diff --git a/common.gypi b/common.gypi
-index c9ff09b4dc..82b21453c0 100644
+index c9ff09b4dc..3640ca3b91 100644
 --- a/common.gypi
 +++ b/common.gypi
 @@ -18,6 +18,12 @@
@@ -105,29 +105,13 @@ index c9ff09b4dc..82b21453c0 100644
          'xcode_settings': {
            'OTHER_CFLAGS+': [
              '-fno-omit-frame-pointer',
-@@ -510,12 +537,12 @@
-       ['v8_enable_pointer_compression == 1', {
-         'defines': ['V8_COMPRESS_POINTERS'],
-       }],
--      ['v8_enable_pointer_compression == 1 and v8_enable_pointer_compression_shared_cage != 1', {
--        'defines': ['V8_COMPRESS_POINTERS_IN_MULTIPLE_CAGES'],
--      }],
-       ['v8_enable_pointer_compression_shared_cage == 1', {
-         'defines': ['V8_COMPRESS_POINTERS_IN_SHARED_CAGE'],
-       }],
-+      ['v8_enable_pointer_compression == 1 and v8_enable_pointer_compression_shared_cage != 1', {
-+        'defines': ['V8_COMPRESS_POINTERS_IN_MULTIPLE_CAGES'],
-+      }],
-       ['v8_enable_pointer_compression == 1 or v8_enable_31bit_smis_on_64bit_arch == 1', {
-         'defines': ['V8_31BIT_SMIS_ON_64BIT_ARCH'],
-       }],
-@@ -593,21 +620,18 @@
+@@ -593,11 +620,13 @@
            }],
            ['_toolset=="host"', {
              'conditions': [
 -              [ 'host_arch=="ia32"', {
 +              # nodejs-mobile patch: https://github.com/nodejs/node/pull/57748
-+              [ 'host_arch=="ia32" or (target_arch=="ia32" or target_arch=="arm")', {
++              [ 'host_arch=="ia32" or (host_arch=="x64" and (target_arch=="ia32" or target_arch=="arm"))', {
                  'cflags': [ '-m32' ],
                  'ldflags': [ '-m32' ],
                }],
@@ -137,41 +121,7 @@ index c9ff09b4dc..82b21453c0 100644
                  'cflags': [ '-m64' ],
                  'ldflags': [ '-m64' ],
                }],
-               [ 'host_arch=="ppc64" and OS not in "aix os400"', {
--                'conditions': [
--                  [ 'clang==0', {
--                    'cflags': [ '-mminimal-toc' ],
--                  }],
--                ],
--                'cflags': [ '-m64' ],
-+                'cflags': [ '-m64', '-mminimal-toc' ],
-                 'ldflags': [ '-m64' ],
-               }],
-               [ 'host_arch=="s390x" and OS=="linux"', {
-@@ -627,12 +651,7 @@
-                 'ldflags': [ '-m64' ],
-               }],
-               [ 'target_arch=="ppc64" and OS not in "aix os400"', {
--                'conditions': [
--                  [ 'clang==0', {
--                    'cflags': [ '-mminimal-toc' ],
--                  }],
--                ],
--                'cflags': [ '-m64' ],
-+                'cflags': [ '-m64', '-mminimal-toc' ],
-                 'ldflags': [ '-m64' ],
-               }],
-               [ 'target_arch=="s390x" and OS=="linux"', {
-@@ -674,7 +693,7 @@
-             ],
-           }, {                                             # else it's `AIX`
-             'variables': {
--              'gcc_major': '<!(sh -c "${CXX:-g++} -dumpversion")'
-+              'gcc_major': '<!(<(python) -c "import os; import subprocess; CXX=os.environ.get(\'CXX\', \'g++\'); subprocess.run([CXX, \'-dumpversion\'])")'
-             },
-             # Disable the following compiler warning:
-             #
-@@ -757,6 +776,98 @@
+@@ -757,6 +786,98 @@
            }],
          ],
        }],

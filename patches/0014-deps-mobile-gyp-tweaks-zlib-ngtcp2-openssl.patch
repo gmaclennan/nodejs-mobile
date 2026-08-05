@@ -12,48 +12,10 @@ Co-authored-by: Andre Staltz <andre@staltz.com>
 Co-authored-by: Julia Samól <j.samol@papers.ch>
 Co-authored-by: Jaime Bernardo <jaime@janeasystems.com>
 ---
- deps/ngtcp2/ngtcp2.gyp           | 16 +++++++++++-----
- deps/openssl/openssl_no_asm.gypi |  4 ++--
- deps/zlib/zlib.gyp               |  9 ++++++++-
- 3 files changed, 21 insertions(+), 8 deletions(-)
+ deps/openssl/openssl_no_asm.gypi | 4 ++--
+ deps/zlib/zlib.gyp               | 9 ++++++++-
+ 2 files changed, 10 insertions(+), 3 deletions(-)
 
-diff --git a/deps/ngtcp2/ngtcp2.gyp b/deps/ngtcp2/ngtcp2.gyp
-index 57dd0f8fda..b0354aa6d4 100644
---- a/deps/ngtcp2/ngtcp2.gyp
-+++ b/deps/ngtcp2/ngtcp2.gyp
-@@ -126,7 +126,7 @@
-             },
-           },
-         }],
--        ['OS=="linux" or OS=="android" or OS=="openharmony"', {
-+        ['OS=="linux" or OS=="android"', {
-           'defines': [
-             'HAVE_ARPA_INET_H',
-             'HAVE_NETINET_IN_H',
-@@ -205,13 +205,19 @@
-             },
-           },
-         }],
--        ['OS!="win"', {
--          'defines': ['HAVE_UNISTD_H']
--        }],
--        ['OS=="linux" or OS=="android" or OS=="openharmony"', {
-+        # nodejs-mobile patch: add "android"
-+        ['OS=="linux" or OS=="android"', {
-           'defines': [
-             'HAVE_ARPA_INET_H',
-             'HAVE_NETINET_IN_H',
-+            # nodejs-mobile patch: flag required for nghttp3_unreachable.c
-+            'HAVE_UNISTD_H',
-+          ],
-+        }],
-+        # nodejs-mobile patch: flag requires for nghttp3_unreachable.c
-+        ['OS=="ios"', {
-+          'defines': [
-+            'HAVE_UNISTD_H',
-           ],
-         }],
-       ],
 diff --git a/deps/openssl/openssl_no_asm.gypi b/deps/openssl/openssl_no_asm.gypi
 index 8169f605d7..e021093636 100644
 --- a/deps/openssl/openssl_no_asm.gypi
