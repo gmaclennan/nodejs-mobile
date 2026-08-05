@@ -121,6 +121,22 @@ The test reports which implementation it ran on, and asserts it when
 jitless step can't silently degrade into testing native wasm if a future V8
 keeps WebAssembly under `--jitless`. The device runs leave it unset.
 
+A third step runs upstream's `test-freeze-intrinsics` under the same jitless
+engine:
+
+```sh
+./out/Release/node --jitless --frozen-intrinsics \
+  test/parallel/test-freeze-intrinsics.js
+```
+
+`--frozen-intrinsics` is the one code path that reaches into the polyfill's
+shape rather than just calling it: `internal/freeze_intrinsics.js` reads seven
+`WebAssembly.*.prototype`s the moment the global exists, so a member the
+polyfill doesn't implement doesn't fail a `fetch()` — it stops the runtime from
+booting at all. That is how `LinkError` and `RuntimeError` missing from
+polywasm were found; keeping the step means the next such gap fails here
+instead of in an embedder's app.
+
 ### The NAPI addon gate
 
 After the curated subset, each Tier-2 workflow builds the **crc-native** N-API

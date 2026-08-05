@@ -40,7 +40,7 @@ Co-authored-by: Jaime Bernardo <jaime@janeasystems.com>
  ...test-process-dlopen-error-message-crash.js |   4 +-
  ...etactiveresources-track-active-requests.js |   3 +-
  .../test-process-getactiveresources.js        |   6 +-
- test/parallel/test-process-versions.js        |  17 +-
+ test/parallel/test-process-versions.js        |  26 +-
  test/parallel/test-repl-options.js            |   6 +-
  test/parallel/test-runner-concurrency.js      |   3 +
  test/parallel/test-signal-handler.js          |  12 +-
@@ -48,7 +48,7 @@ Co-authored-by: Jaime Bernardo <jaime@janeasystems.com>
  test/sequential/sequential.status             |  88 ++
  test/sequential/test-async-wrap-getasyncid.js |  15 +-
  test/sequential/test-fs-watch.js              | 126 ++-
- 35 files changed, 1317 insertions(+), 238 deletions(-)
+ 35 files changed, 1325 insertions(+), 239 deletions(-)
 
 diff --git a/test/parallel/parallel.status b/test/parallel/parallel.status
 index 5c7fe47927..f2378d2566 100644
@@ -2061,21 +2061,28 @@ index a2df7d580d..7851be0936 100644
 +  'Timeout'
 +]);
 diff --git a/test/parallel/test-process-versions.js b/test/parallel/test-process-versions.js
-index b670ff37ac..dd98c11686 100644
+index b670ff37ac..68724daf7f 100644
 --- a/test/parallel/test-process-versions.js
 +++ b/test/parallel/test-process-versions.js
-@@ -3,7 +3,9 @@ const common = require('../common');
+@@ -2,8 +2,15 @@
+ const common = require('../common');
  const assert = require('assert');
  
- // Import of pure js (non-shared) deps for comparison
+-// Import of pure js (non-shared) deps for comparison
 -const acorn = require('../../deps/acorn/acorn/package.json');
-+// nodejs-mobile patch to hard code this version since we don't have access to
-+// root-level "deps" folder inside the mobile app
-+// const acorn = require('../../deps/acorn/acorn/package.json');
++// Import of pure js (non-shared) deps for comparison.
++//
++// nodejs-mobile: the test assets copied into the app sandbox carry no
++// root-level "deps" folder, so on-device these files cannot be read at all --
++// the version cross-checks they feed are deferred to the bottom of this file
++// and skipped there. They are not replaced by hard-coded version strings: a
++// literal here goes stale at the next upstream bump and then fails on every
++// platform instead of only on the one that can't do the check.
++const canReadDeps = !common.isAndroid && !common.isIOS;
  
  const expected_keys = [
    'ares',
-@@ -27,6 +29,9 @@ const expected_keys = [
+@@ -27,6 +34,9 @@ const expected_keys = [
    'merve',
  ];
  
@@ -2085,24 +2092,27 @@ index b670ff37ac..dd98c11686 100644
  
  const hasUndici = process.config.variables.node_builtin_shareable_builtins.includes('deps/undici/undici.js');
  const hasAmaro = process.config.variables.node_builtin_shareable_builtins.includes('deps/amaro/dist/index.js');
-@@ -112,10 +117,14 @@ assert.strictEqual(process.config.variables.napi_build_version,
+@@ -111,11 +121,17 @@ for (let i = 0; i < expected_keys.length; i++) {
+ assert.strictEqual(process.config.variables.napi_build_version,
                     process.versions.napi);
  
- if (hasUndici) {
--  const undici = require('../../deps/undici/src/package.json');
--  const expectedUndiciVersion = undici.version;
-+  // nodejs-mobile patch to hard code this version since we don't have access to
-+  // root-level "deps" folder inside the mobile app
-+  // const undici = require('../../deps/undici/src/package.json');
-+  const expectedUndiciVersion = '7.24.4'; // undici.version;
+-if (hasUndici) {
++// nodejs-mobile: `canReadDeps` -- see the top of this file. Where deps/ is out
++// of reach the shape of both versions is still asserted above, against
++// `commonTemplate`; only the value cross-check is skipped.
++if (hasUndici && canReadDeps) {
+   const undici = require('../../deps/undici/src/package.json');
+   const expectedUndiciVersion = undici.version;
    assert.strictEqual(process.versions.undici, expectedUndiciVersion);
  }
  
 -const expectedAcornVersion = acorn.version;
-+// nodejs-mobile patch to hard code this version since we don't have access to
-+// root-level "deps" folder inside the mobile app
-+const expectedAcornVersion = '8.16.0'; // acorn.version;
- assert.strictEqual(process.versions.acorn, expectedAcornVersion);
+-assert.strictEqual(process.versions.acorn, expectedAcornVersion);
++if (canReadDeps) {
++  const acorn = require('../../deps/acorn/acorn/package.json');
++  const expectedAcornVersion = acorn.version;
++  assert.strictEqual(process.versions.acorn, expectedAcornVersion);
++}
 diff --git a/test/parallel/test-repl-options.js b/test/parallel/test-repl-options.js
 index 0cea1d5be4..eded67e632 100644
 --- a/test/parallel/test-repl-options.js

@@ -36,6 +36,17 @@ Two details worth keeping:
   lazily, so that module compiles fine and then throws `Unsupported
   instruction: 0xFD` on the first request, well past undici's fallback.
 
+- `LinkError` and `RuntimeError` are added on top of what polywasm
+  exports. The JS-API defines three error types and polywasm implements
+  only `CompileError`; `internal/freeze_intrinsics.js` reads all seven
+  `WebAssembly.*.prototype`s behind nothing but a `typeof` check, so with
+  the polyfill answering for the global, `--frozen-intrinsics` on a
+  jitless engine failed to *bootstrap* -- `Cannot read properties of
+  undefined (reading 'prototype')` -- rather than failing some later
+  call. They are added at the install site and not in
+  deps/polywasm/polywasm.js because tools/dep_updaters/update-polywasm.sh
+  verifies that file byte-for-byte against the bundle published to npm.
+
 The property is installed as a lazy accessor that replaces itself with a
 plain data property carrying V8's own attributes (writable,
 non-enumerable, configurable) on first touch, so an application that
@@ -44,11 +55,14 @@ different implementation can just assign over the global.
 
 Covered by test/parallel/test-mobile-fetch, which runs in the curated
 Tier-2 subset on both platforms and on the host build under --jitless
-(host-smoke), the configuration that reproduces the iOS engine.
+(host-smoke), the configuration that reproduces the iOS engine, and by
+upstream's test-freeze-intrinsics run under --jitless --frozen-intrinsics
+in the same job -- the only gate that touches the polyfill's shape rather
+than just calling it.
 ---
- LICENSE                               | 23 +++++++++++
- lib/internal/process/pre_execution.js | 55 +++++++++++++++++++++++++++
- 2 files changed, 78 insertions(+)
+ LICENSE                               | 23 +++++++
+ lib/internal/process/pre_execution.js | 90 +++++++++++++++++++++++++++
+ 2 files changed, 113 insertions(+)
 
 diff --git a/LICENSE b/LICENSE
 index 2842efa128..58e2bea8b3 100644
@@ -82,10 +96,18 @@ index 2842efa128..58e2bea8b3 100644
 +    SOFTWARE.
 +  """
 diff --git a/lib/internal/process/pre_execution.js b/lib/internal/process/pre_execution.js
-index e9ab2b2a89..71dd143c51 100644
+index e9ab2b2a89..7971f9ecc1 100644
 --- a/lib/internal/process/pre_execution.js
 +++ b/lib/internal/process/pre_execution.js
-@@ -109,6 +109,7 @@ function prepareExecution(options) {
+@@ -9,6 +9,7 @@ const {
+   DatePrototypeGetMinutes,
+   DatePrototypeGetMonth,
+   DatePrototypeGetSeconds,
++  Error,
+   NumberParseInt,
+   ObjectDefineProperty,
+   ObjectFreeze,
+@@ -109,6 +110,7 @@ function prepareExecution(options) {
  
    // Patch the process object and get the resolved main entry point.
    const mainEntry = patchProcessObject(expandArgv1);
@@ -93,7 +115,7 @@ index e9ab2b2a89..71dd143c51 100644
    setupTraceCategoryState();
    setupInspectorHooks();
    setupNetworkInspection();
-@@ -363,6 +364,60 @@ function setupEventsource() {
+@@ -363,6 +365,94 @@ function setupEventsource() {
    }
  }
  
@@ -145,10 +167,44 @@ index e9ab2b2a89..71dd143c51 100644
 +    configurable: true,
 +    enumerable: false,
 +    get: function WebAssembly() {
-+      return defineValue(require('internal/deps/polywasm/polywasm').WebAssembly);
++      return defineValue(loadWebAssemblyPolyfill());
 +    },
 +    set: defineValue,
 +  });
++}
++
++// polywasm implements `CompileError` but neither of the other two error types
++// the WebAssembly JS-API defines. internal/freeze_intrinsics.js reads
++// `WebAssembly.LinkError.prototype` and `WebAssembly.RuntimeError.prototype`
++// with no guard beyond `typeof WebAssembly !== 'undefined'`, so once the
++// polyfill answers for the global, `--frozen-intrinsics` on a jitless engine --
++// the iOS configuration -- fails to *bootstrap* with `Cannot read properties
++// of undefined (reading 'prototype')`. Supplying them also gets their
++// prototypes into the frozen intrinsic list, which is what lets a subclass
++// still write `this.name` on an instance.
++//
++// This lives here and not in deps/polywasm/polywasm.js because
++// tools/dep_updaters/update-polywasm.sh verifies that file byte-for-byte
++// against the bundle published to npm.
++function loadWebAssemblyPolyfill() {
++  const { WebAssembly } = require('internal/deps/polywasm/polywasm');
++  if (WebAssembly.LinkError === undefined) {
++    WebAssembly.LinkError = class LinkError extends Error {
++      constructor(message) {
++        super(message);
++        this.name = 'LinkError';
++      }
++    };
++  }
++  if (WebAssembly.RuntimeError === undefined) {
++    WebAssembly.RuntimeError = class RuntimeError extends Error {
++      constructor(message) {
++        super(message);
++        this.name = 'RuntimeError';
++      }
++    };
++  }
++  return WebAssembly;
 +}
 +
  // TODO(aduh95): move this to internal/bootstrap/web/* when the CLI flag is
