@@ -59,7 +59,7 @@ jobs:
       FLAVOR_SUFFIX: ${{ matrix.flavor == 'lite' && '-lite' || '' }}
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 1
       - uses: ./.github/actions/materialize

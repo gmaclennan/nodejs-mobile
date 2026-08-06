@@ -21,7 +21,7 @@ runs:
       run: echo "tag=$(grep -Ev '^\s*(#|$)' upstream-base.txt | head -n1 | tr -d '[:space:]')" >> "$GITHUB_OUTPUT"
 
     - name: Cache upstream clone
-      uses: actions/cache@v4
+      uses: actions/cache@v6
       with:
         path: ${{ runner.temp }}/upstream-${{ steps.base.outputs.tag }}
         key: upstream-${{ steps.base.outputs.tag }}

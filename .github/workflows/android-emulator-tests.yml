@@ -61,7 +61,7 @@ jobs:
       FLAVOR_SUFFIX: ${{ matrix.flavor == 'lite' && '-lite' || '' }}
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 1
       - uses: ./.github/actions/materialize
@@ -104,7 +104,7 @@ jobs:
             || { echo "::error::libnode.so missing from nodejs-mobile-android${FLAVOR_SUFFIX}"; ls -R nm-android || true; exit 1; }
 
       - name: Set up JDK
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: '17'
@@ -136,7 +136,7 @@ jobs:
       # curated subset through the proxy. Everything runs in one emulator-runner
       # script so the device stays alive for the whole session.
       - name: Run curated JS subset on emulator
-        uses: reactivecircus/android-emulator-runner@e89f39f1abbbd05b1113a29cf4db69e7540cae5a # v2.37.0
+        uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2.38.0
         with:
           api-level: ${{ env.EMULATOR_API_LEVEL }}
           target: default
