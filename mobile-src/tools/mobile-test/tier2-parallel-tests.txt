@@ -109,13 +109,36 @@ parallel/test-eventtarget-custom-inspect-does-not-throw
 parallel/test-eventtarget-memoryleakwarning
 parallel/test-eventtarget-once-twice
 parallel/test-fs-readfile
-# Fork-only, and the one entry here that is NOT pure JS: a global fetch()
-# against an in-process HTTP server. It is the gate for the WebAssembly
-# polyfill the iOS binary needs for fetch() to work at all (docs/FAQ.md on
-# the recipe branch).
+# ---------------------------------------------------------------------------
+# Fork-only tests. Everything above is an upstream test that happens to pass
+# on mobile; these exist to exercise the patch series itself, and each one
+# names the patch it covers (docs/TESTING.md, "What covers which patch").
+# They are the entries for which the *device* legs are the point: several of
+# these patches only change behaviour on Android or iOS, so a host run proves
+# the assertion is well-formed and the Tier-2 run is what actually gates it.
+# ---------------------------------------------------------------------------
+# Patch 0006/0007: the POSIX credential surface. Upstream has none of it on
+# Android; the fork turns it back on and removes the setters bionic and the
+# app sandbox cannot honour.
+parallel/test-mobile-credentials
+# The one entry here that is NOT pure JS: a global fetch() against an
+# in-process HTTP server. It is the gate for the WebAssembly polyfill the iOS
+# binary needs for fetch() to work at all (docs/FAQ.md on the recipe branch).
 # Verified on a host build run --jitless (the same engine iOS gets, gated by
 # host-smoke); the Tier-2 emulator/simulator run is what confirms it on device.
 parallel/test-mobile-fetch
+# Patch 0015: NODE_PATH is read from process.env rather than through
+# SafeGetenv(), whose "is this process secure" check is meaningless when node
+# is a library inside somebody else's app.
+parallel/test-mobile-node-path
+# Patch 0010: the Apple system trust store reader, whose macOS-only API is
+# fenced off on iOS. The reader has no other caller, so without this the whole
+# thing can stop returning certificates with every job still green.
+parallel/test-mobile-system-ca
+# Patch 0008: KVStore::Clone() skips a variable it cannot read back instead of
+# throwing away the whole environment, which is how a worker gets one at all
+# on Android.
+parallel/test-mobile-worker-env-clone
 parallel/test-os-eol
 parallel/test-path-basename
 parallel/test-path-dirname
