@@ -92,13 +92,13 @@ jobs:
       ANDROID_LDFLAGS: '-Wl,-z,max-page-size=16384'
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 1
       - uses: ./.github/actions/materialize
 
       - name: Run sccache-cache
-        uses: mozilla-actions/sccache-action@9e7fa8a12102821edf02ca5dbea1acd0f89a2696 # v0.0.10
+        uses: mozilla-actions/sccache-action@fc920bf0ec8de6ee65d409111f7ec508035751ba # v0.0.11
 
       - name: Install build utils
         run: |
@@ -131,7 +131,7 @@ jobs:
 
       - name: Cache built libnode
         id: libnode-cache
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: out_android
           key: libnode-android-${{ env.TARGET_ARCH }}${{ env.FLAVOR_SUFFIX }}-ndk${{ env.ANDROID_NDK_VERSION }}-${{ steps.ck.outputs.key }}
@@ -209,7 +209,7 @@ jobs:
             sort /tmp/sccache-errors.log | uniq -c | sort -rn | head -40
           fi
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: node-android-${{ matrix.config.target_arch }}-${{ matrix.flavor }}
           path: out_android
@@ -233,13 +233,13 @@ jobs:
       FLAVOR_SUFFIX: ${{ matrix.flavor == 'lite' && '-lite' || '' }}
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 1
       - uses: ./.github/actions/materialize
 
       - name: Run sccache-cache
-        uses: mozilla-actions/sccache-action@9e7fa8a12102821edf02ca5dbea1acd0f89a2696 # v0.0.10
+        uses: mozilla-actions/sccache-action@fc920bf0ec8de6ee65d409111f7ec508035751ba # v0.0.11
 
       # See build-android: key the built framework on the git tree of the build
       # inputs so test-infra-only pushes reuse it. The Xcode version is folded
@@ -256,7 +256,7 @@ jobs:
 
       - name: Cache built libnode
         id: libnode-cache
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: out_ios_${{ env.TARGET_ARCH }}
           key: libnode-ios-${{ env.TARGET_ARCH }}${{ env.FLAVOR_SUFFIX }}-v1-${{ steps.ck.outputs.key }}
@@ -329,7 +329,7 @@ jobs:
             sort /tmp/sccache-errors.log | uniq -c | sort -rn | head -40
           fi
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: node-ios-${{ matrix.config.target_arch }}-${{ matrix.flavor }}
           path: out_ios_${{ env.TARGET_ARCH }}
@@ -345,7 +345,7 @@ jobs:
       NODEJS_MOBILE_FLAVOR: ${{ matrix.flavor }}
       FLAVOR_SUFFIX: ${{ matrix.flavor == 'lite' && '-lite' || '' }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 1
       - uses: ./.github/actions/materialize
@@ -355,7 +355,7 @@ jobs:
       # Each carries the per-abi libnode.so plus an identical out_android/libnode/
       # include tree (staged in build-android), so no NDK or ./configure is needed
       # here — just merge. (merge-multiple overwrites the duplicate header tree.)
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           pattern: node-android-*-${{ matrix.flavor }}
           merge-multiple: true
@@ -403,7 +403,7 @@ jobs:
       # overwrite: artifacts are immutable within a run, and that includes
       # re-run attempts — without this, "Re-run all jobs" (the standard answer
       # to Tier-1/2 flake, including on a release run) 409s right here.
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: nodejs-mobile-android${{ env.FLAVOR_SUFFIX }}
           path: artifacts
@@ -426,13 +426,13 @@ jobs:
       NODEJS_MOBILE_FLAVOR: ${{ matrix.flavor }}
       FLAVOR_SUFFIX: ${{ matrix.flavor == 'lite' && '-lite' || '' }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 1
       - uses: ./.github/actions/materialize
 
       # Pull only THIS flavor's per-slice frameworks (node-ios-<arch>-<flavor>).
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           pattern: node-ios-*-${{ matrix.flavor }}
           merge-multiple: true
@@ -459,7 +459,7 @@ jobs:
           cp -R out_ios/libnode/include/* artifacts/include
 
       # overwrite: see the note on combine-android's upload.
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: nodejs-mobile-ios${{ env.FLAVOR_SUFFIX }}
           path: artifacts
@@ -484,7 +484,7 @@ jobs:
       NODEJS_MOBILE_FLAVOR: ${{ matrix.flavor }}
       FLAVOR_SUFFIX: ${{ matrix.flavor == 'lite' && '-lite' || '' }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 1
       - uses: ./.github/actions/materialize
@@ -496,7 +496,7 @@ jobs:
           ndk-version: ${{ env.ANDROID_NDK_VERSION }}
           add-to-path: false
 
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: nodejs-mobile-android${{ env.FLAVOR_SUFFIX }}
           path: artifacts
@@ -520,7 +520,7 @@ jobs:
             "$PWD/libc++_shared.so"
 
       - name: Run smoke on emulator
-        uses: reactivecircus/android-emulator-runner@e89f39f1abbbd05b1113a29cf4db69e7540cae5a # v2.37.0
+        uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2.38.0
         with:
           api-level: 30
           arch: x86_64
@@ -547,12 +547,12 @@ jobs:
       NODEJS_MOBILE_FLAVOR: ${{ matrix.flavor }}
       FLAVOR_SUFFIX: ${{ matrix.flavor == 'lite' && '-lite' || '' }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 1
       - uses: ./.github/actions/materialize
 
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: nodejs-mobile-ios${{ env.FLAVOR_SUFFIX }}
           path: artifacts
@@ -601,13 +601,13 @@ jobs:
     timeout-minutes: 180
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 1
       - uses: ./.github/actions/materialize
 
       - name: Run sccache-cache
-        uses: mozilla-actions/sccache-action@9e7fa8a12102821edf02ca5dbea1acd0f89a2696 # v0.0.10
+        uses: mozilla-actions/sccache-action@fc920bf0ec8de6ee65d409111f7ec508035751ba # v0.0.11
 
       # The fork wraps the compiler in sccache from android_configure.py, but
       # only there — configure.py carries no such wiring, so the host build
@@ -811,7 +811,7 @@ jobs:
       dryrun: ${{ steps.d.outputs.dryrun }}
       version: ${{ steps.d.outputs.version }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 1
       - id: d
@@ -925,7 +925,7 @@ jobs:
       V: ${{ needs.release-check.outputs.version }}
       GH_TOKEN: ${{ github.token }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 1
 

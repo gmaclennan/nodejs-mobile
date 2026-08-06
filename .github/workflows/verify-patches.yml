@@ -25,7 +25,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       # The tree-hash check (prepare.sh) proves the recipe reproduces the
       # reviewed tree, but not that the recipe's own bookkeeping is coherent —
@@ -159,10 +159,10 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           path: head
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           ref: ${{ github.event.pull_request.base.sha }}
           path: base
@@ -212,7 +212,7 @@ jobs:
 
           ls -la tree-diff.stat tree-diff.patch
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: materialized-tree-diff
           path: |
@@ -233,7 +233,7 @@ jobs:
       ANDROID_NDK_VERSION: r27d
       ANDROID_TARGET_SDK_VERSION: '24'
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - uses: actions/setup-python@v6
         with:
