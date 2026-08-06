@@ -3,6 +3,7 @@
 - [Can I use npm node-modules with nodejs-mobile?](#can-i-use-npm-node-modules-with-nodejs-mobile)
 - [Are all Node.js APIs supported on mobile?](#are-all-nodejs-apis-supported-on-mobile)
 - [Does `fetch()` work? What about WebAssembly?](#does-fetch-work-what-about-webassembly)
+- [Does HTTPS trust the device's certificates?](#does-https-trust-the-devices-certificates)
 - [Trying to write a file results in an error. What's going on?](#trying-to-write-a-file-results-in-an-error-whats-going-on)
 - [Are Node.js native modules supported?](#are-nodejs-native-modules-supported)
 - [How can I improve Node.js load times?](#how-can-i-improve-nodejs-load-times)
@@ -84,6 +85,26 @@ Worth knowing:
 - **To use a different implementation**, assign to the global before anything
   touches it (`globalThis.WebAssembly = myImpl`) — the property is a normal
   writable global, exactly as V8's own is.
+
+## Does HTTPS trust the device's certificates?
+
+TLS trust comes from the **bundled** Mozilla root store compiled into the
+library, so `https`, `fetch()` and `tls` work out of the box against
+publicly-trusted endpoints on both platforms.
+
+What does *not* work on iOS is reading the operating system's trust store:
+iOS has no API to enumerate the system's trust anchors (apps may only ask the
+system to evaluate a specific chain), so `tls.getCACertificates('system')`
+returns an empty list and `--use-system-ca` adds nothing — verified on a real
+device. In practice that means a root the *device* trusts but node's bundle
+doesn't — an enterprise/MDM-installed CA, a TLS-intercepting corporate proxy,
+a user-installed profile — is invisible to node on iOS. If your app must trust
+such a CA, supply it explicitly: set `NODE_EXTRA_CA_CERTS` in the environment
+before starting the runtime, or pass the certificate via the `ca` option of
+the connection. Android is no better off through a different mechanism: the
+non-Apple reader looks in OpenSSL's standard certificate locations, which an
+app sandbox does not populate — so on both platforms, treat the bundled roots
+as the trust base and add private CAs explicitly.
 
 ## Trying to write a file results in an error. What's going on?
 

@@ -1,107 +1,126 @@
 #!/bin/bash
 # Per-test proxy for a *physical* iOS device, used via `test.py --shell`. Launches
-# the installed testnode app with ios-deploy, reads the test's real exit code from
-# the per-launch verdict file the app writes to its Documents dir — pulled back off
-# the device with ios-deploy's own sandbox download — echoes node's stdout/stderr
-# for test.py to compare, and maps PASS->0 / FAIL or no-verdict->1.
+# the installed testnode app, reads the test's real exit code from the per-launch
+# verdict file the app writes to its Documents dir — pulled back out of the app's
+# data container — echoes node's stdout/stderr for test.py to compare, and maps
+# PASS->0 / FAIL or no-verdict->1.
 #
-# The verdict is neither scraped from the console stream nor taken from
-# ios-deploy's exit code: same contract as the simulator proxy
-# (node-ios-sim-proxy.sh) and the Android one. See TESTING.md on the recipe branch.
+# Everything goes through `xcrun devicectl` (CoreDevice, ships with Xcode 15+).
+# On iOS 17+ ios-deploy's lldb launch path is dead — the personalized developer
+# disk image replaced the DeveloperDiskImage.dmg it looks for — while devicectl
+# launches with arguments, streams the console, reports the app's real exit
+# code, and copies files out of the app container. Verified end-to-end on an
+# iPhone 16 Pro / iOS 26. A pre-CoreDevice device (iOS 16 or older) needs the
+# previous ios-deploy proxy, retrievable from git history.
+#
+# The verdict is neither scraped from the console stream nor taken from an exit
+# code: same contract as the simulator and Android proxies. See TESTING.md on
+# the recipe branch.
 #
 # Local-only — no CI job runs this; Tier-3 device coverage goes through
-# BrowserStack. Retrieval flags verified against ios-deploy 1.12.x: `--bundle_id`
-# opens house arrest on the app, `--download=<sandbox path> --to <dir>` writes the
-# file to <dir>/<sandbox path>. ios-deploy exits 0 when the requested path does
-# not exist, so the downloaded file's presence is the only reliable signal.
+# BrowserStack.
 set -uo pipefail
 
-DEVICE_ID="${DEVICE_ID:-}"
-# Bundle id of the installed app. Overridable because TESTING.md tells you to
-# change it in Xcode when `nodejsmobile.test` is already taken on your account.
 BUNDLE_ID="${NODE_IOS_BUNDLE_ID:-nodejsmobile.test}"
+# Hang cap: devicectl blocks until the app exits, so a wedged test would wedge
+# the proxy without this. Landing here with no verdict scores FAIL.
+TIMEOUT="${NODE_IOS_PROXY_TIMEOUT:-240}"
 
-# ios-deploy with the optional device selector applied — a function rather than a
-# `$TARGET_DEVICE` string so the empty case needs no unquoted expansion.
-iosdeploy() {
-  if [ -n "$DEVICE_ID" ]; then
-    ios-deploy -i "$DEVICE_ID" "$@"
-  else
-    ios-deploy "$@"
-  fi
-}
+# devicectl addresses devices by CoreDevice identifier or name — NOT the
+# classic UDID ios-deploy used. With DEVICE_ID unset, auto-select when exactly
+# one device is connected; anything else must be picked explicitly.
+DEVICE_ID="${DEVICE_ID:-}"
+if [ -z "$DEVICE_ID" ]; then
+  DEVJSON="$(mktemp)"
+  xcrun devicectl list devices --json-output "$DEVJSON" >/dev/null 2>&1 || true
+  DEVICE_ID="$(python3 - "$DEVJSON" <<'PYEOF'
+import json, sys
+try:
+    devs = json.load(open(sys.argv[1]))["result"]["devices"]
+except Exception:
+    sys.exit(0)
+connected = [d["identifier"] for d in devs
+             if d.get("connectionProperties", {}).get("tunnelState") == "connected"]
+if len(connected) == 1:
+    print(connected[0])
+PYEOF
+)"
+  rm -f "$DEVJSON"
+  [ -n "$DEVICE_ID" ] || { echo "::error::node-ios-proxy: no single connected device — set DEVICE_ID to a CoreDevice identifier (xcrun devicectl list devices)" >&2; exit 1; }
+fi
 
-PROXY_BASE_DIR="$( cd "$( dirname "$0" )" && pwd )"
-MYID=$(uuidgen)
-SHORTDEVICE=$(echo "$DEVICE_ID" | head -c 4)
-LOG_FILE_PATH="$PROXY_BASE_DIR/testsrun_$SHORTDEVICE.$MYID.log"
-STDOUT_FILE_PATH="$PROXY_BASE_DIR/stdout_$SHORTDEVICE.$MYID.log"
-STDERR_FILE_PATH="$PROXY_BASE_DIR/stderr_$SHORTDEVICE.$MYID.log"
-IOS_APP_PATH="$PROXY_BASE_DIR/Release-iphoneos/testnode.app"
-touch "$STDOUT_FILE_PATH"
-touch "$STDERR_FILE_PATH"
-
-TEST_BASE_DIR="$( cd "$( dirname "$0" )" && cd .. && cd .. && cd test && pwd )"
+# The proxy is invoked from two places — in-place (test.py --shell=tools/…)
+# and as the out/ios.release/node copy prepare-ios-tests.sh stages (what a
+# bare `test.py --arch ios` runs) — which sit at different depths. Walk up to
+# the tree root instead of hard-coding one of them.
+BASE="$( cd "$( dirname "$0" )" && pwd )"
+while [ "$BASE" != "/" ] && [ ! -d "$BASE/test/common" ]; do
+  BASE="$(dirname "$BASE")"
+done
+[ -d "$BASE/test/common" ] || { echo "::error::node-ios-proxy: cannot locate the source tree above $0" >&2; exit 1; }
+TEST_BASE_DIR="$BASE/test"
+LOG="$(mktemp)"
 
 # Per-launch token: names the verdict file (Documents/result-<token>.txt) so a
 # stale file, or a child the test spawned (it never gets --run-token), can't be
 # read back as this launch's verdict. Lowercased uuid -> [0-9a-f], uniform with
 # the simulator and Android tokens.
 RUN_TOKEN="$(/usr/bin/uuidgen | tr 'A-F' 'a-f' | tr -d '-')"
-# Bail rather than launch tokenless: main.m parses --run-token positionally, so
-# an empty token shifts --substitute-dir into its slot and the run goes wrong in
-# a way no verdict would explain.
 [ -n "$RUN_TOKEN" ] || { echo "::error::node-ios-proxy: uuidgen produced no run token" >&2; exit 1; }
 
-echo "Time: $(date '+%FT%T') -> Proxying testcase: $0 $* (token $RUN_TOKEN)" >> "$LOG_FILE_PATH"
-
-# main.m consumes --run-token into the environment (NodeRunner builds the verdict
-# path from it, then unsets it so a spawned child can't inherit it) and applies
-# --substitute-dir to rewrite host test paths to the Documents copy. --run-token
-# has to come first: main.m parses the two in that order.
-# -t 240 doubles as the hang cap — ios-deploy's timer aborts a run that outlives
-# it, which lands here as a no-verdict FAIL instead of a stuck proxy.
-iosdeploy -t 240 --noinstall -b "$IOS_APP_PATH" --output "$STDOUT_FILE_PATH" \
-    --error_output "$STDERR_FILE_PATH" --noninteractive \
-    --args "--run-token $RUN_TOKEN --substitute-dir $TEST_BASE_DIR $*" \
-  | sed $'s/\r$//' | tee -a "$LOG_FILE_PATH" | sed '1,/(lldb)     autoexit/d' \
-  | sed -E '/Process [0-9]+ exited with status.*|PROCESS_EXITED/,$d'
-
-LAUNCH_STATUS=${PIPESTATUS[0]}
-
-# Pull the verdict file off the device. Under --noninteractive ios-deploy has
-# already waited for the app process to exit, so the file — written before node
-# returns — is complete by now.
-#
-# ios-deploy's AFC root is the app container when the device grants VendContainer
-# (verdict at /Documents/result-<token>.txt) and the Documents dir itself on the
-# VendDocuments fallback (verdict at /result-<token>.txt); it tries them in that
-# order, so try both paths here and locate the file by name rather than trust an
-# assumed layout.
-DL_DIR="$(mktemp -d)"
-VERDICT_FILE=""
-for remote_path in "/Documents/result-${RUN_TOKEN}.txt" "/result-${RUN_TOKEN}.txt"; do
-  iosdeploy -t 60 --bundle_id "$BUNDLE_ID" --download="$remote_path" --to "$DL_DIR" \
-    >> "$LOG_FILE_PATH" 2>&1 || true
-  VERDICT_FILE="$(find "$DL_DIR" -type f -name "result-${RUN_TOKEN}.txt" | head -n 1)"
-  [ -n "$VERDICT_FILE" ] && break
+# main.m consumes --run-token into the environment (NodeRunner builds the
+# verdict path from it, then unsets it so a spawned child can't inherit it) and
+# applies --substitute-dir to rewrite host test paths to the Documents copy.
+# --run-token has to come first: main.m parses the two in that order.
+# --console makes devicectl relay the app's output and block until it exits, so
+# the verdict file is complete by the time the copy below runs.
+xcrun devicectl device process launch --device "$DEVICE_ID" --console \
+    --terminate-existing "$BUNDLE_ID" \
+    --run-token "$RUN_TOKEN" --substitute-dir "$TEST_BASE_DIR" "$@" \
+    > "$LOG" 2>&1 &
+LP=$!
+waited=0
+while kill -0 "$LP" 2>/dev/null; do
+  if [ "$waited" -ge "$TIMEOUT" ]; then
+    kill "$LP" 2>/dev/null || true
+    echo "::warning::node-ios-proxy: launch still running after ${TIMEOUT}s, killed (hang) for: $*" >&2
+    break
+  fi
+  sleep 1
+  waited=$((waited + 1))
 done
+wait "$LP" 2>/dev/null
+LAUNCH_STATUS=$?
+
+# Pull the verdict file out of the app's data container. A wrong bundle id, a
+# crash before the write, or the kill above all land here as "no verdict".
+DL_DIR="$(mktemp -d)"
+xcrun devicectl device copy from --device "$DEVICE_ID" \
+    --domain-type appDataContainer --domain-identifier "$BUNDLE_ID" \
+    --source "Documents/result-${RUN_TOKEN}.txt" \
+    --destination "$DL_DIR/result.txt" >> "$LOG" 2>&1 || true
 
 verdict=""
-[ -n "$VERDICT_FILE" ] && verdict="$(tr -d '\r\n' < "$VERDICT_FILE")"
+[ -f "$DL_DIR/result.txt" ] && verdict="$(tr -d '\r\n' < "$DL_DIR/result.txt")"
 rm -rf "$DL_DIR"
 
 case "$verdict" in
   PASS) RESULT=0 ;;
   FAIL) RESULT=1 ;;
   *) RESULT=1
-     echo "::warning::node-ios-proxy: no verdict file for token ${RUN_TOKEN} (crash/timeout/launch failure; ios-deploy exited ${LAUNCH_STATUS}, see ${LOG_FILE_PATH}) for: $*" >&2 ;;
+     echo "::warning::node-ios-proxy: no verdict file for token ${RUN_TOKEN} (crash/timeout/launch failure; devicectl exited ${LAUNCH_STATUS}) for: $*" >&2 ;;
 esac
 
-# Echo node's stdout/stderr for test.py's .out comparison; ios-deploy captured
-# them into files via --output/--error_output. The verdict no longer rides them.
-sed $'s/\r$//' < "$STDOUT_FILE_PATH"
-sed $'s/\r$//' < "$STDERR_FILE_PATH" >&2
+# Echo the app's output for test.py's .out comparison, dropping devicectl's own
+# chrome: its status lines are HH:MM:SS-prefixed, plus three fixed phrases.
+# The verdict does not ride this stream.
+sed -E \
+  -e '/^[0-9]{2}:[0-9]{2}:[0-9]{2}[[:space:]]/d' \
+  -e '/^Launched application with /d' \
+  -e '/^Waiting for the application to terminate/d' \
+  -e '/^The app terminated with the exit code /d' \
+  "$LOG"
+rm -f "$LOG"
 
 # On-device verdict files are left in place on purpose: deleting each one costs
 # another device round-trip per test, the token makes a stale file unreadable,
