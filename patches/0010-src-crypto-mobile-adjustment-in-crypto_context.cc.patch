@@ -13,9 +13,7 @@ TARGET_OS_OSX and fall back on iOS to asking the system to evaluate
 each candidate directly (SecTrustEvaluateWithError). Reader invariants
 covered by test/parallel/test-mobile-system-ca.
 
-Co-authored-by: Andre Staltz <andre@staltz.com>
 Co-authored-by: Julia Samól <j.samol@papers.ch>
-Co-authored-by: Jaime Bernardo <jaime@janeasystems.com>
 ---
  src/crypto/crypto_context.cc | 17 +++++++++++++++++
  1 file changed, 17 insertions(+)

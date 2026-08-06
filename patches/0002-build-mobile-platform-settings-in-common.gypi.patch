@@ -14,9 +14,10 @@ only, section GC so dropped features actually shrink the binary. The
 -m32/-m64 host-tool logic mirrors v8.gyp's PR-57748 form so a 64-bit
 host building a 32-bit target gets consistent flags.
 
+Co-authored-by: Jaime Bernardo <jaime@janeasystems.com>
 Co-authored-by: Andre Staltz <andre@staltz.com>
 Co-authored-by: Julia Samól <j.samol@papers.ch>
-Co-authored-by: Jaime Bernardo <jaime@janeasystems.com>
+Co-authored-by: João Matos <joao@tritao.eu>
 ---
  common.gypi | 138 +++++++++++++++++++++++++++++++++++++++++++++++++---
  1 file changed, 131 insertions(+), 7 deletions(-)

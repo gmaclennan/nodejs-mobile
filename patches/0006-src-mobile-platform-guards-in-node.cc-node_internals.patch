@@ -3,17 +3,12 @@ From: Gregor MacLennan <gmaclennan@awana.digital>
 Date: Tue, 28 Jul 2026 19:20:27 +0000
 Subject: [PATCH 06/20] src: mobile platform guards in node.cc /
  node_internals.h
-MIME-Version: 1.0
-Content-Type: text/plain; charset=UTF-8
-Content-Transfer-Encoding: 8bit
 
 TARGET_OS_IPHONE / __ANDROID__ guards in node.cc and node_internals.h
 for process-level facilities mobile OSes forbid or lack (tty tcsetattr
 teardown on iOS; NODE_IMPLEMENTS_POSIX_CREDENTIALS turned on for
 Android API >= 21, which upstream leaves off).
 
-Co-authored-by: Andre Staltz <andre@staltz.com>
-Co-authored-by: Julia Samól <j.samol@papers.ch>
 Co-authored-by: Jaime Bernardo <jaime@janeasystems.com>
 ---
  src/node.cc          | 3 +++

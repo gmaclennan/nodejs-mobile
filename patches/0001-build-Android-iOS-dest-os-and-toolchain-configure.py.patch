@@ -17,6 +17,11 @@ flavor switch stays in the wrapper for the same reason. Also removes
 upstream's configure-time "patch -f android-patches/..." mechanism,
 which mutates the source tree during a build — see patch 0012 for where
 that edit went.
+
+Co-authored-by: Jaime Bernardo <jaime@janeasystems.com>
+Co-authored-by: Andre Staltz <andre@staltz.com>
+Co-authored-by: Julia Samól <j.samol@papers.ch>
+Co-authored-by: Vincent Breitmoser <look@my.amazin.horse>
 ---
  android_configure.py | 59 +++++++++++++++++++++++++++++++++-----------
  configure.py         |  8 ++++++

@@ -1,7 +1,7 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Gregor MacLennan <gmaclennan@awana.digital>
 Date: Tue, 28 Jul 2026 19:20:31 +0000
-Subject: [PATCH 14/20] deps: mobile gyp tweaks (zlib, ngtcp2, openssl)
+Subject: [PATCH 14/20] deps: mobile gyp tweaks (zlib, openssl)
 MIME-Version: 1.0
 Content-Type: text/plain; charset=UTF-8
 Content-Transfer-Encoding: 8bit
@@ -9,9 +9,9 @@ Content-Transfer-Encoding: 8bit
 Small gyp conditionals in deps that don't know the mobile OSes: zlib
 (Android/iOS arm features) and the openssl no-asm config selection.
 
+Co-authored-by: Jaime Bernardo <jaime@janeasystems.com>
 Co-authored-by: Andre Staltz <andre@staltz.com>
 Co-authored-by: Julia Samól <j.samol@papers.ch>
-Co-authored-by: Jaime Bernardo <jaime@janeasystems.com>
 ---
  deps/openssl/openssl_no_asm.gypi | 4 ++--
  deps/zlib/zlib.gyp               | 9 ++++++++-

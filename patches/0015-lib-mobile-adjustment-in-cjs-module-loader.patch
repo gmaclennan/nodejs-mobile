@@ -15,8 +15,6 @@ upstream's secure-process behaviour. Covered by
 test/parallel/test-mobile-node-path.
 
 Co-authored-by: Andre Staltz <andre@staltz.com>
-Co-authored-by: Julia Samól <j.samol@papers.ch>
-Co-authored-by: Jaime Bernardo <jaime@janeasystems.com>
 ---
  lib/internal/modules/cjs/loader.js | 8 +++++++-
  1 file changed, 7 insertions(+), 1 deletion(-)

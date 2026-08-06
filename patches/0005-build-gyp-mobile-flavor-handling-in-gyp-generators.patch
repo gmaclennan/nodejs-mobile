@@ -12,9 +12,9 @@ xcode_emulation.py switches that keep simulator vs device SDK selection
 working. Without these, gyp has no notion of an iOS make build at
 all.
 
+Co-authored-by: Jaime Bernardo <jaime@janeasystems.com>
 Co-authored-by: Andre Staltz <andre@staltz.com>
 Co-authored-by: Julia Samól <j.samol@papers.ch>
-Co-authored-by: Jaime Bernardo <jaime@janeasystems.com>
 ---
  tools/gyp/pylib/gyp/common.py          |   2 +-
  tools/gyp/pylib/gyp/generator/make.py  |  38 ++++-----

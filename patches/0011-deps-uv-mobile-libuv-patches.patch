@@ -10,9 +10,8 @@ libuv paths that assume desktop facilities: Android's copy_file_range
 guard, the iOS cpu-frequency sysctl that doesn't exist there, and
 uv.gyp host-toolset source selection for the cross-build.
 
-Co-authored-by: Andre Staltz <andre@staltz.com>
-Co-authored-by: Julia Samól <j.samol@papers.ch>
 Co-authored-by: Jaime Bernardo <jaime@janeasystems.com>
+Co-authored-by: Julia Samól <j.samol@papers.ch>
 ---
  deps/uv/src/unix/darwin.c |  5 +++++
  deps/uv/src/unix/fs.c     |  3 +++

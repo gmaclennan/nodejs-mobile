@@ -13,8 +13,6 @@ Android. Skip the unresolvable variable instead of losing the whole
 clone; a default-env Worker is the visible consumer. Covered by
 test/parallel/test-mobile-worker-env-clone.
 
-Co-authored-by: Andre Staltz <andre@staltz.com>
-Co-authored-by: Julia Samól <j.samol@papers.ch>
 Co-authored-by: Jaime Bernardo <jaime@janeasystems.com>
 ---
  src/node_env_var.cc | 4 +++-

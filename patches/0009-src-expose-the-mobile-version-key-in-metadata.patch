@@ -2,17 +2,12 @@ From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Gregor MacLennan <gmaclennan@awana.digital>
 Date: Tue, 28 Jul 2026 19:20:29 +0000
 Subject: [PATCH 09/20] src: expose the mobile version key in metadata
-MIME-Version: 1.0
-Content-Type: text/plain; charset=UTF-8
-Content-Transfer-Encoding: 8bit
 
 process.versions.mobile ("X.Y.Z-R") identifies a nodejs-mobile build:
 process.version stays the untouched upstream version so version-parsing
 tools keep working, and this key is the sanctioned way to detect the
 mobile runtime. Asserted on-device by parallel/test-process-versions.
 
-Co-authored-by: Andre Staltz <andre@staltz.com>
-Co-authored-by: Julia Samól <j.samol@papers.ch>
 Co-authored-by: Jaime Bernardo <jaime@janeasystems.com>
 ---
  src/node_metadata.cc | 7 +++++++

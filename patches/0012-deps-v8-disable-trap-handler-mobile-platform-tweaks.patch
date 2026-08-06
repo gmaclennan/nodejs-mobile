@@ -17,9 +17,9 @@ trap-handler.h here and the orphaned upstream patch file is removed.
 Also: platform-posix iOS page-size tweak and the PR-57748
 push_registers_asm host/target arch selection.
 
+Co-authored-by: Jaime Bernardo <jaime@janeasystems.com>
 Co-authored-by: Andre Staltz <andre@staltz.com>
 Co-authored-by: Julia Samól <j.samol@papers.ch>
-Co-authored-by: Jaime Bernardo <jaime@janeasystems.com>
 ---
  android-patches/trap-handler.h.patch          | 47 ------------
  deps/v8/src/base/platform/platform-posix.cc   |  6 ++

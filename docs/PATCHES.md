@@ -62,7 +62,11 @@ change.** Forgetting is safe; CI fails and prints the hash it computed.
   (e.g. a new file inside `deps/`), in which case give them to a patch.
 
 Patch messages and `Co-authored-by:` trailers carry the attribution of the
-original nodejs-mobile contributors whose work the series descends from.
+contributors whose work each patch descends from — per patch, not blanket.
+The upstreams the series draws on are janeasystems/nodejs-mobile and its
+Andre Staltz-era successor (`main` here), the Acurast v24.5.0 port, and
+heylogin's small-ICU branch. When a patch's diff changes, check whether its
+trailers still match who wrote what survives in it.
 
 ## The series
 

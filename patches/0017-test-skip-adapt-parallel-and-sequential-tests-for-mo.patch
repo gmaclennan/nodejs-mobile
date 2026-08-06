@@ -14,9 +14,8 @@ branch): sandbox paths, no-child-process variants, jitless-iOS
 differences, and the fork-only test-mobile-* gates for the patch
 series itself.
 
-Co-authored-by: Andre Staltz <andre@staltz.com>
-Co-authored-by: Julia Samól <j.samol@papers.ch>
 Co-authored-by: Jaime Bernardo <jaime@janeasystems.com>
+Co-authored-by: Andre Staltz <andre@staltz.com>
 ---
  test/parallel/parallel.status                 | 940 +++++++++++++++++-
  test/parallel/test-dgram-bind-fd.js           |   2 +-

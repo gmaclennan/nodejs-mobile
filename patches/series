@@ -10,8 +10,8 @@
 0010-src-crypto-mobile-adjustment-in-crypto_context.cc.patch
 0011-deps-uv-mobile-libuv-patches.patch
 0012-deps-v8-disable-trap-handler-mobile-platform-tweaks.patch
-0013-deps-cares-guard-sys-random.h-on-iOS-android-config.patch
-0014-deps-mobile-gyp-tweaks-zlib-ngtcp2-openssl.patch
+0013-deps-cares-guard-sys-random.h-on-iOS.patch
+0014-deps-mobile-gyp-tweaks-zlib-openssl.patch
 0015-lib-mobile-adjustment-in-cjs-module-loader.patch
 0016-test-mobile-test-harness.patch
 0017-test-skip-adapt-parallel-and-sequential-tests-for-mo.patch

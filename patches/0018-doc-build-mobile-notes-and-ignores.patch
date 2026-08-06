@@ -2,9 +2,6 @@ From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Gregor MacLennan <gmaclennan@awana.digital>
 Date: Tue, 28 Jul 2026 19:20:33 +0000
 Subject: [PATCH 18/20] doc,build: mobile notes and ignores
-MIME-Version: 1.0
-Content-Type: text/plain; charset=UTF-8
-Content-Transfer-Encoding: 8bit
 
 What a person browsing a release tag sees and what the dev loop needs:
 the upstream README is replaced with a short pointer to the recipe
@@ -13,8 +10,6 @@ branch (the tag is a materialized tree, not the project), and
 git operations in a built tree never sweep them up.
 
 Co-authored-by: Andre Staltz <andre@staltz.com>
-Co-authored-by: Julia Samól <j.samol@papers.ch>
-Co-authored-by: Jaime Bernardo <jaime@janeasystems.com>
 ---
  .gitignore |   5 +
  README.md  | 912 ++---------------------------------------------------

@@ -12,9 +12,9 @@ NODE_MOBILE define marks both. cctest and the node executable don't
 exist on mobile targets; the snapshot stub partition keeps the iOS
 static archive self-contained without duplicate symbols.
 
+Co-authored-by: Jaime Bernardo <jaime@janeasystems.com>
 Co-authored-by: Andre Staltz <andre@staltz.com>
 Co-authored-by: Julia Samól <j.samol@papers.ch>
-Co-authored-by: Jaime Bernardo <jaime@janeasystems.com>
 ---
  node.gyp  | 45 ++++++++++++++++++++++++++++++++++++++-------
  node.gypi | 22 ++++++++++++++++++----

@@ -11,9 +11,10 @@ mksnapshot/torque compile natively while the target compiles for the
 phone, and arch selection (incl. the PR-57748 host_arch guards) for the
 Android arm/arm64/x64 and iOS arm64 matrix.
 
+Co-authored-by: Jaime Bernardo <jaime@janeasystems.com>
 Co-authored-by: Andre Staltz <andre@staltz.com>
 Co-authored-by: Julia Samól <j.samol@papers.ch>
-Co-authored-by: Jaime Bernardo <jaime@janeasystems.com>
+Co-authored-by: DiamondYuan <541832074@qq.com>
 ---
  tools/v8_gypfiles/toolchain.gypi | 14 +++++++
  tools/v8_gypfiles/v8.gyp         | 72 ++++++++++++++++++++++++++++----

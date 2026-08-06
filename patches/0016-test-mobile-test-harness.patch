@@ -2,9 +2,6 @@ From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Gregor MacLennan <gmaclennan@awana.digital>
 Date: Tue, 28 Jul 2026 19:20:32 +0000
 Subject: [PATCH 16/20] test: mobile test harness
-MIME-Version: 1.0
-Content-Type: text/plain; charset=UTF-8
-Content-Transfer-Encoding: 8bit
 
 The harness plumbing that lets upstream's own test runner drive a
 phone: common.isAndroid/isIOS platform detection, tools/test.py
@@ -13,9 +10,8 @@ sections, and the [$system==android]/[$system==ios] skip sections for
 whole categories mobile can't run (child_process, cluster, signals,
 OpenSSL CLI).
 
-Co-authored-by: Andre Staltz <andre@staltz.com>
-Co-authored-by: Julia Samól <j.samol@papers.ch>
 Co-authored-by: Jaime Bernardo <jaime@janeasystems.com>
+Co-authored-by: Andre Staltz <andre@staltz.com>
 ---
  test/common/index.js        |  4 ++++
  test/common/index.mjs       |  4 ++++
