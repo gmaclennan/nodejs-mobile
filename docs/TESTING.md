@@ -26,6 +26,13 @@ normally. A test that calls `process.exit()` routes through libc `exit()` before
 node unwinds, so only an `atexit` `FAIL` fallback fires — such a test would be
 mis-scored. None of the curated tests call `process.exit()`.
 
+A run that produces no verdict file at all is a FAIL, and the proxy says which
+kind: the Android one polls the app process alongside the file, so a native
+crash (SIGSEGV/SIGKILL never reaches the `atexit` fallback, so no verdict is
+ever written) reports `crashed (process gone after Ns, no verdict)` as soon as
+the process dies, while `hung (no verdict after full TIMEOUT)` means it was
+still alive at the deadline.
+
 **Caveat:** `test-process-getactiveresources` asserts the exact set of active
 handles, which depends on what stdout *is*: no handle when it's a file (how
 `tools/test.py` runs every test), a `PipeWrap`/`TTYWrap` on a pipe or terminal.
@@ -201,6 +208,14 @@ Team; change the bundle id if it's taken).
 echo test/parallel/test-buffer-alloc.js \
   | xargs ./tools/test.py -j 1 --arch ios --shell=./tools/mobile-test/ios/node-ios-proxy.sh
 ```
+
+The device proxy scores from the same verdict file as the other two: it passes a
+per-launch token and then pulls `Documents/result-<token>.txt` back out of the
+app sandbox with `ios-deploy --bundle_id … --download=… --to …`, rather than
+trusting ios-deploy's exit code. If you changed the bundle id when signing the
+project, export `NODE_IOS_BUNDLE_ID` to match — the download has nothing to open
+otherwise, and every test reports no verdict. This flow is local-only; no CI job
+runs it (Tier-3 device coverage goes through BrowserStack).
 
 ### Running the addon gate locally
 
