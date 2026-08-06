@@ -38,7 +38,6 @@ fs.writeFileSync(path.join(dirB, 'mobile-nodepath-b.js'),
                  'module.exports = "b";\n');
 
 const originalNodePath = process.env.NODE_PATH;
-const originalGlobalPaths = Module.globalPaths;
 
 process.on('exit', () => {
   if (originalNodePath === undefined) {
@@ -48,6 +47,16 @@ process.on('exit', () => {
   }
   Module._initPaths();
 });
+
+// The built-in lookup paths are the ones that persist with NODE_PATH unset.
+// They cannot be snapshotted from the launch state: on-device the harness
+// itself sets NODE_PATH (the Android app points it at its files dir), so the
+// launch-time globalPaths already contain NODE_PATH-derived entries that
+// legitimately vanish when the test overwrites the variable — counting those
+// as built-in is exactly how this test failed its first emulator run.
+delete process.env.NODE_PATH;
+Module._initPaths();
+const builtinGlobalPaths = Module.globalPaths;
 
 process.env.NODE_PATH = [dirA, dirB].join(path.delimiter);
 Module._initPaths();
@@ -60,7 +69,7 @@ assert.ok(Module.globalPaths.includes(dirB),
           `${dirB} missing from ${Module.globalPaths}`);
 assert.ok(Module.globalPaths.indexOf(dirA) < Module.globalPaths.indexOf(dirB),
           `NODE_PATH order lost in ${Module.globalPaths}`);
-for (const dir of originalGlobalPaths) {
+for (const dir of builtinGlobalPaths) {
   assert.ok(Module.globalPaths.includes(dir),
             `NODE_PATH displaced the built-in path ${dir}`);
 }
