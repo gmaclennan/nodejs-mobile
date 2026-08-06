@@ -46,7 +46,7 @@ it through `tools/test.py`.
 | `verify-patches.yml` → `verify` | ubuntu | PR · push `recipe` | the patch series + `mobile-src/` reconstruct the recorded tree byte-for-byte from a fresh upstream clone |
 | `verify-patches.yml` → `patch-stack-configure` | ubuntu | PR · push `recipe` | every patch passes `./android-configure` individually (~1 min/patch) |
 | `verify-patches.yml` → `tree-diff` | ubuntu | PR | *not a gate* — publishes the diff between the base and head **materialized trees** as a job summary + artifact, so review isn't a diff-of-a-diff |
-| `build.yml` → `smoke-host` | ubuntu | PR · push `recipe` | C++ patches compile; `node -e` runs; `test-mobile-fetch` passes on that build run `--jitless` (see below); the curated list passes on the host build (plus the full `parallel` suite, advisory). Gates `ci-required` and `publish` |
+| `build.yml` → `smoke-host` | ubuntu | PR · push `recipe` | C++ patches compile; `node -e` runs; `test-mobile-fetch` passes on that build run `--jitless` (see below); `test-mobile-system-ca` finds a non-empty system trust store; the curated list passes on the host build (plus the full `parallel` suite, advisory). Gates `ci-required` and `publish` |
 | `build.yml` → `build-*` / `combine-*` | ubuntu / macos | PR · push `recipe` | the cross-compile actually succeeds — the only check that compiles target code |
 | `build.yml` → `smoke-{android,ios}` (+ the NAPI symbol assert in `combine-android`) | ubuntu+KVM / macos | PR · push `recipe` | the exact shipping artifact boots and runs JS (Tier 1); NAPI symbols in `.dynsym` |
 | `build.yml` → `emulator-tests` / `simulator-tests` | ubuntu+KVM / macos | PR · push `recipe` · releases | curated `test/parallel` subset + crc-native addon load on an x86_64 emulator and arm64 simulator (Tier 2) |
@@ -111,8 +111,8 @@ of the test bodies.
 
 ### The fetch / WebAssembly gate
 
-`test/parallel/test-mobile-fetch` is the one fork-only test in the curated
-list, and the one that isn't pure JS: it runs a `fetch()` against an
+`test/parallel/test-mobile-fetch` is the one entry in the curated list that
+isn't pure JS: it runs a `fetch()` against an
 in-process HTTP server. That exercises undici's WebAssembly build of llhttp,
 which on iOS runs on the bundled polywasm polyfill because a jitless V8 has no
 WebAssembly of its own ([FAQ](./FAQ.md#does-fetch-work-what-about-webassembly)).
@@ -149,6 +149,51 @@ polyfill doesn't implement doesn't fail a `fetch()` — it stops the runtime fro
 booting at all. That is how `LinkError` and `RuntimeError` missing from
 polywasm were found; keeping the step means the next such gap fails here
 instead of in an embedder's app.
+
+### What covers which patch
+
+Most of the curated list is upstream tests that happen to pass on mobile.
+Those catch a patch that breaks *node*, which is most of the risk — but not a
+patch that stops doing its own job. Several patches only change behaviour on
+Android or on iOS, so no upstream test ever observes them, and a revert would
+sail through every job. The fork-only tests below close that gap: one per
+patch, each running on the host build (where it proves the assertion is
+well-formed, and catches an outright break) and on both devices (where the
+patched behaviour is the behaviour).
+
+| Test | Patch | What a regression looks like |
+|---|---|---|
+| `test-mobile-credentials` | 0006 (POSIX credentials on Android), 0007 (credential guards) | on Android, `process.getuid()` disappears (0006 gone) or `process.setuid()` reaches the native setter instead of being inert (0007 gone). Everywhere, `process.initgroups()` stops resolving group names — the only JS path into the bionic `getgrnam()` lookup 0007 adds |
+| `test-mobile-worker-env-clone` | 0008 (env clone) | a default-`env` worker comes up with a missing or partial environment; on Android, with one unclonable variable present, it does not come up at all |
+| `test-mobile-system-ca` | 0010 (iOS TLS trust) | `tls.getCACertificates('system')` throws, hands back expired or duplicated certificates, or comes back empty where the platform has a readable store |
+| `test-mobile-node-path` | 0015 (`NODE_PATH`) | `NODE_PATH`, as the embedder set it, stops reaching module resolution |
+| `test-mobile-fetch` | 0020 (WebAssembly polyfill) | see [the fetch / WebAssembly gate](#the-fetch--webassembly-gate) |
+
+Three limits are structural, and worth stating rather than papering over:
+
+- **Patch 0008 has no deterministic trigger from JS.** `KVStore::Clone()`
+  only fails when a name enumerates and then doesn't resolve, which is a
+  property of the real process environment (bionic strips `LD_PRELOAD` and
+  friends out of a starting app) and can't be staged from a test. The test
+  asserts the post-condition instead — the worker starts, and its environment
+  is the parent's — which is what a lost patch breaks on Android.
+- **Patch 0015 is invisible on a host build.** `SafeGetenv()` and
+  `process.env` agree unless the process looks setuid, so the host run passes
+  either way. The Android and iOS legs are the gate; the host run is there to
+  keep the assertion honest as upstream moves `Module._initPaths()` around.
+- **Patch 0010's trust store can legitimately be empty on iOS**, where an app
+  is sandboxed away from the system keychain — that's a platform fact, not a
+  regression. So the test asserts the reader's invariants unconditionally and
+  demands a non-empty result only when the caller says the platform has one:
+
+  ```sh
+  NODEJS_MOBILE_EXPECT_SYSTEM_CA=nonempty \
+    ./out/Release/node test/parallel/test-mobile-system-ca.js
+  ```
+
+  `smoke-host` sets it, since a Linux build reading `/etc/ssl` has no excuse
+  for an empty store. The device runs leave it unset, the same arrangement
+  `NODEJS_MOBILE_EXPECT_WASM_IMPL` uses above.
 
 ### The NAPI addon gate
 

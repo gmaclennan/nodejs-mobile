@@ -702,6 +702,20 @@ jobs:
           ./out/Release/node --jitless --frozen-intrinsics \
             test/parallel/test-freeze-intrinsics.js
 
+      # test-mobile-system-ca runs in the curated list below as well, but there
+      # it can only assert the reader's invariants: an iOS app is sandboxed
+      # away from the system keychain, so an empty store is legitimate on the
+      # device leg and the test cannot demand certificates unconditionally. A
+      # Linux build reading /etc/ssl has no such excuse, so this run says so —
+      # which is what turns "the trust store reader still returns something"
+      # into a check that fails when patch 0010's guard stops enclosing the
+      # right span. See docs/TESTING.md, "What covers which patch".
+      - name: system trust store gate
+        env:
+          NODEJS_MOBILE_EXPECT_SYSTEM_CA: nonempty
+        run: |
+          ./out/Release/node test/parallel/test-mobile-system-ca.js
+
       # The same curated list the Tier-2 mobile workflows run, executed on the
       # host build. Everything in it is an upstream test that passes on mobile,
       # so it passes on a host build too unless a patch actually broke it —
