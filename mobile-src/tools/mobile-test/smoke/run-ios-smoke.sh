@@ -5,17 +5,22 @@
 #
 # Usage: run-ios-smoke.sh <testnode.app> <simulator-udid>
 #
-# Retries only the simulator-flake signature: a '<none>' verdict means the app
-# launched but wrote nothing (a loaded/sick CI simulator killed it before
-# node ran). A 'FAIL' verdict means node ran and the test failed — that is a
-# real regression and is never retried, so the retry can't mask a real bug.
+# Retries only the simulator-flake signature: a '<none>' verdict means the
+# launch never completed inside the poll window (a degraded CI runner). A
+# 'FAIL' verdict means node ran and the test failed — that is a real
+# regression and is never retried, so the retry can't mask a real bug.
 set -uo pipefail
 
 APP="$1"; UDID="$2"
 BUNDLE_ID=nodejsmobile.test
 MARKER=NODEJS_MOBILE_SMOKE_OK
 MAX_ATTEMPTS="${SMOKE_MAX_ATTEMPTS:-3}"
-POLL_SECONDS="${SMOKE_POLL_SECONDS:-60}"
+# 180, not 60: a healthy CI attempt takes ~55s (cold first launch of the large
+# NodeMobile dylib), and a degraded runner (multi-minute simulator boots)
+# stretches that past 60 — every observed flake was `simctl launch` still
+# alive at poll expiry with no output. A verdict ends the poll early, so
+# green runs don't pay for the headroom.
+POLL_SECONDS="${SMOKE_POLL_SECONDS:-180}"
 # Single shell-quoted -e expression so simctl passes it as one argv (main.m
 # forwards argv after the executable straight to node). Deliberately NO
 # process.exit(0): nodejs-mobile's process.exit() routes through node::Exit ->
@@ -36,8 +41,15 @@ run_once() {
   # (Documents/result-<token>.txt), not from scraping `simctl --console`: that
   # stream races a fast-exiting process and intermittently drops the marker on
   # loaded CI runners.
-  docs="$(xcrun simctl get_app_container "$UDID" "$BUNDLE_ID" data)/Documents"
-  result="$docs/result-${token}.txt"
+  # Empty container (wedged CoreSimulator / failed install) would have us poll
+  # /Documents forever; return no verdict so the caller reboots and retries.
+  docs="$(xcrun simctl get_app_container "$UDID" "$BUNDLE_ID" data 2>/dev/null)"
+  if [ -z "$docs" ]; then
+    echo "::warning::could not resolve app container for ${BUNDLE_ID} on ${UDID}" >&2
+    rm -f "$log"
+    return 0
+  fi
+  result="$docs/Documents/result-${token}.txt"
   rm -f "$result"
 
   xcrun simctl launch --console --terminate-running-process "$UDID" "$BUNDLE_ID" \
