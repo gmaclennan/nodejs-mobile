@@ -1,0 +1,1020 @@
+name: Build
+
+on:
+  # Both events, without double-running: the push trigger is scoped to
+  # `recipe` only, and PR head branches (claude/**, release/**, forks) don't
+  # match it — so a PR commit produces exactly one run, and the merge produces
+  # one more. Cross-compiling on the PR is the point: neither the host build
+  # nor the per-patch ./android-configure in verify-patches.yml compiles a line
+  # of target code, so a platform-guard regression (the `#if TARGET_OS_OSX`
+  # class of bug docs/UPGRADING.md warns about) is otherwise invisible until
+  # after merge. Most PRs pay very little for it — the libnode cache key below
+  # is derived from the build inputs only, so a docs/CI/test-infra PR reuses
+  # the binary the recipe build already produced.
+  #
+  # `pull_request`, never `pull_request_target`: fork PRs must not get the
+  # BrowserStack secrets or contents:write.
+  push:
+    branches: [recipe]
+  pull_request:
+    branches: [recipe]
+  workflow_dispatch:
+
+# One run per PR/branch. cancel-in-progress ONLY for pull_request: a push to
+# recipe may be carrying the release gate chain and must never be cancelled
+# mid-flight.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  # No SCCACHE_GHA_ENABLED here on purpose: the backend is Cloudflare R2, set
+  # per Build step (see build-android). sccache picks a backend by precedence
+  # and ghac outranks s3, so leaving the GHA flag set would silently keep
+  # writing into the rate-limited Actions cache and look like it worked.
+  SCCACHE_IDLE_TIMEOUT: '0'   # keep the sccache server alive through long builds
+  # Surface the reason a cache write failed. sccache reports write failures only
+  # as a counter in --show-stats; the HTTP status behind them (429 vs 4xx vs
+  # auth) lives in the server log, which otherwise goes nowhere. Both vars must
+  # be set before the server starts, and the server inherits the env of whatever
+  # first spawns it, so they belong at workflow scope rather than on a step.
+  # 'warn' is enough to log the error chain and keeps the file small.
+  SCCACHE_LOG: warn
+  SCCACHE_ERROR_LOG: /tmp/sccache-errors.log
+  ANDROID_NDK_VERSION: r27d
+  ANDROID_TARGET_SDK_VERSION: 24
+  # Flavor is a per-job matrix dimension ([full, lite]) so every Build produces
+  # BOTH the shipped full binary and the size-reduced lite binary, and the
+  # Tier-2 gate covers both (see docs/BUILDING.md "The lite variant"). Each
+  # job derives NODEJS_MOBILE_FLAVOR + FLAVOR_SUFFIX from matrix.flavor (matrix
+  # isn't visible at workflow-env scope). FLAVOR_SUFFIX ('' for full, '-lite'
+  # for lite) keeps caches + the public combined artifacts distinct so the full
+  # path stays byte-for-byte unchanged.
+  # NOTE: the Android 16 KB-page LDFLAGS is set per-job on build-android only.
+  # Setting it globally leaks -Wl,-z,max-page-size into the iOS link, which
+  # Apple's ld rejects ("ld: unknown options: -z").
+
+permissions:
+  contents: read
+
+jobs:
+  # Flavor matrices are inline expressions, not a helper job (a full VM boot
+  # to echo two constants earns nothing). Android is always both flavors:
+  # ubuntu+KVM runners are 1x-billed and plentiful. iOS drops to full-only on
+  # pull_request because hosted macOS concurrency is capped far below Linux on
+  # every plan — the full release chain wants 8 concurrent macOS jobs, so two
+  # PRs running the complete iOS matrix can saturate the pool and queue the
+  # release pipeline behind them. What lite-on-iOS uniquely catches is
+  # lite-specific configure/link breakage, and build-ios still catches that at
+  # compile time on the merge run; the Tier-2 lists are identical across
+  # flavors (see the note in ios-simulator-tests.yml), so the runtime signal
+  # from the lite leg is near-duplicate. Pushes and releases run both.
+  build-android:
+    strategy:
+      fail-fast: false
+      matrix:
+        flavor: [full, lite]
+        config:
+          - { os: ubuntu-24.04, target_arch: arm }
+          - { os: ubuntu-24.04, target_arch: arm64 }
+          - { os: ubuntu-24.04, target_arch: x86_64 }
+
+    runs-on: ${{ matrix.config.os }}
+    env:
+      TARGET_ARCH: ${{ matrix.config.target_arch }}
+      NODEJS_MOBILE_FLAVOR: ${{ matrix.flavor }}
+      FLAVOR_SUFFIX: ${{ matrix.flavor == 'lite' && '-lite' || '' }}
+      # Job-level (not step-level on Build) so the cache key can hash it: a
+      # change to these flags must invalidate the cached libnode, or every
+      # later run — including a release — restores and ships a binary built
+      # with the old flags. Still never in workflow env: it would leak into
+      # the iOS link, which Apple's ld rejects ("ld: unknown options: -z").
+      ANDROID_LDFLAGS: '-Wl,-z,max-page-size=16384'
+
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 1
+      - uses: ./.github/actions/materialize
+
+      - name: Run sccache-cache
+        uses: mozilla-actions/sccache-action@fc920bf0ec8de6ee65d409111f7ec508035751ba # v0.0.11
+
+      - name: Install build utils
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc-multilib g++-multilib
+
+      - name: Setup Android NDK
+        uses: nttld/setup-ndk@ed92fe6cadad69be94a966a7ee3271275e62f779 # v1.6.0
+        id: setup-ndk
+        with:
+          ndk-version: ${{ env.ANDROID_NDK_VERSION }}
+          add-to-path: false
+
+      # Key the built libnode on the git tree of everything that actually feeds
+      # the build (src/deps/lib + the build files), computed from git object IDs
+      # (instant + exact, vs hashFiles over the huge deps/ tree). Test harness,
+      # CI and docs are excluded, so a test-infra-only push reuses the binary
+      # instead of paying the 1.5-3h compile.
+      - name: Compute libnode cache key
+        id: ck
+        run: |
+          # The trailing printf folds in the build parameters that live in this
+          # workflow file (LDFLAGS, target SDK) — they change the shipped
+          # binary, so they must change the key.
+          H=$( { git rev-parse "HEAD:src" "HEAD:deps" "HEAD:lib" "HEAD:tools/v8_gypfiles" "HEAD:tools/gyp" "HEAD:tools/icu"; \
+                 git hash-object node.gyp node.gypi common.gypi configure configure.py android-configure android_configure.py tools/android_build.sh tools/copy_libnode_headers.sh; \
+                 printf '%s\n' "$ANDROID_LDFLAGS" "$ANDROID_TARGET_SDK_VERSION"; \
+               } | git hash-object --stdin )
+          echo "key=$H" >> "$GITHUB_OUTPUT"
+
+      - name: Cache built libnode
+        id: libnode-cache
+        uses: actions/cache@v6
+        with:
+          path: out_android
+          key: libnode-android-${{ env.TARGET_ARCH }}${{ env.FLAVOR_SUFFIX }}-ndk${{ env.ANDROID_NDK_VERSION }}-${{ steps.ck.outputs.key }}
+
+      - name: Build
+        if: steps.libnode-cache.outputs.cache-hit != 'true'
+        env:
+          MY_ANDROID_NDK_HOME: ${{ steps.setup-ndk.outputs.ndk-path }}
+          LDFLAGS: ${{ env.ANDROID_LDFLAGS }}
+          # Opt in to the sccache wrap in android_configure.py — it no longer
+          # activates just because sccache is on PATH.
+          NODEJS_MOBILE_SCCACHE: '1'
+          # sccache's R2 backend. Scoped to this step rather than workflow env so
+          # the credentials are never in scope for the third-party actions the
+          # other jobs run (setup-ndk, upload-artifact, the BrowserStack smoke).
+          # sccache-action only installs the binary and exports ACTIONS_*; it
+          # never starts the server, so the server is spawned lazily by the first
+          # compile below and inherits these.
+          #
+          # A fork PR gets no secrets. Leaving SCCACHE_BUCKET empty in that case
+          # makes sccache fall back to its local disk cache, instead of taking a
+          # 403 on every single object and pacing the build behind the retries.
+          SCCACHE_BUCKET: ${{ secrets.R2_ACCESS_KEY_ID != '' && vars.R2_BUCKET || '' }}
+          SCCACHE_REGION: auto
+          SCCACHE_ENDPOINT: https://${{ secrets.R2_ACCOUNT_ID }}.r2.cloudflarestorage.com
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+        run: |
+          ./tools/android_build.sh $MY_ANDROID_NDK_HOME $ANDROID_TARGET_SDK_VERSION $TARGET_ARCH
+
+      # NAPI/addon headers are static src/ + deps/ files (no build output, no
+      # toolchain), so stage them unconditionally — this survives a libnode cache
+      # hit (where the Build step is skipped) and lets combine-android just merge
+      # them instead of re-running ./configure + an NDK install.
+      - name: Stage NAPI/addon headers
+        run: ./tools/copy_libnode_headers.sh android
+
+      # Why this build caches to R2 and not to the GitHub Actions cache.
+      #
+      # On ghac almost every write failed: measured on run 30950327884, the
+      # sampled Android jobs stored 299/2626, 294/2464 and 196/1905 objects —
+      # a steady ~11%, not a cliff — so a miss still cost the full ~25-30 min
+      # and the hit rate sat at 55-60% instead of climbing.
+      #
+      # It was never the 10 GB quota (an over-quota repo gets LRU eviction, not
+      # failed writes) and never the wiring (android_configure.py wraps CC/CXX
+      # correctly). It was GitHub's cache-upload rate limit, 200 new entries
+      # per minute per repository, added 2026-01-16:
+      #   https://github.blog/changelog/2026-01-16-rate-limiting-for-actions-cache-entries/
+      # That limit covers uploads and explicitly exempts downloads, which is
+      # exactly the reads-work/writes-fail split the stats showed. sccache
+      # stores one cache entry per object and drops a 429 rather than honouring
+      # Retry-After, so each throttled write landed in "Cache write errors".
+      #
+      # ghac cannot serve this workload at any tuning: six concurrent Android
+      # jobs each miss ~2500 objects over a ~19 min compile window, ~800
+      # uploads/min against a 200/min repo-wide budget. Even a correct
+      # Retry-After upstream would just pace ~15000 entries/run through ~3800.
+      #
+      # R2 has neither a request-rate limit nor the 10 GB cap, so objects are
+      # stored individually — one entry per object, as sccache intends. Do not
+      # "optimise" this into tarring SCCACHE_DIR into a single object: six jobs
+      # finishing minutes apart would each upload a whole-cache blob to one key
+      # and the last writer would silently discard the rest.
+      #
+      # sccache never evicts from S3, so bucket growth is bounded by an R2
+      # lifecycle rule, not by anything in this workflow.
+      - name: sccache stats
+        if: always()
+        run: |
+          sccache --show-stats || true
+          # The counters above say how many writes failed; this says why.
+          if [ -s /tmp/sccache-errors.log ]; then
+            echo '--- sccache server log (unique messages) ---'
+            sort /tmp/sccache-errors.log | uniq -c | sort -rn | head -40
+          fi
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: node-android-${{ matrix.config.target_arch }}-${{ matrix.flavor }}
+          path: out_android
+
+  build-ios:
+    strategy:
+      fail-fast: false
+      matrix:
+        flavor: ${{ github.event_name == 'pull_request' && fromJSON('["full"]') || fromJSON('["full","lite"]') }}
+        config:
+          # macos-26 is Apple Silicon with current Xcode (matches local dev).
+          # x86_64 (Intel Mac) simulator support was dropped for v24 — Intel
+          # Macs are EOL and Apple Silicon runs the arm64 simulator natively.
+          - { os: macos-26, target_arch: arm64 }
+          - { os: macos-26, target_arch: arm64-simulator }
+
+    runs-on: ${{ matrix.config.os }}
+    env:
+      TARGET_ARCH: ${{ matrix.config.target_arch }}
+      NODEJS_MOBILE_FLAVOR: ${{ matrix.flavor }}
+      FLAVOR_SUFFIX: ${{ matrix.flavor == 'lite' && '-lite' || '' }}
+
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 1
+      - uses: ./.github/actions/materialize
+
+      - name: Run sccache-cache
+        uses: mozilla-actions/sccache-action@fc920bf0ec8de6ee65d409111f7ec508035751ba # v0.0.11
+
+      # See build-android: key the built framework on the git tree of the build
+      # inputs so test-infra-only pushes reuse it. The Xcode version is folded
+      # into the key so a silent runner-image Xcode/SDK bump rebuilds instead
+      # of restoring a framework built by the previous toolchain.
+      - name: Compute libnode cache key
+        id: ck
+        run: |
+          H=$( { git rev-parse "HEAD:src" "HEAD:deps" "HEAD:lib" "HEAD:tools/v8_gypfiles" "HEAD:tools/gyp" "HEAD:tools/icu"; \
+                 git hash-object node.gyp node.gypi common.gypi configure configure.py tools/ios_framework_prepare.sh tools/copy_libnode_headers.sh; \
+                 xcodebuild -version; \
+               } | git hash-object --stdin )
+          echo "key=$H" >> "$GITHUB_OUTPUT"
+
+      - name: Cache built libnode
+        id: libnode-cache
+        uses: actions/cache@v6
+        with:
+          path: out_ios_${{ env.TARGET_ARCH }}
+          key: libnode-ios-${{ env.TARGET_ARCH }}${{ env.FLAVOR_SUFFIX }}-v1-${{ steps.ck.outputs.key }}
+
+      # This job has run sccache-action since it was written, but nothing ever
+      # wrapped the compiler with it: the fork's sccache wiring lives in
+      # android_configure.py only, and ios_framework_prepare.sh goes through
+      # plain ./configure (configure.py has no such wiring) and sets no
+      # CC/CXX of its own. So the server started and cached nothing. Set the
+      # wrapper here, the way node documents for ccache.
+      #
+      # gyp-next needs setuptools at build time and a bare venv doesn't bundle
+      # it (distutils was removed from the stdlib); install it explicitly.
+      #
+      # CC/CXX are set to *wrapper scripts*, not to "sccache clang", because
+      # ios_framework_prepare.sh has two consumers of them and they disagree.
+      # make word-splits the value, so "sccache clang" works there; xcodebuild,
+      # which the script runs afterwards to build the NodeMobile framework
+      # target, treats the whole value as one executable name and dies with
+      #
+      #   error: unable to spawn process 'sccache clang'
+      #     (No such file or directory) (in target 'NodeMobile')
+      #
+      # A one-line script is a real executable path, so both are satisfied.
+      # This never fired before: the value has been set since the sccache wiring
+      # landed, but every push since then changed only .github/, which leaves
+      # the libnode cache key untouched, so this whole step was skipped and
+      # xcodebuild ran against a restored out_ios_* with nothing left to
+      # compile. The first PR to touch lib/ or src/ misses the cache, actually
+      # builds, and hits it.
+      - name: Build
+        if: steps.libnode-cache.outputs.cache-hit != 'true'
+        env:
+          # Same R2 backend, same reasoning, as build-android's Build step.
+          SCCACHE_BUCKET: ${{ secrets.R2_ACCESS_KEY_ID != '' && vars.R2_BUCKET || '' }}
+          SCCACHE_REGION: auto
+          SCCACHE_ENDPOINT: https://${{ secrets.R2_ACCOUNT_ID }}.r2.cloudflarestorage.com
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/sccache-wrappers"
+          printf '#!/bin/sh\nexec sccache clang "$@"\n' \
+            > "$RUNNER_TEMP/sccache-wrappers/cc"
+          printf '#!/bin/sh\nexec sccache clang++ "$@"\n' \
+            > "$RUNNER_TEMP/sccache-wrappers/cxx"
+          chmod +x "$RUNNER_TEMP/sccache-wrappers/cc" \
+                   "$RUNNER_TEMP/sccache-wrappers/cxx"
+          export CC="$RUNNER_TEMP/sccache-wrappers/cc"
+          export CXX="$RUNNER_TEMP/sccache-wrappers/cxx"
+          # Separate from CC/CXX because this is a cross-compile: gyp builds
+          # mksnapshot and torque for the host, and those are a real slice of
+          # the build. Same wrappers — the host here is also macOS/clang.
+          export CC_host="$CC"
+          export CXX_host="$CXX"
+
+          python3.12 -m venv .
+          source bin/activate
+          python3.12 -m pip install setuptools
+          ./tools/ios_framework_prepare.sh $TARGET_ARCH
+
+      # These writes used to count against the same repo-wide 200/min upload
+      # budget the Android matrix was already blowing through; on R2 they no
+      # longer compete — see the note on build-android's sccache stats step.
+      - name: sccache stats
+        if: always()
+        run: |
+          sccache --show-stats || true
+          if [ -s /tmp/sccache-errors.log ]; then
+            echo '--- sccache server log (unique messages) ---'
+            sort /tmp/sccache-errors.log | uniq -c | sort -rn | head -40
+          fi
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: node-ios-${{ matrix.config.target_arch }}-${{ matrix.flavor }}
+          path: out_ios_${{ env.TARGET_ARCH }}
+
+  combine-android:
+    strategy:
+      fail-fast: false
+      matrix:
+        flavor: [full, lite]
+    runs-on: ubuntu-24.04
+    needs: [build-android]
+    env:
+      NODEJS_MOBILE_FLAVOR: ${{ matrix.flavor }}
+      FLAVOR_SUFFIX: ${{ matrix.flavor == 'lite' && '-lite' || '' }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 1
+      - uses: ./.github/actions/materialize
+
+      # Pull only THIS flavor's per-arch artifacts (node-android-<arch>-<flavor>);
+      # the trailing -<flavor> keeps the full and lite combine legs from mixing.
+      # Each carries the per-abi libnode.so plus an identical out_android/libnode/
+      # include tree (staged in build-android), so no NDK or ./configure is needed
+      # here — just merge. (merge-multiple overwrites the duplicate header tree.)
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: node-android-*-${{ matrix.flavor }}
+          merge-multiple: true
+          path: out_android
+
+      - name: Combine
+        run: |
+          mkdir -p artifacts/bin artifacts/include
+          # Copy the per-abi binary dirs (armeabi-v7a/, arm64-v8a/, x86_64/),
+          # not the shared libnode/ header dir.
+          for d in out_android/*/; do
+            [ "$(basename "$d")" = "libnode" ] && continue
+            # strip the trailing slash so both GNU and BSD cp create bin/<abi>/
+            cp -R "${d%/}" artifacts/bin/
+          done
+          cp -R out_android/libnode/include/* artifacts/include
+
+      # B-1 tripwire: the shipped libnode.so must export the NAPI symbols a
+      # dlopen'd addon resolves against. A step here (the artifacts are
+      # already on disk) rather than a standalone job — was a full runner
+      # boot for one nm|grep. The stronger real-addon dlopen+run check lives
+      # in android-emulator-tests.yml. Runs per flavor: lite changes the
+      # configure flags that decide what gets linked in, so "full exports
+      # napi_*" is not evidence that lite does.
+      - name: Assert NAPI symbols are exported
+        run: |
+          # arm64-v8a is the Android ABI folder for arm64 (see android_build.sh).
+          # -D reads the DYNAMIC symbol table (.dynsym) — the export contract a
+          # dlopen()'d addon resolves against. (GNU nm: --defined-only.)
+          nm -D --defined-only artifacts/bin/arm64-v8a/libnode.so > exported_symbols.txt
+          missing=0
+          for sym in napi_get_cb_info napi_create_string_utf8 napi_throw_error; do
+            if grep -qE "T ${sym}\$" exported_symbols.txt; then
+              echo "OK: $sym is exported"
+            else
+              echo "MISSING: $sym is not exported"
+              missing=1
+            fi
+          done
+          if [ "$missing" -ne 0 ]; then
+            echo "::error::One or more NAPI symbols are missing from libnode.so (blocker B-1)"
+            exit 1
+          fi
+
+      # overwrite: artifacts are immutable within a run, and that includes
+      # re-run attempts — without this, "Re-run all jobs" (the standard answer
+      # to Tier-1/2 flake, including on a release run) 409s right here.
+      - uses: actions/upload-artifact@v7
+        with:
+          name: nodejs-mobile-android${{ env.FLAVOR_SUFFIX }}
+          path: artifacts
+          overwrite: true
+
+      # Delete only this flavor's per-arch artifacts so the other flavor's
+      # combine leg (running in parallel) can still find its inputs.
+      - uses: geekyeggo/delete-artifact@176a747ab7e287e3ff4787bf8a148716375ca118 # v6.0.0
+        with:
+          name: node-android-*-${{ matrix.flavor }}
+
+  combine-ios:
+    strategy:
+      fail-fast: false
+      matrix:
+        flavor: ${{ github.event_name == 'pull_request' && fromJSON('["full"]') || fromJSON('["full","lite"]') }}
+    runs-on: macos-26
+    needs: [build-ios]
+    env:
+      NODEJS_MOBILE_FLAVOR: ${{ matrix.flavor }}
+      FLAVOR_SUFFIX: ${{ matrix.flavor == 'lite' && '-lite' || '' }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 1
+      - uses: ./.github/actions/materialize
+
+      # Pull only THIS flavor's per-slice frameworks (node-ios-<arch>-<flavor>).
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: node-ios-*-${{ matrix.flavor }}
+          merge-multiple: true
+          path: out_ios
+
+      # gyp-next needs setuptools at build time and a bare venv doesn't bundle
+      # it (distutils was removed from the stdlib); install it explicitly.
+      - name: Generate config.gypi
+        run: |
+          python3.12 -m venv .
+          source bin/activate
+          python3.12 -m pip install setuptools
+          ./configure
+
+      - name: Combine
+        run: |
+          python3.12 -m venv .
+          source bin/activate
+          python3.12 -m pip install setuptools
+          ./tools/ios_framework_prepare.sh combine_frameworks
+          mkdir -p artifacts/include
+          cp -R out_ios/NodeMobile.xcframework artifacts/
+          ./tools/copy_libnode_headers.sh ios
+          cp -R out_ios/libnode/include/* artifacts/include
+
+      # overwrite: see the note on combine-android's upload.
+      - uses: actions/upload-artifact@v7
+        with:
+          name: nodejs-mobile-ios${{ env.FLAVOR_SUFFIX }}
+          path: artifacts
+          overwrite: true
+
+      - uses: geekyeggo/delete-artifact@176a747ab7e287e3ff4787bf8a148716375ca118 # v6.0.0
+        with:
+          name: node-ios-*-${{ matrix.flavor }}
+
+  # Tier 1 on-device smoke (docs/TESTING.md): boot an emulator, run a
+  # console.log via the freshly built libnode, assert it ran and exited cleanly.
+  # Consumes the nodejs-mobile-android artifact, so it smoke-tests the exact
+  # binary that would ship — no rebuild. ubuntu + KVM keeps it at 1x billing.
+  smoke-android:
+    needs: [combine-android]
+    strategy:
+      fail-fast: false
+      matrix:
+        flavor: [full, lite]
+    runs-on: ubuntu-24.04
+    env:
+      NODEJS_MOBILE_FLAVOR: ${{ matrix.flavor }}
+      FLAVOR_SUFFIX: ${{ matrix.flavor == 'lite' && '-lite' || '' }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 1
+      - uses: ./.github/actions/materialize
+
+      - name: Setup Android NDK
+        uses: nttld/setup-ndk@ed92fe6cadad69be94a966a7ee3271275e62f779 # v1.6.0
+        id: setup-ndk
+        with:
+          ndk-version: ${{ env.ANDROID_NDK_VERSION }}
+          add-to-path: false
+
+      - uses: actions/download-artifact@v8
+        with:
+          name: nodejs-mobile-android${{ env.FLAVOR_SUFFIX }}
+          path: artifacts
+
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' \
+            | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      # x86_64 runs natively on the runner CPU, so the emulator is fast. The
+      # libnode.so NEEDs libc++_shared.so, so stage that next to the embedder.
+      - name: Build smoke embedder (x86_64)
+        env:
+          NDK: ${{ steps.setup-ndk.outputs.ndk-path }}
+        run: |
+          ./tools/mobile-test/smoke/build-android-embedder.sh \
+            "$NDK" x86_64 "$PWD/artifacts/bin/x86_64" "$PWD/node_smoke"
+          cp "$NDK/toolchains/llvm/prebuilt/linux-x86_64/sysroot/usr/lib/x86_64-linux-android/libc++_shared.so" \
+            "$PWD/libc++_shared.so"
+
+      - name: Run smoke on emulator
+        uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2.38.0
+        with:
+          api-level: 30
+          arch: x86_64
+          target: default
+          force-avd-creation: false
+          emulator-options: -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          disable-animations: true
+          # NB: android-emulator-runner runs `script` line-by-line, so the
+          # invocation must be a single line (no backslash continuations).
+          script: |
+            adb wait-for-device
+            ./tools/mobile-test/smoke/run-android-smoke.sh "$PWD/node_smoke" "$PWD/artifacts/bin/x86_64/libnode.so" "$PWD/libc++_shared.so"
+
+  # Tier 1 on-device smoke for iOS: install the testnode app on a booted
+  # simulator and run a console.log via the freshly built NodeMobile.xcframework.
+  smoke-ios:
+    needs: [combine-ios]
+    strategy:
+      fail-fast: false
+      matrix:
+        flavor: ${{ github.event_name == 'pull_request' && fromJSON('["full"]') || fromJSON('["full","lite"]') }}
+    runs-on: macos-26
+    env:
+      NODEJS_MOBILE_FLAVOR: ${{ matrix.flavor }}
+      FLAVOR_SUFFIX: ${{ matrix.flavor == 'lite' && '-lite' || '' }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 1
+      - uses: ./.github/actions/materialize
+
+      - uses: actions/download-artifact@v8
+        with:
+          name: nodejs-mobile-ios${{ env.FLAVOR_SUFFIX }}
+          path: artifacts
+
+      # The testnode project references ../../../../out_ios/NodeMobile.xcframework.
+      - name: Stage xcframework
+        run: |
+          mkdir -p out_ios
+          cp -R artifacts/NodeMobile.xcframework out_ios/NodeMobile.xcframework
+
+      - name: Build testnode app (simulator)
+        run: ./tools/mobile-test/smoke/build-ios-testnode.sh "$PWD/out_testnode"
+
+      - name: Boot simulator
+        id: sim
+        uses: ./.github/actions/boot-ios-simulator
+        with:
+          device_name: nodejs-mobile-smoke
+
+      - name: Run smoke on simulator
+        run: |
+          ./tools/mobile-test/smoke/run-ios-smoke.sh \
+            "$PWD/out_testnode/Release-iphonesimulator/testnode.app" \
+            "${{ steps.sim.outputs.udid }}"
+
+      - name: Shutdown simulator
+        if: always()
+        run: |
+          xcrun simctl shutdown "${{ steps.sim.outputs.udid }}" || true
+          xcrun simctl delete "${{ steps.sim.outputs.udid }}" || true
+
+  # Host build + JS test suite (folded in from the former host-smoke.yml so
+  # it can gate ci-required and publish via needs:, which a separate workflow
+  # cannot). Builds Node natively on the runner (no cross-compile) and runs
+  # the upstream JS tests against it — the PR boundary's fastest real signal.
+  # It does NOT prove anything mobile-specific; the rest of this workflow
+  # owns that. Builds only the 'node' target with -j, so no cctest/addons.
+  smoke-host:
+    runs-on: ubuntu-24.04
+    # Measured at 82 min end to end with no compiler cache at all: ~75 of that
+    # was V8, before a single test executed. sccache is wired below now, so a
+    # warm run should be far shorter — but the cold number is what the timeout
+    # has to survive, and a cache miss still pays it. 180 leaves real headroom
+    # while still catching a genuine hang, which the 360-minute default never
+    # would.
+    timeout-minutes: 180
+
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 1
+      - uses: ./.github/actions/materialize
+
+      - name: Run sccache-cache
+        uses: mozilla-actions/sccache-action@fc920bf0ec8de6ee65d409111f7ec508035751ba # v0.0.11
+
+      # The fork wraps the compiler in sccache from android_configure.py, but
+      # only there — configure.py carries no such wiring, so the host build
+      # compiled V8 cold on every single run: ~75 min before a test could
+      # start. Set the wrapper here instead, which node's configure honours
+      # the same way it honours CC="ccache gcc". CC_host/CXX_host matter
+      # because gyp builds host tools (mksnapshot, torque) with those.
+      #
+      # gyp-next needs setuptools at build time and a bare venv doesn't bundle
+      # it (distutils was removed from the stdlib); install it explicitly.
+      #
+      # The R2 backend has to be set here as well as on the build step, not just
+      # on the build: ./configure runs compiler checks, so the sccache server is
+      # spawned during Configure and keeps whatever backend config it started
+      # with. Setting it only on the build step would leave the server already
+      # running with no backend and cache nothing.
+      - name: Configure
+        env:
+          CC: sccache cc
+          CXX: sccache c++
+          CC_host: sccache cc
+          CXX_host: sccache c++
+          SCCACHE_BUCKET: ${{ secrets.R2_ACCESS_KEY_ID != '' && vars.R2_BUCKET || '' }}
+          SCCACHE_REGION: auto
+          SCCACHE_ENDPOINT: https://${{ secrets.R2_ACCOUNT_ID }}.r2.cloudflarestorage.com
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+        run: |
+          python3.12 -m venv .
+          source bin/activate
+          python3.12 -m pip install setuptools
+          ./configure
+
+      - name: Build node target
+        env:
+          CC: sccache cc
+          CXX: sccache c++
+          CC_host: sccache cc
+          CXX_host: sccache c++
+          SCCACHE_BUCKET: ${{ secrets.R2_ACCESS_KEY_ID != '' && vars.R2_BUCKET || '' }}
+          SCCACHE_REGION: auto
+          SCCACHE_ENDPOINT: https://${{ secrets.R2_ACCOUNT_ID }}.r2.cloudflarestorage.com
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+        run: |
+          source bin/activate
+          make -j"$(nproc)" node
+
+      - name: sccache stats
+        if: always()
+        run: |
+          sccache --show-stats || true
+          if [ -s /tmp/sccache-errors.log ]; then
+            echo '--- sccache server log (unique messages) ---'
+            sort /tmp/sccache-errors.log | uniq -c | sort -rn | head -40
+          fi
+
+      - name: Smoke test
+        run: |
+          ./out/Release/node -e "console.log(process.versions); process.exit(0)"
+
+      # The iOS binary runs V8 jitless, and a jitless V8 exposes no
+      # WebAssembly -- which is why the library bundles the polywasm polyfill
+      # (deps/polywasm, installed by lib/internal/process/pre_execution.js):
+      # without it undici's llhttp can't load and fetch() is dead. Passing
+      # --jitless to the host build reproduces that engine exactly, so this
+      # gates the polyfill on every push instead of only on device runs.
+      # See docs/TESTING.md, "The fetch / WebAssembly gate".
+      # NODEJS_MOBILE_EXPECT_WASM_IMPL makes the test assert which
+      # implementation it actually ran on, so this stays a real gate: if a
+      # future V8 kept WebAssembly under --jitless, or the install stopped
+      # firing, the step fails instead of quietly testing the wrong path.
+      - name: fetch/WebAssembly gate (jitless, polyfill path)
+        env:
+          NODEJS_MOBILE_EXPECT_WASM_IMPL: polyfill
+        run: |
+          ./out/Release/node --jitless test/parallel/test-mobile-fetch.js
+
+      - name: fetch/WebAssembly gate (V8's own WebAssembly)
+        env:
+          NODEJS_MOBILE_EXPECT_WASM_IMPL: engine
+        run: |
+          ./out/Release/node test/parallel/test-mobile-fetch.js
+
+      # --frozen-intrinsics is the one caller that inspects the polyfill's
+      # *shape* instead of just calling it: internal/freeze_intrinsics.js reads
+      # seven WebAssembly.*.prototype values as soon as the global exists, so a
+      # member polywasm doesn't implement doesn't break fetch() -- it stops the
+      # runtime from booting. That is how the missing LinkError/RuntimeError
+      # were found. Cheap to keep, and the only gate that covers it: the full
+      # parallel suite below is advisory, and mobile .status skips this test.
+      # See docs/TESTING.md, "The fetch / WebAssembly gate".
+      - name: frozen-intrinsics gate (jitless, polyfill path)
+        run: |
+          ./out/Release/node --jitless --frozen-intrinsics \
+            test/parallel/test-freeze-intrinsics.js
+
+      # test-mobile-system-ca runs in the curated list below as well, but there
+      # it can only assert the reader's invariants: an iOS app is sandboxed
+      # away from the system keychain, so an empty store is legitimate on the
+      # device leg and the test cannot demand certificates unconditionally. A
+      # Linux build reading /etc/ssl has no such excuse, so this run says so —
+      # which is what turns "the trust store reader still returns something"
+      # into a check that fails when patch 0010's guard stops enclosing the
+      # right span. See docs/TESTING.md, "What covers which patch".
+      - name: system trust store gate
+        env:
+          NODEJS_MOBILE_EXPECT_SYSTEM_CA: nonempty
+        run: |
+          ./out/Release/node test/parallel/test-mobile-system-ca.js
+
+      # The same curated list the Tier-2 mobile workflows run, executed on the
+      # host build. Everything in it is an upstream test that passes on mobile,
+      # so it passes on a host build too unless a patch actually broke it —
+      # which makes this a zero-flake blocking check that catches lib/ and
+      # src/ regressions minutes into a PR instead of at the Tier-2 stage.
+      - name: Run the curated Tier-2 list on the host build
+        run: |
+          source bin/activate
+          # pipefail + count guard: a missing/emptied list must fail loudly,
+          # not run the wrong suite (GNU xargs) or nothing (BSD xargs).
+          set -o pipefail
+          COUNT=$(grep -cvE '^[[:space:]]*#|^[[:space:]]*$' tools/mobile-test/tier2-parallel-tests.txt)
+          [ "$COUNT" -ge 100 ] || { echo "::error::curated list missing or implausibly small ($COUNT entries)"; exit 1; }
+          grep -vE '^[[:space:]]*#|^[[:space:]]*$' tools/mobile-test/tier2-parallel-tests.txt \
+            | xargs ./tools/test.py -j "$(nproc)" --flaky-tests=skip
+
+      # The full parallel suite is far broader than the curated list and is the
+      # real prize here. It is advisory for now: `make node` alone doesn't build
+      # cctest or the addon fixtures, so a handful of cases may need extra
+      # targets or a skip list. Promote to blocking (drop continue-on-error)
+      # once a few runs confirm the pass-set — see docs/TESTING.md.
+      - name: Run the full parallel suite on the host build (advisory)
+        continue-on-error: true
+        run: |
+          source bin/activate
+          ./tools/test.py -j "$(nproc)" --flaky-tests=skip parallel
+
+  # The single required status check for this workflow. Branch protection
+  # should require `ci-required` rather than the individual jobs: the build
+  # matrix produces check names like "build-android (full, ubuntu-24.04,
+  # arm64)" that change whenever the matrix changes, so a hand-maintained
+  # required list silently stops enforcing the moment someone edits it.
+  #
+  # if: always() so this still runs (and fails) when something upstream of it
+  # failed; the explicit result check is what makes a skipped or cancelled job
+  # fail closed instead of passing vacuously. Tier-2 is intentionally absent —
+  # see the emulator-tests comment.
+  ci-required:
+    if: always()
+    needs:
+      - build-android
+      - build-ios
+      - combine-android
+      - combine-ios
+      - smoke-android
+      - smoke-ios
+      - smoke-host
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Assert every required job succeeded
+        run: |
+          RESULTS='${{ join(needs.*.result, ' ') }}'
+          echo "results: $RESULTS"
+          for r in $RESULTS; do
+            [ "$r" = success ] || { echo "::error::a required job did not succeed ($r)"; exit 1; }
+          done
+
+  # Decide whether this push is a release. A release happens whenever the
+  # version of record (mobile-src/src/node_mobile_version.h) is NOT yet
+  # tagged -- content-derived and idempotent: no magic commit wording, and a
+  # failed release run self-heals on the next push. Both the current tag
+  # scheme (vX.Y.Z-R) and the legacy one (nodejs-mobile-X.Y.Z-R) count as
+  # released. A commit subject starting 'release-dryrun:' forces the full
+  # gate chain with publish in dry mode regardless of tag state.
+  # ONLY on a push to recipe — the sole path by which a release is ever meant
+  # to happen (docs/RELEASING.md: the merge push is the release trigger, and a
+  # failed run self-heals on the *next push* because the version is still
+  # untagged). Both other events are live hazards, because the trigger is
+  # "version of record is not yet tagged" and that is true of any branch cut
+  # from a release PR before its tag exists:
+  #
+  #   - pull_request: Cut release opens a PR with the version already bumped,
+  #     and docs/RELEASING.md tells the maintainer to push a CHANGELOG edit to
+  #     it. That push would satisfy release-check on the PR branch.
+  #   - workflow_dispatch: Build is dispatchable against ANY ref. Dispatching
+  #     it on a feature branch to test something would otherwise run
+  #     device-smoke (real BrowserStack spend) and publish (tag + GitHub
+  #     release) from that branch.
+  #
+  # Skipping this job also skips device-smoke and publish, which need: it.
+  # Belt and braces: a deployment branch rule on the `release` Environment
+  # restricting it to recipe would stop publish independently of this.
+  release-check:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/recipe'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    outputs:
+      release: ${{ steps.d.outputs.release }}
+      dryrun: ${{ steps.d.outputs.dryrun }}
+      version: ${{ steps.d.outputs.version }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 1
+      - id: d
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          f=mobile-src/src/node_mobile_version.h
+          MA=$(grep -oE 'NODE_MOBILE_MAJOR_VERSION [0-9]+' "$f" | awk '{print $2}')
+          MI=$(grep -oE 'NODE_MOBILE_MINOR_VERSION [0-9]+' "$f" | awk '{print $2}')
+          PA=$(grep -oE 'NODE_MOBILE_PATCH_VERSION [0-9]+' "$f" | awk '{print $2}')
+          RE=$(grep -oE 'NODE_MOBILE_REVISION [0-9]+' "$f" | awk '{print $2}')
+          V="${MA}.${MI}.${PA}-${RE}"
+          DR=false
+          case "$(git log -1 --format=%s)" in release-dryrun:*) DR=true ;; esac
+          REL=true
+          for t in "v${V}" "nodejs-mobile-${V}"; do
+            # Only a real 404 means "not tagged". A transient API failure must
+            # not be read as absence — that would start a release run for an
+            # already-released version.
+            if out=$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/tags/${t}" 2>&1); then
+              echo "tag ${t} exists"
+              REL=false
+            elif ! printf '%s' "$out" | grep -q 'HTTP 404'; then
+              echo "::error::tag probe for ${t} failed (not a 404): $out"
+              exit 1
+            fi
+          done
+          [ "$DR" = "true" ] && REL=false
+          { echo "version=$V"; echo "release=$REL"; echo "dryrun=$DR"; } >> "$GITHUB_OUTPUT"
+          echo "version=$V release=$REL dryrun=$DR"
+
+  # Tier-3 real-device gate: on release branches, run the BrowserStack smoke
+  # (boot + N-API addon dlopen on a physical Android arm64 + iPhone) as part
+  # of this Build run, using the artifacts the combine jobs just uploaded.
+  # publish-release.yml requires the gating Build run to contain these jobs
+  # green, so a release cannot be tagged without real-device validation.
+  device-smoke:
+    if: >-
+      needs.release-check.outputs.release == 'true' ||
+      needs.release-check.outputs.dryrun == 'true'
+    # Also needs the Tier-1 boot smokes: BrowserStack device minutes are the
+    # one genuinely metered resource here, so don't spend them on a binary that
+    # has already failed to start on an emulator.
+    needs: [release-check, combine-android, combine-ios, smoke-android, smoke-ios]
+    # The called workflow needs actions:read (artifact download); a called
+    # workflow cannot elevate beyond the caller's permissions, so grant it
+    # here (the workflow default is contents:read only).
+    permissions:
+      contents: read
+      actions: read
+    uses: ./.github/workflows/browserstack-smoke.yml
+    secrets: inherit
+    with:
+      build_run_id: ${{ github.run_id }}
+
+  # Tier-2: the curated JS subset on an Android emulator and an iOS simulator,
+  # consuming the combine artifacts of this run. Runs on EVERY event that gets
+  # this far — PR, push, release — because it is the project's only functional
+  # coverage of the mobile runtime, and gating it on releases meant a JS
+  # regression from an ordinary PR surfaced at tag time with a bisect surface
+  # of every commit since the last release.
+  #
+  # Deliberately NOT in ci-required. Emulator/simulator lifecycles (AVD boot,
+  # simctl races, adb disconnects) are the flakiest thing in this system, and a
+  # required check that flakes trains everyone to re-run or bypass — which
+  # costs more than the check is worth. Read it, don't merge through a red one.
+  emulator-tests:
+    needs: combine-android
+    permissions:
+      contents: read
+      actions: read
+    uses: ./.github/workflows/android-emulator-tests.yml
+    with:
+      build_run_id: ${{ github.run_id }}
+
+  simulator-tests:
+    needs: [combine-ios]
+    permissions:
+      contents: read
+      actions: read
+    uses: ./.github/workflows/ios-simulator-tests.yml
+    with:
+      build_run_id: ${{ github.run_id }}
+      flavors: ${{ github.event_name == 'pull_request' && '["full"]' || '["full","lite"]' }}
+
+  # Publish: on a release commit, once every gate in this run is green, tag
+  # the materialized tree and publish the GitHub prerelease with this run's
+  # artifacts. All gating is needs:-based within one run -- no cross-run SHA
+  # lookups. A release-dryrun: commit exercises everything except the two
+  # mutating steps (tag push, release create).
+  publish:
+    if: >-
+      needs.release-check.outputs.release == 'true' ||
+      needs.release-check.outputs.dryrun == 'true'
+    needs:
+      - release-check
+      - smoke-android
+      - smoke-ios
+      - smoke-host
+      - emulator-tests
+      - simulator-tests
+      - device-smoke
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: write   # tag push + release create
+      actions: read     # artifact download from this run
+    environment: release   # optional approval gate: add required reviewers in Settings
+    env:
+      DRY: ${{ needs.release-check.outputs.dryrun == 'true' && '1' || '0' }}
+      V: ${{ needs.release-check.outputs.version }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 1
+
+      # The docs live only on this branch, and materialize replaces the
+      # workspace with the materialized tree — so lift the release notes out
+      # before that happens.
+      - name: Extract release notes from the CHANGELOG
+        run: |
+          awk '/^## /{c++} c==1{print} c==2{exit}' docs/CHANGELOG.md \
+            > "$RUNNER_TEMP/release-notes.md"
+          wc -l < "$RUNNER_TEMP/release-notes.md"
+          # The first CHANGELOG section must actually be this release's, and
+          # the cut-release TODO stub must have been filled in — otherwise the
+          # published notes are wrong/placeholder text. Advisory on a dry run
+          # (a release-dryrun: push legitimately predates the CHANGELOG stub).
+          bad=""
+          head -1 "$RUNNER_TEMP/release-notes.md" | grep -qF "Version ${V}" \
+            || bad="first CHANGELOG section is not for ${V}"
+          grep -q 'TODO' "$RUNNER_TEMP/release-notes.md" \
+            && bad="release notes still contain the cut-release TODO stub — fill in docs/CHANGELOG.md"
+          if [ -n "$bad" ]; then
+            if [ "$DRY" = "1" ]; then echo "::warning::$bad"; else echo "::error::$bad"; exit 1; fi
+          fi
+
+      - uses: ./.github/actions/materialize
+
+      # Note: the materialized tree is a SHALLOW clone of nodejs/node (prepare.sh
+      # uses --depth 1), so this pushes a tag whose history is grafted at the
+      # upstream base. That is accepted because this repository already contains
+      # upstream's history, so the remote has the boundary commit and git sends
+      # only the new commits. Verified empirically against this remote. A fork
+      # with no upstream history would get "shallow update not allowed" here and
+      # would need to fetch the base's ancestry before tagging.
+      - name: Tag the materialized tree
+        run: |
+          git config user.name "nodejs-mobile-bot"
+          git config user.email "bot@users.noreply.github.com"
+          TAG="v${V}"
+          git tag -a "$TAG" -m "nodejs-mobile ${V}"
+          git remote add fork "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          if [ "$DRY" = "1" ]; then
+            echo "DRY RUN: would push tag $TAG (materialized tree $(git rev-parse 'HEAD^{tree}'))"
+          else
+            git push fork "refs/tags/$TAG"
+            echo "Pushed tag $TAG"
+          fi
+
+      - name: Download + package this run's artifacts
+        run: |
+          mkdir -p dl out
+          gh run download "$GITHUB_RUN_ID" --repo "$GITHUB_REPOSITORY" --dir dl
+          pack() { # $1 = artifact name, $2 = zip basename
+            local src="dl/$1"
+            [ -d "$src" ] || { echo "::error::artifact $1 missing from this run"; exit 1; }
+            # The payload the plugins consume must actually be inside before
+            # this becomes a public release asset.
+            case "$1" in
+              nodejs-mobile-android*)
+                for abi in arm64-v8a armeabi-v7a x86_64; do
+                  [ -f "$src/bin/$abi/libnode.so" ] \
+                    || { echo "::error::$1: bin/$abi/libnode.so missing"; exit 1; }
+                done ;;
+              nodejs-mobile-ios*)
+                [ -f "$src/NodeMobile.xcframework/Info.plist" ] \
+                  || { echo "::error::$1: NodeMobile.xcframework/Info.plist missing"; exit 1; } ;;
+            esac
+            [ -d "$src/include" ] || { echo "::error::$1: include/ missing"; exit 1; }
+            ( cd "$src" && zip -qr "$GITHUB_WORKSPACE/out/$2-${V}.zip" . )
+            echo "packed $2-${V}.zip"
+          }
+          pack nodejs-mobile-android       nodejs-mobile-android
+          pack nodejs-mobile-android-lite  nodejs-mobile-android-lite
+          pack nodejs-mobile-ios           nodejs-mobile-ios
+          pack nodejs-mobile-ios-lite      nodejs-mobile-ios-lite
+          ls -la out
+
+      - name: Create GitHub Release (prerelease)
+        run: |
+          TAG="v${V}"
+          NOTES=$(cat "$RUNNER_TEMP/release-notes.md")
+          if [ "$DRY" = "1" ]; then
+            echo "DRY RUN: would publish prerelease $TAG with:"
+            ls -la out
+            printf '%s\n' "--- notes ---" "$NOTES"
+          else
+            gh release create "$TAG" out/*.zip \
+              --repo "$GITHUB_REPOSITORY" \
+              --title "nodejs-mobile ${V}" \
+              --prerelease \
+              --notes "${NOTES:-Release ${V}. See https://github.com/${GITHUB_REPOSITORY}/blob/recipe/docs/CHANGELOG.md}"
+            echo "Published prerelease $TAG"
+          fi
