@@ -6,7 +6,11 @@ MIME-Version: 1.0
 Content-Type: text/plain; charset=UTF-8
 Content-Transfer-Encoding: 8bit
 
-doc/api/os.md mobile note, README pointer, .gitignore (out_android/out_ios).
+What a person browsing a release tag sees and what the dev loop needs:
+the upstream README is replaced with a short pointer to the recipe
+branch (the tag is a materialized tree, not the project), and
+.gitignore learns the mobile build outputs so the regenerate loop's
+git operations in a built tree never sweep them up.
 
 Co-authored-by: Andre Staltz <andre@staltz.com>
 Co-authored-by: Julia Samól <j.samol@papers.ch>

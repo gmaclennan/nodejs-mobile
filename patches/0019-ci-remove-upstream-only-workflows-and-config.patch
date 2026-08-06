@@ -3,6 +3,16 @@ From: Gregor MacLennan <gmaclennan@awana.digital>
 Date: Tue, 28 Jul 2026 19:20:33 +0000
 Subject: [PATCH 19/20] ci: remove upstream-only workflows and config
 
+Upstream workflows must never run in this repository: a ref containing
+the materialized tree (a release tag, or a branch cut from one) would
+otherwise carry live push/pull_request-triggered CI. Remove everything
+except the handful of schedule/dispatch-only workflows that are inert
+outside upstream's default branch (verified trigger-by-trigger), and
+drop upstream-only config (dependabot, CODEOWNERS entries for removed
+files). CI enforces the invariant: verify-patches fails if a
+materialized tree ever contains a workflow file outside this
+allowlist, so an upstream bump that adds a workflow forces a decision
+here.
 ---
  .github/ISSUE_TEMPLATE/config.yml             |  14 -
  .github/SUPPORT.md                            |  27 --

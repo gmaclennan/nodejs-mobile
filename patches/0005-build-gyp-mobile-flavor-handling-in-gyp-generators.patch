@@ -6,7 +6,11 @@ MIME-Version: 1.0
 Content-Type: text/plain; charset=UTF-8
 Content-Transfer-Encoding: 8bit
 
-make.py/ninja.py treat ios like mac (xcode_emulation); related gyp common.py / xcode_emulation.py tweaks.
+gyp generator support for the ios flavor: make.py/ninja.py treat ios
+like mac (xcode_emulation supplies Apple flags), plus the common.py /
+xcode_emulation.py switches that keep simulator vs device SDK selection
+working. Without these, gyp has no notion of an iOS make build at
+all.
 
 Co-authored-by: Andre Staltz <andre@staltz.com>
 Co-authored-by: Julia Samól <j.samol@papers.ch>

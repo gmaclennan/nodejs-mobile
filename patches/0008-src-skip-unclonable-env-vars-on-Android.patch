@@ -6,7 +6,12 @@ MIME-Version: 1.0
 Content-Type: text/plain; charset=UTF-8
 Content-Transfer-Encoding: 8bit
 
-node_env_var.cc: continue (not abort) when an env var like LD_PRELOAD can't be cloned.
+KVStore::Clone() treats a name that enumerates but doesn't resolve as
+fatal, returning a null store — and the bionic linker strips variables
+like LD_PRELOAD from a starting app, making that combination real on
+Android. Skip the unresolvable variable instead of losing the whole
+clone; a default-env Worker is the visible consumer. Covered by
+test/parallel/test-mobile-worker-env-clone.
 
 Co-authored-by: Andre Staltz <andre@staltz.com>
 Co-authored-by: Julia Samól <j.samol@papers.ch>

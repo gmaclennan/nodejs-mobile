@@ -6,18 +6,22 @@ MIME-Version: 1.0
 Content-Type: text/plain; charset=UTF-8
 Content-Transfer-Encoding: 8bit
 
-iOS static_library + Android shared library, NODE_MOBILE define, iOS framework deps, and the iOS branch of the node_js2c host-tool condition.
+The shape of the shipped artifacts: Android builds libnode as a shared
+library, iOS as a static library wrapped into a framework, and the
+NODE_MOBILE define marks both. cctest and the node executable don't
+exist on mobile targets; the snapshot stub partition keeps the iOS
+static archive self-contained without duplicate symbols.
 
 Co-authored-by: Andre Staltz <andre@staltz.com>
 Co-authored-by: Julia Samól <j.samol@papers.ch>
 Co-authored-by: Jaime Bernardo <jaime@janeasystems.com>
 ---
- node.gyp  | 44 +++++++++++++++++++++++++++++++++++++-------
+ node.gyp  | 45 ++++++++++++++++++++++++++++++++++++++-------
  node.gypi | 22 ++++++++++++++++++----
- 2 files changed, 55 insertions(+), 11 deletions(-)
+ 2 files changed, 56 insertions(+), 11 deletions(-)
 
 diff --git a/node.gyp b/node.gyp
-index 6387b94550..f6f5252a75 100644
+index 6387b94550..15edb2b099 100644
 --- a/node.gyp
 +++ b/node.gyp
 @@ -64,6 +64,11 @@
@@ -84,18 +88,19 @@ index 6387b94550..f6f5252a75 100644
          [ 'node_shared_gtest=="false"', {
            'dependencies': [
              'deps/googletest/googletest.gyp:gtest',
-@@ -1360,8 +1383,8 @@
+@@ -1360,8 +1383,9 @@
          ['OS=="solaris"', {
            'ldflags': [ '-I<(SHARED_INTERMEDIATE_DIR)' ]
          }],
 -        # Skip cctest while building shared lib node for Windows
 -        [ 'OS=="win" and node_shared=="true"', {
-+        # Skip cctest while building shared lib node for Windows and mobile
++        # Skip cctest while building shared lib node for Windows and Android
++        # (the only mobile target built --shared; iOS links libnode statically)
 +        [ 'OS in ("win", "android") and node_shared=="true"', {
            'type': 'none',
          }],
          [ 'node_shared=="true"', {
-@@ -1528,7 +1551,8 @@
+@@ -1528,7 +1552,8 @@
          [ 'node_shared_libuv=="false"', {
            'dependencies': [ 'deps/uv/uv.gyp:libuv#host' ],
          }],
@@ -105,7 +110,7 @@ index 6387b94550..f6f5252a75 100644
            'defines': ['NODE_JS2C_USE_STRING_LITERALS'],
          }],
          [ 'debug_node=="true"', {
-@@ -1566,7 +1590,7 @@
+@@ -1566,7 +1591,7 @@
        'defines': [ 'NODE_WANT_INTERNALS=1' ],
  
        'sources': [
@@ -114,7 +119,7 @@ index 6387b94550..f6f5252a75 100644
          'tools/snapshot/node_mksnapshot.cc',
        ],
  
-@@ -1577,6 +1601,12 @@
+@@ -1577,6 +1602,12 @@
        },
  
        'conditions': [

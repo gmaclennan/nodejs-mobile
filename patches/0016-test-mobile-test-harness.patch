@@ -6,7 +6,12 @@ MIME-Version: 1.0
 Content-Type: text/plain; charset=UTF-8
 Content-Transfer-Encoding: 8bit
 
-test/common/index.{js,mjs}, message/testcfg, tools/test.py arch->system mapping, parallel/sequential.status.
+The harness plumbing that lets upstream's own test runner drive a
+phone: common.isAndroid/isIOS platform detection, tools/test.py
+arch->system mapping so --arch android/ios selects the device .status
+sections, and the [$system==android]/[$system==ios] skip sections for
+whole categories mobile can't run (child_process, cluster, signals,
+OpenSSL CLI).
 
 Co-authored-by: Andre Staltz <andre@staltz.com>
 Co-authored-by: Julia Samól <j.samol@papers.ch>

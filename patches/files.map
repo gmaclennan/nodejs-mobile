@@ -24,7 +24,6 @@
 0012-deps-v8-disable-trap-handler-mobile-platform-tweaks.patch	deps/v8/src/heap/base/asm/x64/push_registers_asm.cc
 0012-deps-v8-disable-trap-handler-mobile-platform-tweaks.patch	deps/v8/src/trap-handler/handler-outside.cc
 0012-deps-v8-disable-trap-handler-mobile-platform-tweaks.patch	deps/v8/src/trap-handler/trap-handler.h
-0013-deps-cares-guard-sys-random.h-on-iOS-android-config.patch	deps/cares/config/android/ares_config.h
 0013-deps-cares-guard-sys-random.h-on-iOS-android-config.patch	deps/cares/config/darwin/ares_config.h
 0014-deps-mobile-gyp-tweaks-zlib-ngtcp2-openssl.patch	deps/openssl/openssl_no_asm.gypi
 0014-deps-mobile-gyp-tweaks-zlib-ngtcp2-openssl.patch	deps/zlib/zlib.gyp

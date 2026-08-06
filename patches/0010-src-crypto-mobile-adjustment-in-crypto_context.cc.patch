@@ -6,7 +6,12 @@ MIME-Version: 1.0
 Content-Type: text/plain; charset=UTF-8
 Content-Transfer-Encoding: 8bit
 
-iOS certificate trust fallback.
+Upstream's Apple system-trust reader is written against macOS-only API
+(SecTrustSettingsCopyTrustSettings and the kSecTrustSettings* keys);
+an iOS build does not even link them. Fence those spans with
+TARGET_OS_OSX and fall back on iOS to asking the system to evaluate
+each candidate directly (SecTrustEvaluateWithError). Reader invariants
+covered by test/parallel/test-mobile-system-ca.
 
 Co-authored-by: Andre Staltz <andre@staltz.com>
 Co-authored-by: Julia Samól <j.samol@papers.ch>

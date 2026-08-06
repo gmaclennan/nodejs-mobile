@@ -141,6 +141,9 @@ jobs:
         env:
           MY_ANDROID_NDK_HOME: ${{ steps.setup-ndk.outputs.ndk-path }}
           LDFLAGS: ${{ env.ANDROID_LDFLAGS }}
+          # Opt in to the sccache wrap in android_configure.py — it no longer
+          # activates just because sccache is on PATH.
+          NODEJS_MOBILE_SCCACHE: '1'
           # sccache's R2 backend. Scoped to this step rather than workflow env so
           # the credentials are never in scope for the third-party actions the
           # other jobs run (setup-ndk, upload-artifact, the BrowserStack smoke).
