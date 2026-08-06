@@ -90,7 +90,7 @@ curated Tier-2 list on both device legs.
 | `0016` test harness | `common.isAndroid/isIOS`, test.py arch→system mapping, device `.status` sections | lets upstream's own runner drive a phone and skip whole unsupported categories |
 | `0017` test adaptations | minimal per-test guards + the fork-only `test-mobile-*` tests | keeps upstream tests runnable on-device; wholesale rewrites are rejected by `audit-test-edits.sh` in CI |
 | `0018` README/ignores | short README pointing at the recipe branch; build-output ignores | a release tag is a materialized tree — its README should say so; the dev loop's git operations must not sweep build outputs |
-| `0019` upstream CI removal | deletes push/PR-triggered upstream workflows and config | a ref carrying the materialized tree must never run upstream CI here; verify-patches enforces an allowlist so upstream bumps can't silently reintroduce one |
+| `0019` upstream CI removal | deletes every upstream workflow and upstream-only config | a ref carrying the materialized tree must never run upstream CI here — even inert workflows go, since their triggers can change on a bump; verify-patches asserts the tree carries zero workflow files |
 | `0020` WebAssembly polyfill | bundles polywasm, installed only when the engine has no WebAssembly | jitless iOS V8 has no wasm, which kills `fetch()` (undici's llhttp is wasm). Gate: `test-mobile-fetch` + the jitless host gates |
 
 ## Branches

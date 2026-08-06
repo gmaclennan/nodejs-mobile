@@ -2,17 +2,23 @@ From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Gregor MacLennan <gmaclennan@awana.digital>
 Date: Tue, 28 Jul 2026 19:20:33 +0000
 Subject: [PATCH 19/20] ci: remove upstream-only workflows and config
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
 
 Upstream workflows must never run in this repository: a ref containing
 the materialized tree (a release tag, or a branch cut from one) would
-otherwise carry live push/pull_request-triggered CI. Remove everything
-except the handful of schedule/dispatch-only workflows that are inert
-outside upstream's default branch (verified trigger-by-trigger), and
-drop upstream-only config (dependabot, CODEOWNERS entries for removed
-files). CI enforces the invariant: verify-patches fails if a
-materialized tree ever contains a workflow file outside this
-allowlist, so an upstream bump that adds a workflow forces a decision
-here.
+otherwise carry live push/pull_request-triggered CI. Remove them ALL —
+even the schedule/dispatch-only ones that are inert outside upstream's
+default branch — because an inert file's triggers can change on any
+upstream bump, and a filename allowlist would accept the file while it
+went live. With zero workflow files the invariant is trivially
+checkable, and verify-patches enforces it: a materialized tree
+containing any workflow file fails CI, so an upstream bump that adds
+one forces extending this patch. Upstream support files that point at
+nodejs/node processes (SUPPORT.md, the issue-template config, the
+label-pr config) go too; non-triggering config such as dependabot.yml
+is read only from the default branch and is left untouched.
 ---
  .github/ISSUE_TEMPLATE/config.yml             |  14 -
  .github/SUPPORT.md                            |  27 --
@@ -20,6 +26,7 @@ here.
  .github/workflows/auto-start-ci.yml           |  74 ----
  .github/workflows/build-tarball.yml           | 102 ------
  .github/workflows/close-stalled.yml           |  36 --
+ .github/workflows/codeql.yml                  |  42 ---
  .github/workflows/comment-labeled.yml         |  55 ---
  .../commit-lint-problem-matcher.json          |  13 -
  .github/workflows/commit-lint.yml             |  35 --
@@ -27,6 +34,7 @@ here.
  .../workflows/coverage-linux-without-intl.yml |  86 -----
  .github/workflows/coverage-linux.yml          |  86 -----
  .github/workflows/coverage-windows.yml        | 100 ------
+ .github/workflows/create-release-proposal.yml |  81 -----
  .github/workflows/daily-wpt-fyi.yml           | 179 ----------
  .github/workflows/daily.yml                   |  32 --
  .github/workflows/doc.yml                     |  43 ---
@@ -35,10 +43,15 @@ here.
  .github/workflows/label-flaky-test-issue.yml  |  52 ---
  .github/workflows/label-pr.yml                |  18 -
  .github/workflows/license-builder.yml         |  38 ---
+ .github/workflows/lint-release-proposal.yml   | 109 ------
  .github/workflows/linters.yml                 | 260 --------------
+ .github/workflows/major-release.yml           |  49 ---
  .github/workflows/notify-on-push.yml          |  61 ----
+ .github/workflows/notify-on-review-wanted.yml |  45 ---
+ .github/workflows/post-release.yml            |  33 --
  .../remark-lint-problem-matcher.json          |  22 --
  .github/workflows/scorecard.yml               |  81 -----
+ .github/workflows/stale.yml                   |  50 ---
  .github/workflows/test-internet.yml           |  66 ----
  .github/workflows/test-linux.yml              |  87 -----
  .github/workflows/test-macos.yml              | 104 ------
@@ -46,13 +59,15 @@ here.
  .github/workflows/tools.yml                   | 321 ------------------
  .github/workflows/update-openssl.yml          |  61 ----
  .github/workflows/update-v8.yml               |  57 ----
- 32 files changed, 2619 deletions(-)
+ .github/workflows/update-wpt.yml              |  87 -----
+ 40 files changed, 3115 deletions(-)
  delete mode 100644 .github/ISSUE_TEMPLATE/config.yml
  delete mode 100644 .github/SUPPORT.md
  delete mode 100644 .github/label-pr-config.yml
  delete mode 100644 .github/workflows/auto-start-ci.yml
  delete mode 100644 .github/workflows/build-tarball.yml
  delete mode 100644 .github/workflows/close-stalled.yml
+ delete mode 100644 .github/workflows/codeql.yml
  delete mode 100644 .github/workflows/comment-labeled.yml
  delete mode 100644 .github/workflows/commit-lint-problem-matcher.json
  delete mode 100644 .github/workflows/commit-lint.yml
@@ -60,6 +75,7 @@ here.
  delete mode 100644 .github/workflows/coverage-linux-without-intl.yml
  delete mode 100644 .github/workflows/coverage-linux.yml
  delete mode 100644 .github/workflows/coverage-windows.yml
+ delete mode 100644 .github/workflows/create-release-proposal.yml
  delete mode 100644 .github/workflows/daily-wpt-fyi.yml
  delete mode 100644 .github/workflows/daily.yml
  delete mode 100644 .github/workflows/doc.yml
@@ -68,10 +84,15 @@ here.
  delete mode 100644 .github/workflows/label-flaky-test-issue.yml
  delete mode 100644 .github/workflows/label-pr.yml
  delete mode 100644 .github/workflows/license-builder.yml
+ delete mode 100644 .github/workflows/lint-release-proposal.yml
  delete mode 100644 .github/workflows/linters.yml
+ delete mode 100644 .github/workflows/major-release.yml
  delete mode 100644 .github/workflows/notify-on-push.yml
+ delete mode 100644 .github/workflows/notify-on-review-wanted.yml
+ delete mode 100644 .github/workflows/post-release.yml
  delete mode 100644 .github/workflows/remark-lint-problem-matcher.json
  delete mode 100644 .github/workflows/scorecard.yml
+ delete mode 100644 .github/workflows/stale.yml
  delete mode 100644 .github/workflows/test-internet.yml
  delete mode 100644 .github/workflows/test-linux.yml
  delete mode 100644 .github/workflows/test-macos.yml
@@ -79,6 +100,7 @@ here.
  delete mode 100644 .github/workflows/tools.yml
  delete mode 100644 .github/workflows/update-openssl.yml
  delete mode 100644 .github/workflows/update-v8.yml
+ delete mode 100644 .github/workflows/update-wpt.yml
 
 diff --git a/.github/ISSUE_TEMPLATE/config.yml b/.github/ISSUE_TEMPLATE/config.yml
 deleted file mode 100644
@@ -593,6 +615,54 @@ index 4d36d9e93c..0000000000
 -          operations-per-run: 500
 -          # deactivates automatic stale labelling as we prefer to do that manually
 -          days-before-stale: -1
+diff --git a/.github/workflows/codeql.yml b/.github/workflows/codeql.yml
+deleted file mode 100644
+index 01d7f37e38..0000000000
+--- a/.github/workflows/codeql.yml
++++ /dev/null
+@@ -1,42 +0,0 @@
+-name: Run CodeQL
+-
+-on:
+-  schedule:
+-    - cron: 0 0 * * *
+-
+-permissions:
+-  contents: read
+-
+-jobs:
+-  analyze:
+-    if: github.repository == 'nodejs/node'
+-    name: Analyze
+-    runs-on: ubuntu-slim
+-    permissions:
+-      actions: read
+-      contents: read
+-      security-events: write
+-
+-    strategy:
+-      fail-fast: false
+-      matrix:
+-        language: [cpp, javascript, python]
+-
+-    steps:
+-      - name: Checkout repository
+-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+-
+-      # Initializes the CodeQL tools for scanning.
+-      - name: Initialize CodeQL
+-        uses: github/codeql-action/init@e46ed2cbd01164d986452f91f178727624ae40d7  # v4.35.3
+-        with:
+-          languages: ${{ matrix.language }}
+-          config-file: ./.github/codeql-config.yml
+-
+-      - name: Autobuild
+-        uses: github/codeql-action/autobuild@e46ed2cbd01164d986452f91f178727624ae40d7  # v4.35.3
+-
+-      - name: Perform CodeQL Analysis
+-        uses: github/codeql-action/analyze@e46ed2cbd01164d986452f91f178727624ae40d7  # v4.35.3
+-        with:
+-          category: /language:${{matrix.language}}
 diff --git a/.github/workflows/comment-labeled.yml b/.github/workflows/comment-labeled.yml
 deleted file mode 100644
 index e665250748..0000000000
@@ -1109,6 +1179,93 @@ index fcbc3d2d48..0000000000
 -        uses: codecov/codecov-action@57e3a136b779b570ffcdbf80b3bdc90e7fab3de2  # v6.0.0
 -        with:
 -          directory: ./coverage
+diff --git a/.github/workflows/create-release-proposal.yml b/.github/workflows/create-release-proposal.yml
+deleted file mode 100644
+index 3c1437e0ac..0000000000
+--- a/.github/workflows/create-release-proposal.yml
++++ /dev/null
+@@ -1,81 +0,0 @@
+-# This action requires the following secrets to be set on the repository:
+-#   GH_USER_TOKEN: GitHub user token, to be used by ncu and to push changes
+-
+-name: Create Release Proposal
+-
+-on:
+-  workflow_dispatch:
+-    inputs:
+-      release-line:
+-        required: true
+-        type: number
+-        description: 'The release line (without dots or prefix). e.g: 22'
+-      release-date:
+-        required: true
+-        type: string
+-        description: The release date in YYYY-MM-DD format
+-
+-concurrency: ${{ github.workflow }}
+-
+-env:
+-  NODE_VERSION: lts/*
+-
+-permissions:
+-  contents: write
+-  pull-requests: write
+-
+-jobs:
+-  releasePrepare:
+-    env:
+-      STAGING_BRANCH: v${{ inputs.release-line }}.x-staging
+-      RELEASE_BRANCH: v${{ inputs.release-line }}.x
+-      RELEASE_DATE: ${{ inputs.release-date }}
+-      RELEASE_LINE: ${{ inputs.release-line }}
+-    runs-on: ubuntu-slim
+-    steps:
+-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+-        with:
+-          ref: ${{ env.STAGING_BRANCH }}
+-          persist-credentials: false
+-
+-      # Install dependencies
+-      - name: Install Node.js
+-        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e  # v6.4.0
+-        with:
+-          node-version: ${{ env.NODE_VERSION }}
+-
+-      - name: Install @node-core/utils
+-        run: npm install -g @node-core/utils
+-
+-      - name: Configure @node-core/utils
+-        run: |
+-          ncu-config set branch "${RELEASE_BRANCH}"
+-          ncu-config set upstream origin
+-          ncu-config set username "$GITHUB_ACTOR"
+-          ncu-config set token "$GH_TOKEN"
+-          ncu-config set repo "$(echo "$GITHUB_REPOSITORY" | cut -d/ -f2)"
+-          ncu-config set owner "${GITHUB_REPOSITORY_OWNER}"
+-        env:
+-          GH_TOKEN: ${{ github.token }}
+-
+-      - name: Set up ghauth config (Ubuntu)
+-        run: |
+-          mkdir -p "${XDG_CONFIG_HOME:-~/.config}/changelog-maker"
+-          jq --null-input '{user: env.GITHUB_ACTOR, token: env.TOKEN}' > "${XDG_CONFIG_HOME:-~/.config}/changelog-maker/config.json"
+-        env:
+-          TOKEN: ${{ github.token }}
+-
+-      - name: Setup git author
+-        run: |
+-          git config --local user.email "github-bot@iojs.org"
+-          git config --local user.name "Node.js GitHub Bot"
+-
+-      - name: Start git node release prepare
+-        # The curl command is to make sure we run the version of the script corresponding to the current workflow.
+-        run: |
+-          curl -fsSL https://github.com/${GITHUB_REPOSITORY}/raw/${GITHUB_SHA}/tools/actions/create-release-proposal.sh |\
+-          sh -s -- "${RELEASE_DATE}" "${RELEASE_LINE}" "${GITHUB_ACTOR}"
+-        env:
+-          GH_TOKEN: ${{ github.token }}
+-          # We want the bot to push the push the release commit so CI runs on it.
+-          BOT_TOKEN: ${{ secrets.GH_USER_TOKEN }}
 diff --git a/.github/workflows/daily-wpt-fyi.yml b/.github/workflows/daily-wpt-fyi.yml
 deleted file mode 100644
 index ef60209547..0000000000
@@ -1631,6 +1788,121 @@ index 83b7cea221..0000000000
 -            and submits a new PR or updates an existing PR.
 -          commit-message: 'doc: run license-builder'
 -          labels: meta
+diff --git a/.github/workflows/lint-release-proposal.yml b/.github/workflows/lint-release-proposal.yml
+deleted file mode 100644
+index 68e316fbc4..0000000000
+--- a/.github/workflows/lint-release-proposal.yml
++++ /dev/null
+@@ -1,109 +0,0 @@
+-name: Linters (release proposals)
+-
+-on:
+-  push:
+-    branches:
+-      - v[0-9]+.[0-9]+.[0-9]+-proposal
+-
+-concurrency:
+-  group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
+-  cancel-in-progress: true
+-
+-env:
+-  PYTHON_VERSION: '3.14'
+-  NODE_VERSION: lts/*
+-
+-permissions:
+-  contents: read
+-
+-jobs:
+-  lint-release-commit:
+-    runs-on: ubuntu-slim
+-    permissions:
+-      contents: read
+-      pull-requests: read
+-    steps:
+-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+-        with:
+-          persist-credentials: false
+-          fetch-depth: 2
+-      - name: Lint release commit title format
+-        run: |
+-          EXPECTED_TITLE='^[[:digit:]]{4}-[[:digit:]]{2}-[[:digit:]]{2}, Version [[:digit:]]+\.[[:digit:]]+\.[[:digit:]]+ (\(Current|'.+' \(LTS)\)$'
+-          echo "Expected commit title format: $EXPECTED_TITLE"
+-          COMMIT_SUBJECT="$(git --no-pager log -1 --format=%s)"
+-          echo "Actual: $ACTUAL"
+-          echo "$COMMIT_SUBJECT" | grep -q -E "$EXPECTED_TITLE"
+-          echo "COMMIT_SUBJECT=$COMMIT_SUBJECT" >> "$GITHUB_ENV"
+-      - name: Lint release commit message trailers
+-        run: |
+-          EXPECTED_TRAILER="^$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/pull/[[:digit:]]+\$"
+-          echo "Expected trailer format: $EXPECTED_TRAILER"
+-          PR_URL="$(git --no-pager log -1 --format='%(trailers:key=PR-URL,valueonly)')"
+-          echo "Actual: $PR_URL"
+-          echo "$PR_URL" | grep -E -q "$EXPECTED_TRAILER"
+-
+-          PR_HEAD="$(gh pr view "$PR_URL" --json headRefOid -q .headRefOid)"
+-          echo "Head of $PR_URL: $PR_HEAD"
+-          echo "Current commit: $GITHUB_SHA"
+-          [ "$PR_HEAD" = "$GITHUB_SHA" ]
+-        env:
+-          GH_TOKEN: ${{ github.token }}
+-      - name: Verify it's release-ready
+-        run: |
+-          SKIP_XZ=1 make release-only
+-      - name: Lint release commit content
+-        run: |
+-          MAJOR="$(awk '/^#define NODE_MAJOR_VERSION / { print $3 }' src/node_version.h)"
+-
+-          echo "Checking for expected files in the release commit:"
+-          missing_expected=
+-          for expected in CHANGELOG.md src/node_version.h doc/changelogs/; do
+-            if git diff --exit-code --quiet --diff-filter=M HEAD^ -- "$expected"; then
+-              echo "Missing expected file in diff: $expected"
+-              missing_expected=1
+-            fi
+-          done
+-          [ -z "$missing_expected" ] || exit 1
+-
+-          echo "Checking for unexpected files in the release commit:"
+-          set -ex
+-          [ -z "$(git diff-tree --no-commit-id --name-only -r HEAD --\
+-            . \
+-            ':(exclude)CHANGELOG.md' \
+-            ':(exclude)src/node_version.h' \
+-            ':(exclude)test/parallel/test-process-release.js' \
+-            ':(exclude)doc/abi_version_registry.json' \
+-            ':(exclude)doc/api/' \
+-            ":(exclude)doc/changelogs/")" ]
+-      - name: Validate CHANGELOG
+-        id: releaser-info
+-        run: |
+-          EXPECTED_CHANGELOG_TITLE_INTRO="## $COMMIT_SUBJECT, @"
+-          echo "Expected CHANGELOG section title: $EXPECTED_CHANGELOG_TITLE_INTRO"
+-          MAJOR="$(awk '/^#define NODE_MAJOR_VERSION / { print $3 }' src/node_version.h)"
+-          CHANGELOG_PATH="doc/changelogs/CHANGELOG_V${MAJOR}.md"
+-          CHANGELOG_TITLE="$(grep "$EXPECTED_CHANGELOG_TITLE_INTRO" "$CHANGELOG_PATH")"
+-          echo "Actual: $CHANGELOG_TITLE"
+-          [ "${CHANGELOG_TITLE%%@*}@" = "$EXPECTED_CHANGELOG_TITLE_INTRO" ]
+-          gh api \
+-            -H "Accept: application/vnd.github+json" \
+-            -H "X-GitHub-Api-Version: 2022-11-28" \
+-            --jq '.commits.[] | { smallSha: .sha[0:10] } + (.commit.message|capture("^(?<title>.+)\n\n(.*\n)*PR-URL: (?<prURL>.+)(\n|$)"))' \
+-            "/repos/${GITHUB_REPOSITORY}/compare/v${MAJOR}.x...$GITHUB_SHA" --paginate \
+-          | node tools/actions/lint-release-proposal-commit-list.mjs "$CHANGELOG_PATH" "$GITHUB_SHA" \
+-          | while IFS= read -r PR_URL; do
+-            DONT_LAND_LABEL="dont-land-on-v${MAJOR}.x" LTS_WATCH_LABEL="lts-watch-v${MAJOR}.x" gh pr view \
+-              --json labels,url \
+-              --jq '
+-                if (.labels|any(.name==env.DONT_LAND_LABEL)) then
+-                  error("\(.url) has the \(env.DONT_LAND_LABEL) label, forbidding it to be in this release proposal")
+-                elif (.labels|any(.name==env.LTS_WATCH_LABEL)) then
+-                  error("\(.url) has the \(env.LTS_WATCH_LABEL) label, please remove the label now that the PR is included in a release proposal")
+-                end
+-                ' \
+-              "$PR_URL" > /dev/null
+-          done
+-        shell: bash  # See https://docs.github.com/en/actions/writing-workflows/workflow-syntax-for-github-actions#exit-codes-and-error-action-preference, we want the pipefail option.
+-        env:
+-          GH_TOKEN: ${{ github.token }}
 diff --git a/.github/workflows/linters.yml b/.github/workflows/linters.yml
 deleted file mode 100644
 index 4fbdb480e3..0000000000
@@ -1897,6 +2169,61 @@ index 4fbdb480e3..0000000000
 -      - run: tools/lint-readme-lists.mjs "$TEAMS"
 -        env:
 -          TEAMS: ${{ tojson(steps.team_members.outputs) }}
+diff --git a/.github/workflows/major-release.yml b/.github/workflows/major-release.yml
+deleted file mode 100644
+index b65917f89e..0000000000
+--- a/.github/workflows/major-release.yml
++++ /dev/null
+@@ -1,49 +0,0 @@
+-name: Major Release
+-
+-on:
+-  schedule:
+-    - cron: 0 0 15 2,8 *  # runs at midnight UTC every 15 February and 15 August
+-
+-permissions:
+-  contents: read
+-
+-jobs:
+-  create-issue:
+-    if: github.repository == 'nodejs/node'
+-    runs-on: ubuntu-slim
+-    permissions:
+-      issues: write
+-    steps:
+-      - name: Check for release schedule
+-        id: check-date
+-        run: |
+-          # Get the current month and day
+-          MONTH=$(date +'%m')
+-          DAY=$(date +'%d')
+-          # We'll create the reminder issue two months prior the release
+-          if [[ "$MONTH" == "02" || "$MONTH" == "08" ]] && [[ "$DAY" == "15" ]]; then
+-            echo "create_issue=true" >> "$GITHUB_ENV"
+-          fi
+-      - name: Retrieve next major release info from nodejs/Release
+-        if: env.create_issue == 'true'
+-        run: |
+-          curl -L https://github.com/nodejs/Release/raw/HEAD/schedule.json | \
+-          jq -r 'to_entries | map(select(.value.start | strptime("%Y-%m-%d") | mktime > now)) | first | "VERSION=" + .key + "\nRELEASE_DATE=" + .value.start' >> "$GITHUB_ENV"
+-      - name: Compute max date for landing semver-major PRs
+-        if: env.create_issue == 'true'
+-        run: |
+-          echo "PR_MAX_DATE=$(date -d "$RELEASE_DATE -1 month" +%Y-%m-%d)" >> "$GITHUB_ENV"
+-      - name: Create release announcement issue
+-        if: env.create_issue == 'true'
+-        run: |
+-         gh issue create --repo "${GITHUB_REPOSITORY}" \
+-           --title "Upcoming Node.js Major Release ($VERSION)" \
+-           --body-file -<<EOF
+-            A reminder that the next Node.js **SemVer Major release** is scheduled for **${RELEASE_DATE}**.
+-            All commits that were landed until **${PR_MAX_DATE}** (one month prior to the release) will be included in the next semver major release. Please ensure that any necessary preparations are made in advance.
+-            For more details on the release process, consult the [Node.js Release Working Group repository](https://github.com/nodejs/release).
+-
+-            cc: @nodejs/collaborators
+-         EOF
+-        env:
+-          GH_TOKEN: ${{ github.token }}
 diff --git a/.github/workflows/notify-on-push.yml b/.github/workflows/notify-on-push.yml
 deleted file mode 100644
 index 9ca33943c9..0000000000
@@ -1964,6 +2291,96 @@ index 9ca33943c9..0000000000
 -            After: <https://github.com/${{ github.repository }}/commit/${{ github.event.after }}|${{ github.event.after }}>
 -          SLACK_USERNAME: nodejs-bot
 -          SLACK_WEBHOOK: ${{ secrets.SLACK_WEBHOOK }}
+diff --git a/.github/workflows/notify-on-review-wanted.yml b/.github/workflows/notify-on-review-wanted.yml
+deleted file mode 100644
+index 1d3124e336..0000000000
+--- a/.github/workflows/notify-on-review-wanted.yml
++++ /dev/null
+@@ -1,45 +0,0 @@
+-name: Notify on Review Wanted
+-on:
+-  issues:
+-    types: [labeled]
+-  pull_request_target:
+-    types: [labeled]
+-
+-permissions:
+-  contents: read
+-
+-jobs:
+-  notifyOnReviewWanted:
+-    name: Notify on Review Wanted
+-    if: github.repository == 'nodejs/node' && github.event.label.name == 'review wanted'
+-    # cannot use ubuntu-slim here because rtCamp/action-slack-notify is dockerized
+-    runs-on: ubuntu-24.04-arm
+-    steps:
+-      - name: Determine PR or Issue
+-        id: define-message
+-        env:
+-          TITLE_ISSUE: ${{ github.event.issue.title }}
+-          TITLE_PR: ${{ github.event.pull_request.title }}
+-        run: |
+-          if [[ -n "${{ github.event.pull_request.number }}" ]]; then
+-            number="${{ github.event.pull_request.number }}"
+-            link="https://github.com/${{ github.repository }}/pull/$number"
+-            echo "message=The PR (#$number) requires review from Node.js maintainers. See: $link" >> "$GITHUB_OUTPUT"
+-            echo "title=$TITLE_PR" >> "$GITHUB_OUTPUT"
+-          else
+-            number="${{ github.event.issue.number }}"
+-            link="https://github.com/${{ github.repository }}/issues/$number"
+-            echo "message=The issue (#$number) requires review from Node.js maintainers. See: $link" >> "$GITHUB_OUTPUT"
+-            echo "title=$TITLE_ISSUE" >> "$GITHUB_OUTPUT"
+-          fi
+-
+-      - name: Slack Notification
+-        uses: rtCamp/action-slack-notify@e31e87e03dd19038e411e38ae27cbad084a90661  # 2.3.3
+-        env:
+-          MSG_MINIMAL: actions url
+-          SLACK_COLOR: '#3d85c6'
+-          SLACK_ICON: https://github.com/nodejs.png?size=48
+-          SLACK_TITLE: ${{ steps.define-message.outputs.title }}
+-          SLACK_MESSAGE: ${{ steps.define-message.outputs.message }}
+-          SLACK_USERNAME: nodejs-bot
+-          SLACK_WEBHOOK: ${{ secrets.SLACK_WEBHOOK }}
+diff --git a/.github/workflows/post-release.yml b/.github/workflows/post-release.yml
+deleted file mode 100644
+index 2fb374e912..0000000000
+--- a/.github/workflows/post-release.yml
++++ /dev/null
+@@ -1,33 +0,0 @@
+-name: Post-Release actions
+-
+-on:
+-  workflow_dispatch:
+-    inputs:
+-      version:
+-        description: The version to generate a blog post for.
+-        type: string
+-        required: true
+-  release:
+-    types: [released]
+-
+-permissions:
+-  contents: read
+-
+-jobs:
+-  post-release-actions:
+-    if: github.repository == 'nodejs/node'
+-    runs-on: ubuntu-slim
+-    steps:
+-      - name: Trigger update-links workflow on nodejs/release-cloudflare-worker
+-        run: |
+-          gh workflow run update-links.yml --repo nodejs/release-cloudflare-worker -f version=$VERSION
+-        env:
+-          GITHUB_TOKEN: ${{ secrets.GH_USER_TOKEN }}
+-          VERSION: ${{ inputs.version || github.event.release.tag_name }}
+-
+-      - name: Trigger create-release-post workflow on nodejs/nodejs.org
+-        run: |
+-          gh workflow run create-release-post.yml --repo nodejs/nodejs.org -f version=$VERSION
+-        env:
+-          GITHUB_TOKEN: ${{ secrets.GH_USER_TOKEN }}
+-          VERSION: ${{ inputs.version || github.event.release.tag_name }}
 diff --git a/.github/workflows/remark-lint-problem-matcher.json b/.github/workflows/remark-lint-problem-matcher.json
 deleted file mode 100644
 index cfb281310a..0000000000
@@ -2079,6 +2496,62 @@ index fbd12b7654..0000000000
 -        uses: github/codeql-action/upload-sarif@e46ed2cbd01164d986452f91f178727624ae40d7  # v4.35.3
 -        with:
 -          sarif_file: results.sarif
+diff --git a/.github/workflows/stale.yml b/.github/workflows/stale.yml
+deleted file mode 100644
+index 704967c24e..0000000000
+--- a/.github/workflows/stale.yml
++++ /dev/null
+@@ -1,50 +0,0 @@
+-name: Close stale
+-on:
+-  workflow_dispatch:
+-  schedule:
+-    # Run every day at 1:00 AM UTC.
+-    - cron: 0 1 * * *
+-
+-# yamllint disable rule:empty-lines
+-env:
+-  CLOSE_MESSAGE: >
+-    This {0} has been automatically closed after 30 days of inactivity
+-    following its stale status (no activity for a total of 240 days).
+-
+-    If this is still relevant, feel free to reopen it or leave a comment
+-    with additional details so we can continue the discussion.
+-
+-  WARN_MESSAGE: >
+-    This {0} has been marked as stale due to 210 days of inactivity.
+-
+-    It will be automatically closed in 30 days if no further activity occurs.
+-    If this is still relevant, please leave a comment or update it to keep it open.
+-# yamllint enable
+-
+-permissions:
+-  contents: read
+-
+-jobs:
+-  stale:
+-    permissions:
+-      issues: write  # for actions/stale to close stale issues
+-      pull-requests: write  # for actions/stale to close stale PRs
+-    if: github.repository == 'nodejs/node'
+-    runs-on: ubuntu-slim
+-    steps:
+-      - uses: actions/stale@b5d41d4e1d5dceea10e7104786b73624c18a190f  # v10.2.0
+-        with:
+-          repo-token: ${{ secrets.GITHUB_TOKEN }}
+-          days-before-stale: 210
+-          days-before-close: 30
+-          stale-issue-label: stale
+-          exempt-issue-labels: never-stale, confirmed-bug
+-          close-issue-message: ${{ format(env.CLOSE_MESSAGE, 'issue') }}
+-          stale-issue-message: ${{ format(env.WARN_MESSAGE, 'issue') }}
+-          stale-pr-label: stale
+-          exempt-pr-labels: never-stale
+-          close-pr-message: ${{ format(env.CLOSE_MESSAGE, 'pull request') }}
+-          stale-pr-message: ${{ format(env.WARN_MESSAGE, 'pull request') }}
+-          # max requests it will send per run to the GitHub API before it deliberately exits to avoid hitting API rate limits
+-          operations-per-run: 500
+-          remove-stale-when-updated: true
 diff --git a/.github/workflows/test-internet.yml b/.github/workflows/test-internet.yml
 deleted file mode 100644
 index 6c01dc978d..0000000000
@@ -2891,3 +3364,96 @@ index 8d2db8261c..0000000000
 -          title: 'deps: patch V8 to ${{ env.NEW_VERSION }}'
 -          body: This is an automated patch update of V8 to ${{ env.NEW_VERSION }}.
 -          labels: dependencies, v8 engine
+diff --git a/.github/workflows/update-wpt.yml b/.github/workflows/update-wpt.yml
+deleted file mode 100644
+index 7e9a6a30fe..0000000000
+--- a/.github/workflows/update-wpt.yml
++++ /dev/null
+@@ -1,87 +0,0 @@
+-name: WPT update
+-
+-on:
+-  schedule:
+-    # Run once a week at 12:00 AM UTC on Sunday.
+-    - cron: 0 0 * * 0
+-  workflow_dispatch:
+-    inputs:
+-      subsystems:
+-        description: Subsystem to run the update for
+-        required: false
+-        default: '["url", "urlpattern", "WebCryptoAPI"]'
+-
+-permissions:
+-  contents: read
+-
+-env:
+-  NODE_VERSION: lts/*
+-
+-jobs:
+-  wpt-subsystem-update:
+-    if: github.repository == 'nodejs/node' || github.event_name == 'workflow_dispatch'
+-    runs-on: ubuntu-slim
+-    strategy:
+-      fail-fast: false
+-      matrix:
+-        subsystem: ${{ fromJSON(github.event.inputs.subsystems || '["url", "urlpattern", "WebCryptoAPI"]') }}
+-
+-    steps:
+-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+-        with:
+-          persist-credentials: false
+-
+-      - name: Install Node.js
+-        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e  # v6.4.0
+-        with:
+-          node-version: ${{ env.NODE_VERSION }}
+-
+-      - name: Install @node-core/utils
+-        run: npm install -g @node-core/utils
+-
+-      - name: Setup @node-core/utils
+-        run: |
+-          ncu-config set username "$USERNAME"
+-          ncu-config set token "$GH_TOKEN"
+-          ncu-config set owner "${GITHUB_REPOSITORY_OWNER}"
+-          ncu-config set repo "$(echo "$GITHUB_REPOSITORY" | cut -d/ -f2)"
+-        env:
+-          USERNAME: ${{ secrets.JENKINS_USER }}
+-          GH_TOKEN: ${{ secrets.GH_USER_TOKEN }}
+-
+-      - name: Update WPT for subsystem ${{ matrix.subsystem }}
+-        run: |
+-          git node wpt "$SUBSYSTEM"
+-        env:
+-          SUBSYSTEM: ${{ matrix.subsystem }}
+-
+-      - name: Retrieve new version commit
+-        run: |
+-          new_version="$(
+-            node -p 'require("./test/fixtures/wpt/versions.json")[process.argv[1]].commit' "$SUBSYSTEM"
+-          )"
+-          {
+-            echo "long_version=$new_version"
+-            echo "short_version=${new_version:0:10}"
+-          } >> "$GITHUB_ENV"
+-        env:
+-          SUBSYSTEM: ${{ matrix.subsystem }}
+-
+-      - name: Open or update PR for the subsystem update
+-        uses: gr2m/create-or-update-pull-request-action@b65137ca591da0b9f43bad7b24df13050ea45d1b  # v1.10.1
+-        with:
+-          # The create-or-update-pull-request-action matches the branch name by prefix,
+-          # which is why we need to add the -wpt suffix. If we dont do that, we risk matching wrong PRs,
+-          # like for example "url" mistakenly matching and updating the "urlpattern" PR
+-          # as seen in https://github.com/nodejs/node/pull/57368
+-          branch: actions/update-${{ matrix.subsystem }}-wpt
+-          author: Node.js GitHub Bot <github-bot@iojs.org>
+-          title: 'test: update WPT for ${{ matrix.subsystem }} to ${{ env.short_version }}'
+-          commit-message: 'test: update WPT for ${{ matrix.subsystem }} to ${{ env.short_version }}'
+-          labels: test
+-          update-pull-request-title-and-body: true
+-          body: >
+-            This is an automated update of the WPT for ${{ matrix.subsystem }} to
+-            https://github.com/web-platform-tests/wpt/commit/${{ env.long_version }}.
+-        env:
+-          GITHUB_TOKEN: ${{ secrets.GH_USER_TOKEN }}

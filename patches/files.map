@@ -76,6 +76,7 @@
 0019-ci-remove-upstream-only-workflows-and-config.patch	.github/workflows/auto-start-ci.yml
 0019-ci-remove-upstream-only-workflows-and-config.patch	.github/workflows/build-tarball.yml
 0019-ci-remove-upstream-only-workflows-and-config.patch	.github/workflows/close-stalled.yml
+0019-ci-remove-upstream-only-workflows-and-config.patch	.github/workflows/codeql.yml
 0019-ci-remove-upstream-only-workflows-and-config.patch	.github/workflows/comment-labeled.yml
 0019-ci-remove-upstream-only-workflows-and-config.patch	.github/workflows/commit-lint-problem-matcher.json
 0019-ci-remove-upstream-only-workflows-and-config.patch	.github/workflows/commit-lint.yml
@@ -83,6 +84,7 @@
 0019-ci-remove-upstream-only-workflows-and-config.patch	.github/workflows/coverage-linux-without-intl.yml
 0019-ci-remove-upstream-only-workflows-and-config.patch	.github/workflows/coverage-linux.yml
 0019-ci-remove-upstream-only-workflows-and-config.patch	.github/workflows/coverage-windows.yml
+0019-ci-remove-upstream-only-workflows-and-config.patch	.github/workflows/create-release-proposal.yml
 0019-ci-remove-upstream-only-workflows-and-config.patch	.github/workflows/daily-wpt-fyi.yml
 0019-ci-remove-upstream-only-workflows-and-config.patch	.github/workflows/daily.yml
 0019-ci-remove-upstream-only-workflows-and-config.patch	.github/workflows/doc.yml
@@ -91,10 +93,15 @@
 0019-ci-remove-upstream-only-workflows-and-config.patch	.github/workflows/label-flaky-test-issue.yml
 0019-ci-remove-upstream-only-workflows-and-config.patch	.github/workflows/label-pr.yml
 0019-ci-remove-upstream-only-workflows-and-config.patch	.github/workflows/license-builder.yml
+0019-ci-remove-upstream-only-workflows-and-config.patch	.github/workflows/lint-release-proposal.yml
 0019-ci-remove-upstream-only-workflows-and-config.patch	.github/workflows/linters.yml
+0019-ci-remove-upstream-only-workflows-and-config.patch	.github/workflows/major-release.yml
 0019-ci-remove-upstream-only-workflows-and-config.patch	.github/workflows/notify-on-push.yml
+0019-ci-remove-upstream-only-workflows-and-config.patch	.github/workflows/notify-on-review-wanted.yml
+0019-ci-remove-upstream-only-workflows-and-config.patch	.github/workflows/post-release.yml
 0019-ci-remove-upstream-only-workflows-and-config.patch	.github/workflows/remark-lint-problem-matcher.json
 0019-ci-remove-upstream-only-workflows-and-config.patch	.github/workflows/scorecard.yml
+0019-ci-remove-upstream-only-workflows-and-config.patch	.github/workflows/stale.yml
 0019-ci-remove-upstream-only-workflows-and-config.patch	.github/workflows/test-internet.yml
 0019-ci-remove-upstream-only-workflows-and-config.patch	.github/workflows/test-linux.yml
 0019-ci-remove-upstream-only-workflows-and-config.patch	.github/workflows/test-macos.yml
@@ -102,5 +109,6 @@
 0019-ci-remove-upstream-only-workflows-and-config.patch	.github/workflows/tools.yml
 0019-ci-remove-upstream-only-workflows-and-config.patch	.github/workflows/update-openssl.yml
 0019-ci-remove-upstream-only-workflows-and-config.patch	.github/workflows/update-v8.yml
+0019-ci-remove-upstream-only-workflows-and-config.patch	.github/workflows/update-wpt.yml
 0020-lib-install-a-WebAssembly-polyfill-when-the-engine-h.patch	LICENSE
 0020-lib-install-a-WebAssembly-polyfill-when-the-engine-h.patch	lib/internal/process/pre_execution.js
