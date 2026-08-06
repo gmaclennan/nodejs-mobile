@@ -6,7 +6,10 @@ MIME-Version: 1.0
 Content-Type: text/plain; charset=UTF-8
 Content-Transfer-Encoding: 8bit
 
-v8.gyp / toolchain.gypi adjustments for the iOS/Android cross-build.
+v8.gyp / toolchain.gypi for the cross-build: host toolset settings so
+mksnapshot/torque compile natively while the target compiles for the
+phone, and arch selection (incl. the PR-57748 host_arch guards) for the
+Android arm/arm64/x64 and iOS arm64 matrix.
 
 Co-authored-by: Andre Staltz <andre@staltz.com>
 Co-authored-by: Julia Samól <j.samol@papers.ch>

@@ -3,14 +3,27 @@ From: Gregor MacLennan <gmaclennan@awana.digital>
 Date: Tue, 28 Jul 2026 19:20:24 +0000
 Subject: [PATCH 01/20] build: Android/iOS dest-os and toolchain (configure.py,
  android_configure.py)
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
 
+Wrapper-level build plumbing so configure.py itself stays nearly
+upstream-clean: --dest-os=ios/android plumb the mobile OS into gyp;
+host CC/CXX are pinned so gyp's host tools (mksnapshot, torque) build
+with a real host compiler during the cross-compile; the sccache wrap is
+opt-in via NODEJS_MOBILE_SCCACHE (set by CI) and must live here because
+this script overwrites CC/CXX with the NDK toolchain; the full/lite
+flavor switch stays in the wrapper for the same reason. Also removes
+upstream's configure-time "patch -f android-patches/..." mechanism,
+which mutates the source tree during a build — see patch 0012 for where
+that edit went.
 ---
- android_configure.py | 52 +++++++++++++++++++++++++++++++-------------
- configure.py         |  8 +++++++
- 2 files changed, 45 insertions(+), 15 deletions(-)
+ android_configure.py | 59 +++++++++++++++++++++++++++++++++-----------
+ configure.py         |  8 ++++++
+ 2 files changed, 52 insertions(+), 15 deletions(-)
 
 diff --git a/android_configure.py b/android_configure.py
-index 5cea0393f4..07291fbe7a 100644
+index 5cea0393f4..a4ee541a0f 100644
 --- a/android_configure.py
 +++ b/android_configure.py
 @@ -1,25 +1,14 @@
@@ -50,7 +63,7 @@ index 5cea0393f4..07291fbe7a 100644
      toolchain_path = android_ndk_path + "/toolchains/llvm/prebuilt/darwin-x86_64"
  
  elif platform.system() == "Linux":
-@@ -65,13 +54,46 @@ elif platform.system() == "Linux":
+@@ -65,13 +54,53 @@ elif platform.system() == "Linux":
  os.environ['PATH'] += os.pathsep + toolchain_path + "/bin"
  os.environ['CC'] = toolchain_path + "/bin/" + TOOLCHAIN_PREFIX + android_sdk_version + "-" +  "clang"
  os.environ['CXX'] = toolchain_path + "/bin/" + TOOLCHAIN_PREFIX + android_sdk_version + "-" + "clang++"
@@ -58,11 +71,18 @@ index 5cea0393f4..07291fbe7a 100644
 +os.environ['CC_host'] = os.popen('command -v clang').read().strip()
 +os.environ['CXX_host'] = os.popen('command -v clang++').read().strip()
 +
-+# nodejs-mobile patch: route every compile through sccache when it is on PATH
-+# (CI sets it up via mozilla-actions/sccache-action). make/gyp invoke "$CC ...",
-+# so prefixing the wrapper is enough. No-op locally when sccache isn't installed.
-+sccache = shutil.which("sccache")
-+if sccache:
++# nodejs-mobile patch: route every compile through sccache, but only when the
++# caller opts in (CI sets NODEJS_MOBILE_SCCACHE=1 next to the
++# mozilla-actions/sccache-action setup). Opt-in rather than "wrap when
++# installed": a local build must not silently change behaviour because a
++# developer happens to have sccache on PATH. This lives here and not in CI env
++# because this script overwrites CC/CXX with the NDK toolchain paths above —
++# an externally exported CC would not survive to the make invocation.
++if os.environ.get("NODEJS_MOBILE_SCCACHE"):
++    sccache = shutil.which("sccache")
++    if not sccache:
++        print("\033[91mError: \033[0m" + "NODEJS_MOBILE_SCCACHE is set but sccache is not on PATH")
++        sys.exit(1)
 +    for _var in ("CC", "CXX", "CC_host", "CXX_host"):
 +        os.environ[_var] = sccache + " " + os.environ[_var]
  

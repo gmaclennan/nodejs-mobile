@@ -7,7 +7,12 @@ MIME-Version: 1.0
 Content-Type: text/plain; charset=UTF-8
 Content-Transfer-Encoding: 8bit
 
-Tests depending on child_process/signals/spawn etc. that don't apply on iOS/Android.
+Per-test mobile adaptations, kept deliberately minimal (small anchored
+guards; wholesale rewrites are rejected by audit-test-edits.sh in CI —
+see the minimal test-edit policy in docs/TESTING.md on the recipe
+branch): sandbox paths, no-child-process variants, jitless-iOS
+differences, and the fork-only test-mobile-* gates for the patch
+series itself.
 
 Co-authored-by: Andre Staltz <andre@staltz.com>
 Co-authored-by: Julia Samól <j.samol@papers.ch>

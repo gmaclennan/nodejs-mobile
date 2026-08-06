@@ -114,6 +114,28 @@ jobs:
           [ "$count" -ge 100 ] || { echo "::error::curated list implausibly small ($count)"; fail=1; }
           [ "$fail" -eq 0 ]
 
+      # Patch 0019 removes upstream workflows so no ref carrying the
+      # materialized tree (a release tag, a branch cut from one) can run
+      # upstream CI here. The removal is by enumeration, so an upstream bump
+      # that ADDS a workflow would silently reintroduce one — this allowlist
+      # turns that into a loud failure that forces a decision (extend 0019 or
+      # accept the file here). The retained files were verified inert:
+      # schedule/dispatch-only (never run outside the default branch) or
+      # push-filtered to upstream-only branch names.
+      - name: Lint materialized workflows against the allowlist
+        run: |
+          set -euo pipefail
+          allow='codeql.yml create-release-proposal.yml lint-release-proposal.yml major-release.yml notify-on-review-wanted.yml post-release.yml stale.yml update-wpt.yml'
+          bad=0
+          for f in out/.github/workflows/*; do
+            base=$(basename "$f")
+            case " $allow " in
+              *" $base "*) ;;
+              *) echo "::error::unexpected workflow in the materialized tree: $base — extend patch 0019 or the allowlist"; bad=1 ;;
+            esac
+          done
+          [ "$bad" -eq 0 ] && echo "materialized workflows OK ($(ls out/.github/workflows | wc -l | tr -d ' ') files, all allowlisted)"
+
       # Minimal-test-edit policy (docs/TESTING.md): the script says it fails
       # CI, so CI must actually run it. The prepare.sh clone carries the
       # upstream base tag the audit diffs against.

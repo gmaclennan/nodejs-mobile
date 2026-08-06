@@ -6,7 +6,9 @@ MIME-Version: 1.0
 Content-Type: text/plain; charset=UTF-8
 Content-Transfer-Encoding: 8bit
 
-fs.c (Android copy_file_range guard; Darwin !TARGET_OS_IPHONE sendfile), darwin.c iOS cpu-speed guard, uv.gyp.
+libuv paths that assume desktop facilities: Android's copy_file_range
+guard, the iOS cpu-frequency sysctl that doesn't exist there, and
+uv.gyp host-toolset source selection for the cross-build.
 
 Co-authored-by: Andre Staltz <andre@staltz.com>
 Co-authored-by: Julia Samól <j.samol@papers.ch>

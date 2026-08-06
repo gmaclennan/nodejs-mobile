@@ -6,7 +6,16 @@ MIME-Version: 1.0
 Content-Type: text/plain; charset=UTF-8
 Content-Transfer-Encoding: 8bit
 
-trap-handler V8_TRAP_HANDLER_SUPPORTED=false; platform-posix / push_registers_asm mobile adjustments.
+V8's wasm trap handler installs a SIGSEGV handler, which per V8's own
+comment would need security review to be safe under Android's signal
+handling, and is useless on iOS where V8 runs jitless. Upstream ships
+the same disable as android-patches/trap-handler.h.patch, applied ad
+hoc by android_configure.py at configure time (Linux hosts only,
+mutates the tree mid-build) — incompatible with the byte-verified
+materialized tree and absent for iOS, so the edit is baked into
+trap-handler.h here and the orphaned upstream patch file is removed.
+Also: platform-posix iOS page-size tweak and the PR-57748
+push_registers_asm host/target arch selection.
 
 Co-authored-by: Andre Staltz <andre@staltz.com>
 Co-authored-by: Julia Samól <j.samol@papers.ch>
@@ -16,8 +25,8 @@ Co-authored-by: Jaime Bernardo <jaime@janeasystems.com>
  deps/v8/src/base/platform/platform-posix.cc   |  6 ++
  .../heap/base/asm/x64/push_registers_asm.cc   | 74 ++++++++++++++++---
  deps/v8/src/trap-handler/handler-outside.cc   |  2 +
- deps/v8/src/trap-handler/trap-handler.h       | 42 ++---------
- 5 files changed, 75 insertions(+), 96 deletions(-)
+ deps/v8/src/trap-handler/trap-handler.h       | 49 +++---------
+ 5 files changed, 82 insertions(+), 96 deletions(-)
  delete mode 100644 android-patches/trap-handler.h.patch
 
 diff --git a/android-patches/trap-handler.h.patch b/android-patches/trap-handler.h.patch
@@ -210,10 +219,10 @@ index 6e2b40d9f5..ede435b302 100644
  }
  
 diff --git a/deps/v8/src/trap-handler/trap-handler.h b/deps/v8/src/trap-handler/trap-handler.h
-index bd6f19593d..00105e50e0 100644
+index bd6f19593d..a2133e1cbc 100644
 --- a/deps/v8/src/trap-handler/trap-handler.h
 +++ b/deps/v8/src/trap-handler/trap-handler.h
-@@ -15,45 +15,13 @@
+@@ -15,45 +15,20 @@
  
  namespace v8::internal::trap_handler {
  
@@ -259,6 +268,13 @@ index bd6f19593d..00105e50e0 100644
 +// can be enabled on Android.  Android may do unexpected things with signal
 +// handling and crash reporting that could open up security holes in V8's
 +// trap handling.  So we disable the trap handler everywhere.
++//
++// Upstream ships the same disable as android-patches/trap-handler.h.patch,
++// applied ad hoc by android_configure.py at configure time ("patch -f", Linux
++// hosts only, failure non-fatal). That mechanism mutates the source tree
++// during a build — incompatible with this project's byte-verified materialized
++// tree — and never ran for iOS or macOS-hosted builds, so the series bakes
++// the edit in here instead and removes the orphaned upstream patch file.
  #define V8_TRAP_HANDLER_SUPPORTED false
 -#endif
  

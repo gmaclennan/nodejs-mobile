@@ -6,17 +6,23 @@ MIME-Version: 1.0
 Content-Type: text/plain; charset=UTF-8
 Content-Transfer-Encoding: 8bit
 
-iOS/Android xcode_settings and cflags; ARCHS set per toolset (host vs target); iOS deployment target; no bitcode.
+Platform settings gyp needs to target iOS at all (xcode_settings per
+toolset, deployment targets, no bitcode) plus the Android link flags:
+a GNU build-id for crash symbolication (Mach-O gets an LC_UUID
+automatically, so iOS needs no equivalent) and, for the lite flavor
+only, section GC so dropped features actually shrink the binary. The
+-m32/-m64 host-tool logic mirrors v8.gyp's PR-57748 form so a 64-bit
+host building a 32-bit target gets consistent flags.
 
 Co-authored-by: Andre Staltz <andre@staltz.com>
 Co-authored-by: Julia Samól <j.samol@papers.ch>
 Co-authored-by: Jaime Bernardo <jaime@janeasystems.com>
 ---
- common.gypi | 135 +++++++++++++++++++++++++++++++++++++++++++++++++---
- 1 file changed, 128 insertions(+), 7 deletions(-)
+ common.gypi | 138 +++++++++++++++++++++++++++++++++++++++++++++++++---
+ 1 file changed, 131 insertions(+), 7 deletions(-)
 
 diff --git a/common.gypi b/common.gypi
-index c9ff09b4dc..fbfa74802b 100644
+index c9ff09b4dc..44515cc277 100644
 --- a/common.gypi
 +++ b/common.gypi
 @@ -18,6 +18,12 @@
@@ -41,14 +47,17 @@ index c9ff09b4dc..fbfa74802b 100644
          'obj_dir%': '<(PRODUCT_DIR)/obj.target',
          'v8_base': '<(PRODUCT_DIR)/libv8_snapshot.a',
        }],
-@@ -221,6 +227,27 @@
+@@ -221,6 +227,30 @@
                }],
              ],
            }],
 +          ['OS=="android"', {
 +            # nodejs-mobile: emit a GNU build-id on libnode.so so Sentry can
 +            # match the AGP-stripped runtime binary to uploaded debug files for
-+            # native crash symbolication. Behaviour-neutral; applies to both
++            # native crash symbolication. Android-only on purpose: Mach-O has
++            # no --build-id — Apple's ld emits an LC_UUID load command
++            # unconditionally, and that UUID is what symbolicators match dSYMs
++            # by, so iOS needs no equivalent flag. Behaviour-neutral; applies to both
 +            # flavors (see docs/BUILDING.md on the recipe branch). These also
 +            # reach the host build-tools, which is harmless on the Linux build
 +            # host (GNU ld); Android is built on Linux (a macOS host can't link
@@ -69,7 +78,7 @@ index c9ff09b4dc..fbfa74802b 100644
            ['OS=="solaris"', {
              # pull in V8's postmortem metadata
              'ldflags': [ '-Wl,-z,allextract' ]
-@@ -229,7 +256,7 @@
+@@ -229,7 +259,7 @@
              # increase performance, number from experimentation
              'cflags': [ '-qINLINE=::150:100000' ]
            }],
@@ -78,7 +87,7 @@ index c9ff09b4dc..fbfa74802b 100644
              # -fno-omit-frame-pointer is necessary for the --perf_basic_prof
              # flag to work correctly. perf(1) gets confused about JS stack
              # frames otherwise, even with --call-graph dwarf.
-@@ -448,7 +475,7 @@
+@@ -448,7 +478,7 @@
        [ 'target_arch=="arm64"', {
          'msvs_configuration_platform': 'arm64',
        }],
@@ -87,7 +96,7 @@ index c9ff09b4dc..fbfa74802b 100644
          'cflags+': [
            '-fno-omit-frame-pointer',
            '-fsanitize=address',
-@@ -476,7 +503,7 @@
+@@ -476,7 +506,7 @@
            }],
          ],
        }],
@@ -96,7 +105,7 @@ index c9ff09b4dc..fbfa74802b 100644
          'cflags+': [
            '-fno-omit-frame-pointer',
            '-fsanitize=undefined',
-@@ -485,7 +512,7 @@
+@@ -485,7 +515,7 @@
          'cflags!': [ '-fno-omit-frame-pointer' ],
          'ldflags': [ '-fsanitize=undefined' ],
        }],
@@ -105,7 +114,7 @@ index c9ff09b4dc..fbfa74802b 100644
          'xcode_settings': {
            'OTHER_CFLAGS+': [
              '-fno-omit-frame-pointer',
-@@ -593,11 +620,13 @@
+@@ -593,11 +623,13 @@
            }],
            ['_toolset=="host"', {
              'conditions': [
@@ -121,7 +130,7 @@ index c9ff09b4dc..fbfa74802b 100644
                  'cflags': [ '-m64' ],
                  'ldflags': [ '-m64' ],
                }],
-@@ -757,6 +786,98 @@
+@@ -757,6 +789,98 @@
            }],
          ],
        }],

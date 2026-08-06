@@ -64,6 +64,35 @@ change.** Forgetting is safe; CI fails and prints the hash it computed.
 Patch messages and `Co-authored-by:` trailers carry the attribution of the
 original nodejs-mobile contributors whose work the series descends from.
 
+## The series
+
+One row per patch; the patch's own commit body carries the same reasoning in
+long form, and the fork-only `test-mobile-*` gates named below run in the
+curated Tier-2 list on both device legs.
+
+| Patch | What it changes | Why |
+|---|---|---|
+| `0001` configure wrappers | `android_configure.py`, `configure.py`: dest-os plumbing, host CC/CXX, opt-in sccache wrap, full/lite flavor switch | gyp must be told about ios/android; host tools need a native compiler in a cross-build; wrapper-level so `configure.py` stays nearly upstream-clean |
+| `0002` common.gypi | Apple xcode_settings per toolset, deployment targets; Android build-id + lite-only section GC | base platform settings gyp lacks for mobile; Mach-O gets an LC_UUID automatically so only ELF/Android needs `--build-id` |
+| `0003` node.gyp/node.gypi | Android shared / iOS static library targets, `NODE_MOBILE` define, no cctest/executable on mobile | the shape of the shipped artifacts (`libnode.so`, `NodeMobile.xcframework`) |
+| `0004` v8 gypfiles | host/target toolset settings, arch selection (PR-57748 guards) | mksnapshot/torque must build for the host while V8 builds for the phone |
+| `0005` gyp generators | make/ninja treat `ios` like `mac` (xcode_emulation), simulator/device SDK switch | gyp has no built-in notion of an iOS make build |
+| `0006` node.cc guards | `TARGET_OS_IPHONE`/`__ANDROID__` guards; POSIX credentials enabled on Android API ≥ 21 | mobile OSes forbid or lack the guarded facilities |
+| `0007` credentials | drop setuid/setgid/setgroups native methods on Android; getgrnam shim for initgroups | the app sandbox never permits credential changes; bionic lacks `getgrnam_r`. Gate: `test-mobile-credentials` |
+| `0008` env clone | `KVStore::Clone()` skips an unresolvable variable instead of failing | bionic strips e.g. `LD_PRELOAD` from starting apps; a default-env Worker would otherwise die. Gate: `test-mobile-worker-env-clone` |
+| `0009` version key | `process.versions.mobile` | the sanctioned way to detect a mobile build; `process.version` stays upstream. Gate: `test-process-versions` |
+| `0010` crypto trust | `TARGET_OS_OSX` fences around macOS-only trust-settings API; iOS evaluates candidates via `SecTrustEvaluateWithError` | an iOS build doesn't link the macOS API. Gate: `test-mobile-system-ca` |
+| `0011` libuv | Android `copy_file_range` guard, iOS cpu-frequency guard, uv.gyp host sources | desktop assumptions in libuv that break on mobile kernels/SDKs |
+| `0012` v8 trap handler | `V8_TRAP_HANDLER_SUPPORTED false`; deletes upstream's `android-patches/` file | V8's own comment: enabling under Android signal handling needs security review; useless under jitless iOS. Upstream's configure-time `patch -f` mechanism mutates the tree mid-build and never ran for iOS — baked in instead |
+| `0013` c-ares | darwin config: `HAVE_SYS_RANDOM_H` guarded to macOS | the iOS SDK has no `<sys/random.h>`; c-ares falls back to `arc4random_buf` |
+| `0014` deps gyp | zlib / openssl-no-asm conditionals | deps gypfiles that don't know the mobile OSes |
+| `0015` NODE_PATH | mobile builds read `NODE_PATH` from `process.env`, not `SafeGetenv()` | the embedder sets `NODE_PATH`; SafeGetenv's setuid heuristics describe the host app, not node. Desktop builds keep upstream behaviour. Gate: `test-mobile-node-path` |
+| `0016` test harness | `common.isAndroid/isIOS`, test.py arch→system mapping, device `.status` sections | lets upstream's own runner drive a phone and skip whole unsupported categories |
+| `0017` test adaptations | minimal per-test guards + the fork-only `test-mobile-*` tests | keeps upstream tests runnable on-device; wholesale rewrites are rejected by `audit-test-edits.sh` in CI |
+| `0018` README/ignores | short README pointing at the recipe branch; build-output ignores | a release tag is a materialized tree — its README should say so; the dev loop's git operations must not sweep build outputs |
+| `0019` upstream CI removal | deletes push/PR-triggered upstream workflows and config | a ref carrying the materialized tree must never run upstream CI here; verify-patches enforces an allowlist so upstream bumps can't silently reintroduce one |
+| `0020` WebAssembly polyfill | bundles polywasm, installed only when the engine has no WebAssembly | jitless iOS V8 has no wasm, which kills `fetch()` (undici's llhttp is wasm). Gate: `test-mobile-fetch` + the jitless host gates |
+
 ## Branches
 
 | Branch | Role |

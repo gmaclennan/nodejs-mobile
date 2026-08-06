@@ -7,7 +7,10 @@ MIME-Version: 1.0
 Content-Type: text/plain; charset=UTF-8
 Content-Transfer-Encoding: 8bit
 
-TARGET_OS_IPHONE / __ANDROID__ guards disabling process/dlopen paths unavailable on mobile.
+TARGET_OS_IPHONE / __ANDROID__ guards in node.cc and node_internals.h
+for process-level facilities mobile OSes forbid or lack (tty tcsetattr
+teardown on iOS; NODE_IMPLEMENTS_POSIX_CREDENTIALS turned on for
+Android API >= 21, which upstream leaves off).
 
 Co-authored-by: Andre Staltz <andre@staltz.com>
 Co-authored-by: Julia Samól <j.samol@papers.ch>
