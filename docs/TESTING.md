@@ -8,7 +8,7 @@ locally on an Android emulator, an iOS simulator, or a physical device.
 The harness runs the **real upstream `tools/test.py`** on the host, but points
 its `node` executable at a per-platform **proxy script**. For each test case the
 proxy relaunches the testnode app on the device (`am start` on Android, `xcrun
-simctl launch` on an iOS simulator, `ios-deploy` on an iOS device), passing the
+simctl launch` on an iOS simulator, `devicectl` on an iOS device), passing the
 test-file path and a unique per-launch token. The app runs the file in-process
 via the embedded `node_start()`; when node returns, native code writes a `PASS`
 / `FAIL` verdict (the real exit code) to a per-launch file in the app's private
@@ -210,7 +210,7 @@ not from this branch.
 
 `tools/test.py` and the prepare scripts run on the host; the device/emulator
 runs the app. A specific device/emulator can be targeted with `DEVICE_ID=<id>`
-(`adb devices` / `ios-deploy --detect` / `xcrun simctl list` to find it).
+(`adb devices` / `xcrun devicectl list devices` / `xcrun simctl list` to find it).
 
 > **WASI symlink side-effect.** The prepare scripts delete the dangling symlinks
 > under `test/fixtures/wasi/subdir/` (Android asset packaging and iOS app
@@ -242,25 +242,35 @@ echo test/parallel/test-buffer-alloc.js \
 
 ### iOS physical device
 
-Requires macOS + Xcode, an arm64 device with a valid development certificate,
-and [`ios-deploy`](https://github.com/ios-control/ios-deploy) (`npm i -g ios-deploy`).
-Sign `tools/mobile-test/ios/testnode/testnode.xcodeproj` in Xcode first (set a
-Team; change the bundle id if it's taken).
+Requires macOS + Xcode 15+, an arm64 device on iOS 17 or newer with Developer
+Mode enabled, and an Apple Development certificate whose account is signed
+into Xcode. Everything device-facing runs through `xcrun devicectl`
+(CoreDevice): `ios-deploy` is no longer used — its lldb launch phase cannot
+work on iOS 17+, where the personalized developer disk image replaced the
+`DeveloperDiskImage.dmg` it looks for. (For an iOS 16-or-older device, use the
+old ios-deploy scripts from git history.)
 
 ```sh
 ./tools/ios_framework_prepare.sh arm64                        # build the device framework
-./tools/mobile-test/ios/prepare-ios-tests.sh                  # build+install on the connected device, copy assets
+NODE_IOS_DEV_TEAM=<your team id> \
+  ./tools/mobile-test/ios/prepare-ios-tests.sh                # build+sign+install, copy assets
 echo test/parallel/test-buffer-alloc.js \
   | xargs ./tools/test.py -j 1 --arch ios --shell=./tools/mobile-test/ios/node-ios-proxy.sh
 ```
 
-The device proxy scores from the same verdict file as the other two: it passes a
-per-launch token and then pulls `Documents/result-<token>.txt` back out of the
-app sandbox with `ios-deploy --bundle_id … --download=… --to …`, rather than
-trusting ios-deploy's exit code. If you changed the bundle id when signing the
-project, export `NODE_IOS_BUNDLE_ID` to match — the download has nothing to open
-otherwise, and every test reports no verdict. This flow is local-only; no CI job
-runs it (Tier-3 device coverage goes through BrowserStack).
+`NODE_IOS_DEV_TEAM` makes xcodebuild sign with your team (automatic signing +
+`-allowProvisioningUpdates`); without it the project's own — empty — signing
+settings apply. `DEVICE_ID` takes a CoreDevice identifier or name (`xcrun
+devicectl list devices`, *not* the classic UDID) and is auto-selected when
+exactly one device is connected. If the default bundle id is taken on your
+account, export `NODE_IOS_BUNDLE_ID` for both scripts.
+
+The device proxy scores from the same verdict file as the other two: it passes
+a per-launch token and pulls `Documents/result-<token>.txt` back out of the
+app's data container with `devicectl device copy from`, rather than trusting an
+exit code. Verified end-to-end on an iPhone 16 Pro running iOS 26. This flow is
+local-only; no CI job runs it (Tier-3 device coverage goes through
+BrowserStack).
 
 ### Running the addon gate locally
 
