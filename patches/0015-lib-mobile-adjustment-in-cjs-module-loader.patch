@@ -1,0 +1,40 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Gregor MacLennan <gmaclennan@awana.digital>
+Date: Tue, 28 Jul 2026 19:20:32 +0000
+Subject: [PATCH 15/20] lib: mobile adjustment in cjs module loader
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+As a library inside another app's process, the embedder is who sets
+NODE_PATH, and SafeGetenv's setuid heuristics key off properties of the
+host app rather than of node — so on mobile builds read NODE_PATH from
+process.env (as Windows already does). Scoped to builds with
+process.versions.mobile so a desktop build from this tree keeps
+upstream's secure-process behaviour. Covered by
+test/parallel/test-mobile-node-path.
+
+Co-authored-by: Andre Staltz <andre@staltz.com>
+---
+ lib/internal/modules/cjs/loader.js | 8 +++++++-
+ 1 file changed, 7 insertions(+), 1 deletion(-)
+
+diff --git a/lib/internal/modules/cjs/loader.js b/lib/internal/modules/cjs/loader.js
+index 11a7196698..4b5e5eb062 100644
+--- a/lib/internal/modules/cjs/loader.js
++++ b/lib/internal/modules/cjs/loader.js
+@@ -2110,7 +2110,13 @@ Module.createRequire = createRequire;
+  */
+ Module._initPaths = function() {
+   const homeDir = isWindows ? process.env.USERPROFILE : safeGetenv('HOME');
+-  const nodePath = isWindows ? process.env.NODE_PATH : safeGetenv('NODE_PATH');
++  // nodejs-mobile patch: as a library inside another process, the embedder is
++  // the one who sets NODE_PATH, and SafeGetenv's "does this process look
++  // setuid" refusal keys off properties of the host app, not of node. Scoped
++  // to mobile builds so a desktop build from this tree keeps upstream's
++  // secure-process behaviour.
++  const nodePath = (isWindows || process.versions.mobile !== undefined) ?
++    process.env.NODE_PATH : safeGetenv('NODE_PATH');
+ 
+   // process.execPath is $PREFIX/bin/node except on Windows where it is
+   // $PREFIX\node.exe where $PREFIX is the root of the Node.js installation.
