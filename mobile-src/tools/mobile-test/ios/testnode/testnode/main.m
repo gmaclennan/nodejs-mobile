@@ -52,17 +52,6 @@ int main(int argc, char * argv[]) {
             i+=2;
         }
 
-        //--exit-hook: install the process.exit() verdict hook for this launch
-        //(NodeRunner writes the hook file and points NODE_OPTIONS at it). The
-        //proxy passes it only for tests that actually call process.exit(),
-        //because the preload is observable: it adds entries to
-        //process.moduleLoadList and a listener to process('exit'), which
-        //test-bootstrap-modules and friends assert on. Consumed into the env
-        //here so it never reaches a test's process.argv.
-        if(argc>=i+1 && strcmp(argv[i],"--exit-hook")==0) {
-            setenv("NODE_MOBILE_EXIT_HOOK", "1", 1);
-            i+=1;
-        }
 
         //--substitute-dir indicates a path prefix that should be replaced with the test path in Documents.
         if(argc>=i+2 && strcmp(argv[i],"--substitute-dir")==0) {
