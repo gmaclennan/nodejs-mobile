@@ -17,7 +17,7 @@ series itself.
 Co-authored-by: Jaime Bernardo <jaime@janeasystems.com>
 Co-authored-by: Andre Staltz <andre@staltz.com>
 ---
- test/parallel/parallel.status                 | 1104 ++++++++++++++++-
+ test/parallel/parallel.status                 | 1125 ++++++++++++++++-
  test/parallel/test-dgram-bind-fd.js           |    2 +-
  test/parallel/test-dgram-membership.js        |   10 +-
  .../parallel/test-dgram-socket-buffer-size.js |    2 +-
@@ -52,10 +52,10 @@ Co-authored-by: Andre Staltz <andre@staltz.com>
  test/sequential/sequential.status             |   88 ++
  test/sequential/test-async-wrap-getasyncid.js |   15 +-
  test/sequential/test-fs-watch.js              |    4 +
- 35 files changed, 1372 insertions(+), 47 deletions(-)
+ 35 files changed, 1393 insertions(+), 47 deletions(-)
 
 diff --git a/test/parallel/parallel.status b/test/parallel/parallel.status
-index 5c7fe47927..a5c6f0d074 100644
+index 5c7fe47927..80ec9c1938 100644
 --- a/test/parallel/parallel.status
 +++ b/test/parallel/parallel.status
 @@ -130,7 +130,6 @@ test-net-write-after-end-nt: SKIP
@@ -66,7 +66,7 @@ index 5c7fe47927..a5c6f0d074 100644
  test-crypto-secure-heap: SKIP
  # https://github.com/nodejs/node/issues/39683
  test-dgram-connect: PASS, FLAKY
-@@ -156,6 +155,1109 @@ test-tls-set-default-ca-certificates-append-fetch: SKIP
+@@ -156,6 +155,1130 @@ test-tls-set-default-ca-certificates-append-fetch: SKIP
  test-tls-set-default-ca-certificates-reset-fetch: SKIP
  test-inspector-invalid-protocol: SKIP
  
@@ -1173,6 +1173,27 @@ index 5c7fe47927..a5c6f0d074 100644
 +test-permission-allow-child-process-cli: SKIP
 +test-permission-fs-write: SKIP
 +test-permission-fs-windows-path: SKIP
++#
++# fs.watch's `ignore` option. libuv compiles FSEvents out entirely on iOS --
++# "iOS (currently) doesn't provide the FSEvents-API (nor CoreServices)",
++# deps/uv/src/unix/fsevents.c -- and falls back to kqueue, which watches a
++# directory fd and cannot report WHICH file changed. node's `ignore` filter is
++# applied to that filename, so with no usable filename every event is dropped
++# and these tests wait forever. Upstream libuv behaviour on the platform, not
++# something this fork can fix; recursive watching is unaffected because node
++# implements that in JS. Verified against the fork's own macOS host build and
++# against Android, where `ignore` works. See docs/TESTING.md, "fs.watch".
++#
++test-fs-promises-watch-iterator: SKIP
++test-fs-watch-ignore-function: SKIP
++test-fs-watch-ignore-glob: SKIP
++test-fs-watch-ignore-mixed: SKIP
++test-fs-watch-ignore-recursive-glob: SKIP
++test-fs-watch-ignore-recursive-glob-subdirectories: SKIP
++test-fs-watch-ignore-recursive-mixed: SKIP
++test-fs-watch-ignore-recursive-regexp: SKIP
++test-fs-watch-ignore-regexp: SKIP
++test-watch-file-shared-dependency: SKIP
  [$asan==on]
  # https://github.com/nodejs/node/issues/39655
  test-cluster-primary-error: PASS, FLAKY
