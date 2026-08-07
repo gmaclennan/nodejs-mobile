@@ -46,9 +46,13 @@ The two platforms load the hook differently, and neither choice is free:
   argument `main.m` consumes into the environment so it never reaches
   `process.argv`.
 - **Android** must use the command line, because node reads `NODE_OPTIONS`
-  through `SafeGetenv()` and `linux_at_secure()` is set inside an app process —
-  the same reason patch 0015 exists for `NODE_PATH`. That does land in
-  `process.execArgv`.
+  through `SafeGetenv()` and `linux_at_secure()` reports 1 inside an app
+  process. That does land in `process.execArgv`.
+
+  Patch 0007 now relaxes `SafeGetenv()` on embedded builds, which should make
+  `NODE_OPTIONS` readable on Android too and would let this leg use the same
+  mechanism as iOS. That is not yet confirmed — it needs an Android build to
+  test against — so the command-line path stays until it is.
 
 So the proxies only ask for the hook when the test can reach `process.exit()`,
 matching `process.exit(`, `common.skip`, or a bare `skip(` (the ESM form) on the
@@ -274,7 +278,7 @@ patched behaviour is the behaviour).
 | `test-mobile-credentials` | 0006 (POSIX credentials on Android), 0007 (credential guards) | on Android, `process.getuid()` disappears (0006 gone) or `process.setuid()` reaches the native setter instead of being inert (0007 gone). Everywhere, `process.initgroups()` stops resolving group names — the only JS path into the bionic `getgrnam()` lookup 0007 adds |
 | `test-mobile-worker-env-clone` | 0008 (env clone) | a default-`env` worker comes up with a missing or partial environment; on Android, with one unclonable variable present, it does not come up at all |
 | `test-mobile-system-ca` | 0010 (iOS TLS trust) | `tls.getCACertificates('system')` throws, hands back expired or duplicated certificates, or comes back empty where the platform has a readable store |
-| `test-mobile-node-path` | 0015 (`NODE_PATH`) | `NODE_PATH`, as the embedder set it, stops reaching module resolution |
+| `test-mobile-node-path` | 0007 (`SafeGetenv()` on embedded builds) | `NODE_PATH`, as the embedder set it, stops reaching module resolution |
 | `test-mobile-fetch` | 0020 (WebAssembly polyfill) | see [the fetch / WebAssembly gate](#the-fetch--webassembly-gate) |
 | `test-mobile-unix-socket` | none — a platform property | a unix socket bound from its own directory with a short relative path stops accepting connections. See [unix domain sockets](#unix-domain-sockets) |
 
@@ -286,10 +290,19 @@ Three limits are structural, and worth stating rather than papering over:
   friends out of a starting app) and can't be staged from a test. The test
   asserts the post-condition instead — the worker starts, and its environment
   is the parent's — which is what a lost patch breaks on Android.
-- **Patch 0015 is invisible on a host build.** `SafeGetenv()` and
-  `process.env` agree unless the process looks setuid, so the host run passes
-  either way. The Android and iOS legs are the gate; the host run is there to
-  keep the assertion honest as upstream moves `Module._initPaths()` around.
+- **Patch 0007's `SafeGetenv()` change is invisible on a host build.**
+  `SafeGetenv()` and `process.env` agree unless the process looks privileged,
+  so the host run passes either way. The Android leg is the gate — an app
+  process is `fork()`ed from the zygote without `exec()`, so it inherits an
+  auxiliary vector saying `AT_SECURE=1` and `AT_{,E}{U,G}ID=0` while actually
+  running unprivileged with `uid == euid`. `linux_at_secure()` therefore reports
+  1 for every app, forever, and upstream's check declines *every* variable the
+  embedder sets: `TMPDIR` (so `os.tmpdir()` falls back to a `/tmp` that does not
+  exist on Android), `TZ`, `NODE_EXTRA_CA_CERTS`, `NODE_USE_SYSTEM_CA`,
+  `NODE_ICU_DATA`, `NODE_OPTIONS`, `OPENSSL_CONF`. The fix is gated on
+  `NODE_MOBILE` — the embedded-library build — rather than on the OS, because a
+  standalone `node` `exec()`ed on Android would have a truthful auxv and should
+  keep upstream's behaviour. The `uid`/`gid` comparisons stay live.
 - **Patch 0010's trust store can legitimately be empty on iOS**, where an app
   is sandboxed away from the system keychain — that's a platform fact, not a
   regression. So the test asserts the reader's invariants unconditionally and
