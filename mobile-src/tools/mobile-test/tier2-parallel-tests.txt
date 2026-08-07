@@ -246,3 +246,30 @@ parallel/test-pipe-stream
 parallel/test-pipe-writev
 parallel/test-tls-connect-pipe
 parallel/test-tls-net-connect-prefer-path
+# ---------------------------------------------------------------------------
+# Recovered from the skip lists. These were skipped on one or both platforms
+# for reasons that no longer hold -- test-assert and test-assert-deep, for
+# instance, were excluded because "the jitless V8 build emits the short assert
+# diff format", which is true of iOS but never was of Android. Each passes
+# three consecutive runs on both an emulator and a simulator. They carry the
+# TLS trust, ICU/Intl and WHATWG encoding coverage the list otherwise lacks.
+# ---------------------------------------------------------------------------
+parallel/test-assert
+parallel/test-assert-deep
+parallel/test-cwd-enoent-improved-message
+parallel/test-dgram-udp6-link-local-address
+parallel/test-https-client-renegotiation-limit
+parallel/test-icu-stringwidth
+parallel/test-icu-transcode
+parallel/test-intl-v8BreakIterator
+parallel/test-tls-alert-handling
+parallel/test-tls-ocsp-callback
+parallel/test-tls-root-certificates
+parallel/test-url-domain-ascii-unicode
+parallel/test-url-format-whatwg
+parallel/test-whatwg-encoding-custom-fatal-streaming
+parallel/test-whatwg-encoding-custom-textdecoder-fatal
+parallel/test-whatwg-encoding-custom-textdecoder-utf16-surrogates
+parallel/test-whatwg-url-custom-inspect
+parallel/test-whatwg-url-custom-parsing
+parallel/test-whatwg-url-custom-setters

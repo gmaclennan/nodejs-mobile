@@ -110,7 +110,7 @@ BrowserStack device minutes are not.
 
 ### The curated subset
 
-`tools/mobile-test/tier2-parallel-tests.txt` is the allow-list (~175 single-
+`tools/mobile-test/tier2-parallel-tests.txt` is the allow-list (~195 single-
 process `test/parallel` cases) shared by both Tier-2 workflows, so a regression
 fails the same named test on both platforms. The runner invocation is:
 
@@ -135,7 +135,7 @@ of the test bodies.
 
 ### What the subset does not cover
 
-The allow-list is small, and its shape is not the shape of the risk. Of its 176
+The allow-list is small, and its shape is not the shape of the risk. Of its 195
 entries, 114 are `buffer`, `url` and `path` — string and array manipulation that
 touches almost no libuv, no sockets, no filesystem and no threads. One entry
 opens a socket (`test-mobile-fetch`); one reads a file; none exercise `net`,
@@ -148,8 +148,8 @@ separates the two reasons a test is absent from a device run, which a green run
 cannot:
 
 ```
-android   4103 total   839 skipped by .status   3264 runnable   176 run in Tier 2 (5.4%)   3088 never run on a device
-ios       4103 total   714 skipped by .status   3389 runnable   176 run in Tier 2 (5.2%)   3213 never run on a device
+android   4103 total   819 skipped by .status   3284 runnable   195 run in Tier 2 (5.9%)   3089 never run on a device
+ios       4103 total   701 skipped by .status   3402 runnable   195 run in Tier 2 (5.7%)   3207 never run on a device
 ```
 
 A `.status` skip is a recorded decision. The other 3,200-odd are not decisions
