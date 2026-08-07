@@ -17,7 +17,7 @@ series itself.
 Co-authored-by: Jaime Bernardo <jaime@janeasystems.com>
 Co-authored-by: Andre Staltz <andre@staltz.com>
 ---
- test/parallel/parallel.status                 | 1125 ++++++++++++++++-
+ test/parallel/parallel.status                 | 1080 ++++++++++++++++-
  test/parallel/test-dgram-bind-fd.js           |    2 +-
  test/parallel/test-dgram-membership.js        |   10 +-
  .../parallel/test-dgram-socket-buffer-size.js |    2 +-
@@ -52,10 +52,10 @@ Co-authored-by: Andre Staltz <andre@staltz.com>
  test/sequential/sequential.status             |   88 ++
  test/sequential/test-async-wrap-getasyncid.js |   15 +-
  test/sequential/test-fs-watch.js              |    4 +
- 35 files changed, 1393 insertions(+), 47 deletions(-)
+ 35 files changed, 1348 insertions(+), 47 deletions(-)
 
 diff --git a/test/parallel/parallel.status b/test/parallel/parallel.status
-index 5c7fe47927..80ec9c1938 100644
+index 5c7fe47927..f549bba7e3 100644
 --- a/test/parallel/parallel.status
 +++ b/test/parallel/parallel.status
 @@ -130,7 +130,6 @@ test-net-write-after-end-nt: SKIP
@@ -66,7 +66,7 @@ index 5c7fe47927..80ec9c1938 100644
  test-crypto-secure-heap: SKIP
  # https://github.com/nodejs/node/issues/39683
  test-dgram-connect: PASS, FLAKY
-@@ -156,6 +155,1130 @@ test-tls-set-default-ca-certificates-append-fetch: SKIP
+@@ -156,6 +155,1085 @@ test-tls-set-default-ca-certificates-append-fetch: SKIP
  test-tls-set-default-ca-certificates-reset-fetch: SKIP
  test-inspector-invalid-protocol: SKIP
  
@@ -77,8 +77,6 @@ index 5c7fe47927..80ec9c1938 100644
 +# the curated Tier-2 gate, so skip them in the full suite rather than rewriting
 +# them (test-aborted-util may pass unmodified - un-skip after on-device check).
 +#
-+test-assert: SKIP
-+test-assert-deep: SKIP
 +test-aborted-util: SKIP
 +#
 +# Tests that require child process that currently is not supported on mobile
@@ -332,7 +330,6 @@ index 5c7fe47927..80ec9c1938 100644
 +test-tls-env-extra-ca-file-load: SKIP
 +test-tls-env-extra-ca-no-crypto: SKIP
 +test-tls-handshake-exception: SKIP
-+test-tls-root-certificates: SKIP
 +test-tls-ticket-cluster: SKIP
 +test-tls-wrap-econnreset-pipe: SKIP
 +test-trace-atomics-wait: SKIP
@@ -392,17 +389,14 @@ index 5c7fe47927..80ec9c1938 100644
 +# Tests that require OpenSSL CLI that is not available on mobile
 +#
 +test-crypto-sign-verify: SKIP
-+test-https-client-renegotiation-limit: SKIP
 +test-https-foafssl: SKIP
 +test-tls-alert: SKIP
-+test-tls-alert-handling: SKIP
 +test-tls-client-renegotiation-limit: SKIP
 +test-tls-dhe: SKIP
 +test-tls-ecdh: SKIP
 +test-tls-ecdh-auto: SKIP
 +test-tls-ecdh-multiple: SKIP
 +test-tls-no-sslv3: SKIP
-+test-tls-ocsp-callback: SKIP
 +test-tls-psk-server: SKIP
 +test-tls-securepair-server: SKIP
 +test-tls-server-verify: SKIP
@@ -441,13 +435,10 @@ index 5c7fe47927..80ec9c1938 100644
 +#
 +# Tests that require _LARGEFILE_SOURCE, which is a no-op on SDK API 21.
 +#
-+test-fs-promises-file-handle-read: SKIP
-+test-fs-read: SKIP
 +#
 +# Tests that run on Linux only
 +#
 +test-fs-read-file-sync-hostname : SKIP
-+test-fs-readdir-ucs2: SKIP
 +#
 +# Tests that run on Windows and macOS only
 +#
@@ -461,19 +452,8 @@ index 5c7fe47927..80ec9c1938 100644
 +#
 +test-icu-data-dir: SKIP
 +test-icu-punycode: SKIP
-+test-icu-stringwidth: SKIP
-+test-icu-transcode: SKIP
-+test-intl-v8BreakIterator: SKIP
-+test-url-domain-ascii-unicode: SKIP
-+test-url-format-whatwg: SKIP
-+test-whatwg-encoding-custom-fatal-streaming: SKIP
-+test-whatwg-encoding-custom-textdecoder-fatal: SKIP
-+test-whatwg-encoding-custom-textdecoder-utf16-surrogates: SKIP
 +test-whatwg-url-constructor: SKIP
 +test-whatwg-url-custom-domainto: SKIP
-+test-whatwg-url-custom-inspect: SKIP
-+test-whatwg-url-custom-parsing: SKIP
-+test-whatwg-url-custom-setters: SKIP
 +test-whatwg-url-origin: SKIP
 +test-whatwg-url-setters: SKIP
 +test-whatwg-url-toascii: SKIP
@@ -490,7 +470,6 @@ index 5c7fe47927..80ec9c1938 100644
 +#
 +# Test that requires using udp6 link local address, not available on old devices.
 +#
-+test-dgram-udp6-link-local-address : SKIP
 +#
 +# Tests that enter in conflict with the test app.
 +#
@@ -673,8 +652,6 @@ index 5c7fe47927..80ec9c1938 100644
 +# the curated Tier-2 gate, so skip them in the full suite rather than rewriting
 +# them (test-aborted-util may pass unmodified - un-skip after on-device check).
 +#
-+test-assert: SKIP
-+test-assert-deep: SKIP
 +test-aborted-util: SKIP
 +#
 +# Tests that require child process that currently is not supported on mobile
@@ -936,7 +913,6 @@ index 5c7fe47927..80ec9c1938 100644
 +test-tls-env-extra-ca-file-load: SKIP
 +test-tls-env-extra-ca-no-crypto: SKIP
 +test-tls-handshake-exception: SKIP
-+test-tls-root-certificates: SKIP
 +test-tls-ticket-cluster: SKIP
 +test-tls-wrap-econnreset-pipe: SKIP
 +test-trace-atomics-wait: SKIP
@@ -996,17 +972,14 @@ index 5c7fe47927..80ec9c1938 100644
 +# Tests that require OpenSSL CLI that is not available on mobile
 +#
 +test-crypto-sign-verify: SKIP
-+test-https-client-renegotiation-limit: SKIP
 +test-https-foafssl: SKIP
 +test-tls-alert: SKIP
-+test-tls-alert-handling: SKIP
 +test-tls-client-renegotiation-limit: SKIP
 +test-tls-dhe: SKIP
 +test-tls-ecdh: SKIP
 +test-tls-ecdh-auto: SKIP
 +test-tls-ecdh-multiple: SKIP
 +test-tls-no-sslv3: SKIP
-+test-tls-ocsp-callback: SKIP
 +test-tls-psk-server: SKIP
 +test-tls-securepair-server: SKIP
 +test-tls-server-verify: SKIP
@@ -1037,11 +1010,7 @@ index 5c7fe47927..80ec9c1938 100644
 +# app harness cannot apply. test-freeze-intrinsics runs against the same
 +# jitless configuration on the host instead (host-smoke workflow).
 +#
-+test-freeze-intrinsics: SKIP
-+test-errors-systemerror-frozen-intrinsics: SKIP
-+test-fetch: SKIP
 +test-fetch-disabled: SKIP
-+test-whatwg-webstreams-transfer: SKIP
 +test-vm-codegen: SKIP
 +test-wasm-simple: SKIP
 +test-wasm-web-api: SKIP
@@ -1073,7 +1042,6 @@ index 5c7fe47927..80ec9c1938 100644
 +#
 +test-fs-watch-recursive: SKIP
 +#
-+test-net-connect-options-fd: SKIP
 +test-pipe-unref: SKIP
 +test-repl: SKIP
 +test-tls-wrap-econnreset-pipe: SKIP
@@ -1088,26 +1056,14 @@ index 5c7fe47927..80ec9c1938 100644
 +#
 +test-icu-data-dir: SKIP
 +test-icu-punycode: SKIP
-+test-icu-stringwidth: SKIP
-+test-icu-transcode: SKIP
-+test-intl-v8BreakIterator: SKIP
-+test-url-domain-ascii-unicode: SKIP
-+test-url-format-whatwg: SKIP
-+test-whatwg-encoding-custom-fatal-streaming: SKIP
-+test-whatwg-encoding-custom-textdecoder-fatal: SKIP
-+test-whatwg-encoding-custom-textdecoder-utf16-surrogates: SKIP
 +test-whatwg-url-constructor: SKIP
 +test-whatwg-url-custom-domainto: SKIP
-+test-whatwg-url-custom-inspect: SKIP
-+test-whatwg-url-custom-parsing: SKIP
-+test-whatwg-url-custom-setters: SKIP
 +test-whatwg-url-origin: SKIP
 +test-whatwg-url-setters: SKIP
 +test-whatwg-url-toascii: SKIP
 +#
 +# FAILING test because calling setpriority on iOS fails with EPERM
 +#
-+test-os-process-priority : SKIP
 +#
 +# FAILING test because iOS apps should not get POSIX signals or process.exit
 +#
@@ -1116,7 +1072,6 @@ index 5c7fe47927..80ec9c1938 100644
 +#
 +# Test that requires user interaction to allow using udp6 link local address on iOS 14.
 +#
-+test-dgram-udp6-link-local-address : SKIP
 +#
 +# Tests that require the debugger to not stop on signals.
 +# Tests pass if run individually with debugger configured to not stop.
