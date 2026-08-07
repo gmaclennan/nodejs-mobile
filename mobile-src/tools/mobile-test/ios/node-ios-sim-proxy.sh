@@ -31,6 +31,31 @@ CONTAINER="$(xcrun simctl get_app_container "$UDID" "$BUNDLE" data 2>/dev/null |
 DOCS="$CONTAINER/Documents"
 LOG="$(mktemp)"
 
+# process.exit() never unwinds to the native caller, so the app can preload a JS
+# hook that writes the real exit code (see NodeRunner.mm). Ask for it only when
+# the test can reach process.exit(): the preload adds a listener to
+# process('exit'), which a couple of tests assert on.
+#
+# `common.skip()` ends in process.exit(0) too, which is why the pattern is wider
+# than a literal process.exit( — every test that self-skips at runtime (no
+# crypto, no QUIC, Windows-only, ...) was otherwise scored FAIL, and none of them
+# spell process.exit themselves. `[^A-Za-z0-9_.]skip\(` catches the ESM tests
+# that import { skip } while skipping node:test's own `t.skip(`/`it.skip(`.
+#
+# A plain string, expanded unquoted at the launch below: /bin/bash on macOS is
+# 3.2, where an empty array under `set -u` is an "unbound variable" error.
+EXIT_HOOK_TRIGGER='process\.exit\(|common\.skip|[^A-Za-z0-9_.]skip\('
+EXIT_HOOK_ARG=""
+for _arg in "$@"; do
+  case "$_arg" in
+    /*.js|/*.mjs)
+      if [ -r "$_arg" ] && grep -qE "$EXIT_HOOK_TRIGGER" "$_arg"; then
+        EXIT_HOOK_ARG="--exit-hook"
+      fi
+      ;;
+  esac
+done
+
 RESULT=1
 verdict=""
 for attempt in $(seq 1 "$LAUNCH_ATTEMPTS"); do
@@ -47,8 +72,9 @@ for attempt in $(seq 1 "$LAUNCH_ATTEMPTS"); do
   : >| "$LOG"
   # main.m consumes --run-token into the env (NodeRunner builds the verdict path)
   # and applies --substitute-dir to rewrite host test paths to the Documents copy.
+  # shellcheck disable=SC2086 # $EXIT_HOOK_ARG is a whitespace-free literal or empty
   xcrun simctl launch --console --terminate-running-process "$UDID" "$BUNDLE" \
-    --run-token "$RUN_TOKEN" --substitute-dir "$TEST_BASE" "$@" >| "$LOG" 2>&1 &
+    --run-token "$RUN_TOKEN" $EXIT_HOOK_ARG --substitute-dir "$TEST_BASE" "$@" >| "$LOG" 2>&1 &
   LP=$!
   verdict=""
   for _ in $(seq 1 "$TIMEOUT"); do
