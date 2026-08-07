@@ -1,7 +1,7 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Gregor MacLennan <gmaclennan@awana.digital>
 Date: Tue, 28 Jul 2026 19:20:31 +0000
-Subject: [PATCH 13/20] deps,cares: guard sys/random.h on iOS
+Subject: [PATCH 13/19] deps,cares: guard sys/random.h on iOS
 
 The iOS SDK has no <sys/random.h>: guard HAVE_SYS_RANDOM_H to macOS in
 the darwin c-ares config so iOS builds fall back to arc4random_buf.

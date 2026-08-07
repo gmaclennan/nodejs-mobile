@@ -1,7 +1,7 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Gregor MacLennan <gmaclennan@awana.digital>
 Date: Tue, 28 Jul 2026 19:20:26 +0000
-Subject: [PATCH 04/20] build,v8: mobile host/target settings in v8 gypfiles
+Subject: [PATCH 04/19] build,v8: mobile host/target settings in v8 gypfiles
 MIME-Version: 1.0
 Content-Type: text/plain; charset=UTF-8
 Content-Transfer-Encoding: 8bit

@@ -12,9 +12,8 @@
 0012-deps-v8-disable-trap-handler-mobile-platform-tweaks.patch
 0013-deps-cares-guard-sys-random.h-on-iOS.patch
 0014-deps-mobile-gyp-tweaks-zlib-openssl.patch
-0015-lib-mobile-adjustment-in-cjs-module-loader.patch
-0016-test-mobile-test-harness.patch
-0017-test-skip-adapt-parallel-and-sequential-tests-for-mo.patch
-0018-doc-build-mobile-notes-and-ignores.patch
-0019-ci-remove-upstream-only-workflows-and-config.patch
-0020-lib-install-a-WebAssembly-polyfill-when-the-engine-h.patch
+0015-test-mobile-test-harness.patch
+0016-test-skip-adapt-parallel-and-sequential-tests-for-mo.patch
+0017-doc-build-mobile-notes-and-ignores.patch
+0018-ci-remove-upstream-only-workflows-and-config.patch
+0019-lib-install-a-WebAssembly-polyfill-when-the-engine-h.patch

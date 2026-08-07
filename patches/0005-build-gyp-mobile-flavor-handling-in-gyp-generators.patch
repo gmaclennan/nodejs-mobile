@@ -1,7 +1,7 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Gregor MacLennan <gmaclennan@awana.digital>
 Date: Tue, 28 Jul 2026 19:20:27 +0000
-Subject: [PATCH 05/20] build,gyp: mobile flavor handling in gyp generators
+Subject: [PATCH 05/19] build,gyp: mobile flavor handling in gyp generators
 MIME-Version: 1.0
 Content-Type: text/plain; charset=UTF-8
 Content-Transfer-Encoding: 8bit
