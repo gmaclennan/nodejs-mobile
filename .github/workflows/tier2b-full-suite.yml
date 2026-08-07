@@ -1,4 +1,4 @@
-# Tier 2b: the whole non-skipped test/parallel suite on device, sharded.
+# Tier 2b: the whole non-skipped test/parallel + test/sequential suite on device, sharded.
 #
 # Tier 2a (emulator-tests / simulator-tests, driven from build.yml) runs a
 # curated ~195-test allow-list on every PR: fast and deterministic, but by
@@ -8,6 +8,12 @@
 # test/parallel/parallel.status does NOT skip, so new upstream tests are picked
 # up automatically and the .status file — not an allow-list — is what records a
 # decision to exclude something.
+#
+# Runs `parallel sequential`. test/sequential has had mobile .status sections
+# since the harness landed but no job has ever run it, so nothing had ever
+# checked whether those skips were right — they are (every one of its
+# non-structural skips that passes turns out to spawn a child process), but the
+# ~57 tests it does run were pure uncovered ground.
 #
 # ADVISORY for now, and deliberately not wired into the release chain. The
 # pass-set on a full device sweep has been measured once, by hand, not yet over
@@ -110,7 +116,7 @@ jobs:
             set -e
             adb wait-for-device
             ./tools/mobile-test/android/prepare-android-test.sh
-            ./tools/test.py -j 1 --flaky-tests=skip --timeout=300 --arch android --run=${{ matrix.shard }},4 parallel 2>&1 | tee shard.log
+            ./tools/test.py -j 1 --flaky-tests=skip --timeout=300 --arch android --run=${{ matrix.shard }},4 parallel sequential 2>&1 | tee shard.log
 
       - name: Summarize shard ${{ matrix.shard }}
         if: always()
@@ -171,7 +177,7 @@ jobs:
           set -o pipefail
           ./tools/test.py -j 1 --flaky-tests=skip --timeout=300 \
             --arch ios --shell=./tools/mobile-test/ios/node-ios-sim-proxy.sh \
-            --run=${{ matrix.shard }},4 parallel 2>&1 | tee shard.log
+            --run=${{ matrix.shard }},4 parallel sequential 2>&1 | tee shard.log
 
       - name: Summarize shard ${{ matrix.shard }}
         if: always()

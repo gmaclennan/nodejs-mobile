@@ -119,9 +119,17 @@ enough to be trusted:
   few minutes per platform. It answers "did this change break something we
   already care about".
 - **Tier 2b** — `tier2b-full-suite.yml`, nightly. Everything `parallel.status`
-  does not skip: ~3,280 tests on Android and ~3,400 on iOS, split four ways per
-  platform. It answers "what is true on a device that we have not looked at",
-  which is the larger question — Tier 2a covers about 6% of the runnable suite.
+  and `sequential.status` do not skip: ~3,280 + ~57 tests on Android and ~3,400
+  + ~53 on iOS, split four ways per platform. It answers "what is true on a
+  device that we have not looked at", which is the larger question — Tier 2a
+  covers about 6% of the runnable suite.
+
+  `test/sequential` is included because it had never run anywhere. It has had
+  mobile `.status` sections since the harness landed, so it *looked* covered,
+  but no job invoked the suite — the skips had never been tested and neither had
+  the ~57 tests they leave. Both are now measured: the skip list turns out to be
+  sound (every non-structural skip that passes spawns a child process), and the
+  tests it leaves pass on both platforms.
 
 The important property of Tier 2b is that it is **not an allow-list**. A test
 upstream adds in the next bump runs the night after the bump lands, with no
