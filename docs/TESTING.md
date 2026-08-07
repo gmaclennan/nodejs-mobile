@@ -21,10 +21,40 @@ evict, which silently turned dropped lines into false failures under the old
 log-scraping design. The token prevents a stale file or a spawned grandchild
 from being mis-attributed.
 
-**Caveat:** the post-run verdict is written only when the event loop drains
-normally. A test that calls `process.exit()` routes through libc `exit()` before
-node unwinds, so only an `atexit` `FAIL` fallback fires — such a test would be
-mis-scored. None of the curated tests call `process.exit()`.
+A test that calls `process.exit()` never unwinds back to the native caller —
+libc `exit()` runs first — so the native write never happens. The app therefore
+also drops a small `exit-verdict-hook.js` into its sandbox at launch and
+preloads it, registering a `process.on('exit')` handler that writes the real
+code. The handler is confined to the main thread, so a worker calling
+`process.exit()` cannot overwrite the parent's verdict, and it `require()`s
+nothing until the process is already exiting, so it adds no entries to
+`process.moduleLoadList` (which `test-bootstrap-modules` asserts on exactly).
+The `atexit` `FAIL` fallback remains for the cases that reach neither path — a
+crash or an abort — and checks for an existing verdict file rather than only its
+own flag, so it cannot clobber what the hook just wrote.
+
+**This matters far more than "some test calls `process.exit()`".** `common.skip()`
+ends in `process.exit(0)`, so *every* test that self-skips at runtime — no QUIC,
+no crypto, Windows-only, debug-build-only — was scored FAIL. The curated list
+never noticed because it was harvested by keeping what passed, which silently
+discarded every self-skipping test. A full-suite sweep found 40 of them.
+
+The two platforms load the hook differently, and neither choice is free:
+
+- **iOS** preloads it via `NODE_OPTIONS=--require`, which stays out of
+  `process.execArgv`. The proxy requests it per launch with `--exit-hook`, an
+  argument `main.m` consumes into the environment so it never reaches
+  `process.argv`.
+- **Android** must use the command line, because node reads `NODE_OPTIONS`
+  through `SafeGetenv()` and `linux_at_secure()` is set inside an app process —
+  the same reason patch 0015 exists for `NODE_PATH`. That does land in
+  `process.execArgv`.
+
+So the proxies only ask for the hook when the test can reach `process.exit()`,
+matching `process.exit(`, `common.skip`, or a bare `skip(` (the ESM form) on the
+host copy of the file. That is about a third of `test/parallel`; of those, the
+only cases that also read `process.execArgv` already spawn a child process and
+cannot run on a device anyway.
 
 A run that produces no verdict file at all is a FAIL, and the proxy says which
 kind: the Android one polls the app process alongside the file, so a native
@@ -109,6 +139,84 @@ signals, OpenSSL-CLI, …) are skipped via the upstream
 `[$system==android]` / `[$system==ios]` sections of `test/*/*.status` — kept out
 of the test bodies.
 
+### What the subset does not cover
+
+The allow-list is small, and its shape is not the shape of the risk. Of its 157
+entries, 114 are `buffer`, `url` and `path` — string and array manipulation that
+touches almost no libuv, no sockets, no filesystem and no threads. One entry
+opens a socket (`test-mobile-fetch`); one reads a file; none exercise `net`,
+`http`, `tls`, `dns`, `dgram`, `zlib`, `worker_threads`, `vm` or `timers` on a
+device, while the patch series touches libuv, the V8 trap handler, c-ares, the
+crypto context and the worker environment clone.
+
+Run `tools/mobile-test/coverage-manifest.py` for the current numbers. It
+separates the two reasons a test is absent from a device run, which a green run
+cannot:
+
+```
+android   4103 total   839 skipped by .status   3264 runnable   158 run in Tier 2 (4.8%)   3106 never run on a device
+ios       4103 total   732 skipped by .status   3371 runnable   158 run in Tier 2 (4.7%)   3213 never run on a device
+```
+
+A `.status` skip is a recorded decision. The other 3,200-odd are not decisions
+at all — they are tests nobody has tried on a device. That gap, not the skip
+list, is where the missing coverage lives. `smoke-host` prints this table on
+every run.
+
+### Expanding the curated list
+
+The list grows by measurement, not by guessing: run candidates on both
+platforms, keep what passes on both, and record a *reason* for anything that
+does not. Everything below runs from a materialized tree with the app already
+prepared (see "Running tests locally").
+
+**1. Pick candidates.** Anything not already in the list and not
+`.status`-skipped is fair game; prefer whole modules over scattered files, and
+prefer modules the patch series can plausibly break (`fs`, `net`, `stream`,
+`crypto`, `worker`, `dgram`, `timers`, `vm`, `dns`) over more `buffer` tests.
+
+```sh
+ls test/parallel/test-fs-*.js | sed 's|test/|| ; s|\.js$||' > /tmp/candidates.txt
+```
+
+**2. Run them on both platforms**, one at a time, keeping the per-test verdict:
+
+```sh
+xargs ./tools/test.py -j 1 --flaky-tests=dontcare --timeout=300 \
+  --arch android < /tmp/candidates.txt
+xargs ./tools/test.py -j 1 --flaky-tests=dontcare --timeout=300 \
+  --arch ios --shell=./tools/mobile-test/ios/node-ios-sim-proxy.sh < /tmp/candidates.txt
+```
+
+`--flaky-tests=dontcare` (rather than `skip`) is deliberate here: during a
+harvest you want to see the flaky ones, not hide them.
+
+**3. Run the failures three times before believing them.** Emulator and
+simulator timing is the dominant source of noise, and a test that fails once in
+three is a `PASS, FLAKY` entry, not a skip.
+
+**4. Triage every failure into exactly one bucket**, and act on it:
+
+| Bucket | What it looks like | What to do |
+|---|---|---|
+| platform limitation | needs a child process, a unix socket on iOS, `HOME`, a signal, a TTY | add to the `[$system==…]` section of the `.status` file **with a comment saying why** |
+| flake | passes in isolation, fails in a batch; timing-sensitive | `PASS, FLAKY` in the `.status` file |
+| harness limitation | no verdict; passes when run by hand | fix the harness — don't skip the test |
+| real bug | fails the same way every time, for a reason in the diff | fix the patch |
+
+Only the first two produce a `.status` edit, and both carry a reason. An
+uncommented skip is indistinguishable from an oversight a year later.
+
+**5. Add the survivors** to `tools/mobile-test/tier2-parallel-tests.txt`, keeping
+it sorted, and re-run the whole list once on both platforms — a test can pass
+alone and fail in company (the proxy relaunches the app per test, so device load
+is a real variable).
+
+Because these are all edits to files the fork owns (`.status` files are patched
+by `0017`, the list lives in `mobile-src/`), they go back through
+`scripts/regenerate-patches.py` like any other change, and `expected-tree.txt`
+moves with them.
+
 ### The fetch / WebAssembly gate
 
 `test/parallel/test-mobile-fetch` is the one entry in the curated list that
@@ -168,6 +276,7 @@ patched behaviour is the behaviour).
 | `test-mobile-system-ca` | 0010 (iOS TLS trust) | `tls.getCACertificates('system')` throws, hands back expired or duplicated certificates, or comes back empty where the platform has a readable store |
 | `test-mobile-node-path` | 0015 (`NODE_PATH`) | `NODE_PATH`, as the embedder set it, stops reaching module resolution |
 | `test-mobile-fetch` | 0020 (WebAssembly polyfill) | see [the fetch / WebAssembly gate](#the-fetch--webassembly-gate) |
+| `test-mobile-unix-socket` | none — a platform property | a unix socket bound from its own directory with a short relative path stops accepting connections. See [unix domain sockets](#unix-domain-sockets) |
 
 Three limits are structural, and worth stating rather than papering over:
 
@@ -194,6 +303,42 @@ Three limits are structural, and worth stating rather than papering over:
   `smoke-host` sets it, since a Linux build reading `/etc/ssl` has no excuse
   for an empty store. The device runs leave it unset, the same arrangement
   `NODEJS_MOBILE_EXPECT_WASM_IMPL` uses above.
+
+### Unix domain sockets
+
+UDS works in both sandboxes. What differs is how long the socket path may be:
+Darwin caps `sockaddr_un.sun_path` at **104 bytes** (Linux allows 108), and the
+kernel stores the path exactly as passed.
+
+An iOS app's data container is long before you add a filename — about 81 bytes
+on a device, about 171 on the simulator — so an absolute path inside it does not
+fit, and `bind()` fails with **`EINVAL`**. That is a path-length limit, not a
+missing feature: the same socket completes a round-trip when bound from inside
+its own directory with a short relative name. Upstream's `common.PIPE` builds a
+relative path for exactly this reason, but it is relative to `process.cwd()`,
+and a mobile embedder's cwd is `/` — so it saves nothing here and every upstream
+UDS test fails on the simulator. Those tests are skipped for iOS in
+`test/parallel/parallel.status`, which left UDS ungated on iOS entirely;
+`test-mobile-unix-socket` is that gate.
+
+On Android the container path is short (~50 bytes) and the limit never bites:
+the upstream UDS tests pass there. Abstract-namespace sockets (`@`-prefixed) are
+Linux-only and have no iOS equivalent.
+
+**For embedders:** `chdir()` to the socket's directory and bind a relative path.
+That is portable across both platforms, device and simulator alike. An absolute
+path works on Android and on an iOS *device* if the whole string stays under 104
+bytes, and cannot work on the iOS simulator. Note `os.tmpdir()` on iOS returns a
+path inside the container, so it carries the full prefix.
+
+### Tests under `--permission`
+
+A test that runs with `--permission` but without `--allow-fs-write` cannot be
+scored when it calls `process.exit()`: the harness writes its verdict to a file
+from a `process.on('exit')` hook, and the permission model — correctly — denies
+that write, so no verdict lands and the run reports FAIL whatever the test did.
+This is not fixable from inside the sandbox doing the denying. The 22 affected
+cases are skipped, with that reason recorded next to them in `parallel.status`.
 
 ### The NAPI addon gate
 
