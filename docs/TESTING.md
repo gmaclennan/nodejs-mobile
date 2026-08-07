@@ -74,6 +74,7 @@ it through `tools/test.py`.
 | `build.yml` → `build-*` / `combine-*` | ubuntu / macos | PR · push `recipe` | the cross-compile actually succeeds — the only check that compiles target code |
 | `build.yml` → `smoke-{android,ios}` (+ the NAPI symbol assert in `combine-android`) | ubuntu+KVM / macos | PR · push `recipe` | the exact shipping artifact boots and runs JS (Tier 1); NAPI symbols in `.dynsym` |
 | `build.yml` → `emulator-tests` / `simulator-tests` | ubuntu+KVM / macos | PR · push `recipe` · releases | curated `test/parallel` subset + crc-native addon load on an x86_64 emulator and arm64 simulator (Tier 2) |
+| `tier2b-full-suite.yml` | ubuntu+KVM / macos | nightly 03:00 UTC · dispatch | *advisory* — the **whole** non-`.status`-skipped `test/parallel` suite on both platforms, 4 shards each via `test.py --run=i,4`. Tier 2a covers what someone curated; this covers everything else, so a test upstream adds tomorrow is picked up without anyone noticing it exists |
 | `build.yml` → `device-smoke` | ubuntu / macos-15 + BrowserStack | releases (untagged version of record; required to publish) · dispatch | boot smoke + crc-native addon load on **physical devices** — Android arm64 (Pixel 9, 16 KB pages) via Espresso and iPhone via XCUITest (Tier 3). Needs `BROWSERSTACK_USER`/`BROWSERSTACK_PW` secrets. |
 
 Every job first **materializes** the source tree from the recipe branch
@@ -107,6 +108,35 @@ where `publish` `needs:` it.
 
 Tier 3 stays release-only: GitHub Actions minutes are free for this project,
 BrowserStack device minutes are not.
+
+### Tier 2a and Tier 2b
+
+Tier 2 is split, because one job cannot be both fast enough for a PR and broad
+enough to be trusted:
+
+- **Tier 2a** — `emulator-tests` / `simulator-tests`, driven from `build.yml`
+  on every PR and push. The curated ~195-test allow-list, deterministic and a
+  few minutes per platform. It answers "did this change break something we
+  already care about".
+- **Tier 2b** — `tier2b-full-suite.yml`, nightly. Everything `parallel.status`
+  does not skip: ~3,280 tests on Android and ~3,400 on iOS, split four ways per
+  platform. It answers "what is true on a device that we have not looked at",
+  which is the larger question — Tier 2a covers about 6% of the runnable suite.
+
+The important property of Tier 2b is that it is **not an allow-list**. A test
+upstream adds in the next bump runs the night after the bump lands, with no
+curation step; excluding something requires a `.status` entry, which is a
+decision with a name and a reason attached. That is the drift this fork already
+had once — whole families like `test-compile-cache-*` were excluded by
+enumerating individual test names, so every test upstream added to them
+afterwards failed silently until a full sweep went looking.
+
+Tier 2b is **advisory** and deliberately not on the release chain. Its pass-set
+has been measured by hand, once; promoting it to a gate means dropping
+`continue-on-error` and adding it to `publish`'s `needs:`, and should wait for a
+few nightlies to agree on what green looks like. Each shard writes a summary
+(counts, plus the failing names, and hangs and crashes counted separately —
+they mean different things) and uploads its log.
 
 ### The curated subset
 
