@@ -61,9 +61,10 @@ when the app writes `PASS` to its per-launch sandbox verdict file — never
 scraped from logs.
 
 Curation caveats: tests that **spawn a child node process** can't pass on
-Android and are excluded; a test calling **`process.exit()`** is mis-scored
-by the per-process harness (libc `exit()` beats the verdict write), so none
-are in the list. → [TESTING.md](./docs/TESTING.md)
+Android and are excluded. The curated list is an **allow-list**, so a test
+that is neither listed nor `.status`-skipped simply never runs on a device —
+run `tools/mobile-test/coverage-manifest.py` for how much that is (currently
+~95% of the runnable suite). → [TESTING.md](./docs/TESTING.md)
 
 ## Upgrading upstream
 

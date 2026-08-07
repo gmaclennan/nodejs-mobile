@@ -746,6 +746,17 @@ jobs:
           source bin/activate
           ./tools/test.py -j "$(nproc)" --flaky-tests=skip parallel
 
+      # What Tier 2 does NOT run, stated out loud. A test missing from a device
+      # run is either skipped by a .status decision or simply absent from the
+      # curated list, and a green run cannot tell those apart — the second group
+      # is far the larger. Host-only (stub shell, no device), so it belongs here
+      # rather than in the Tier-2 jobs, and it still reports when they are
+      # skipped. Never fails the build; it reports.
+      - name: Tier-2 coverage manifest
+        run: |
+          source bin/activate
+          ./tools/mobile-test/coverage-manifest.py --summary
+
   # The single required status check for this workflow. Branch protection
   # should require `ci-required` rather than the individual jobs: the build
   # matrix produces check names like "build-android (full, ubuntu-24.04,
