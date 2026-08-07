@@ -40,15 +40,46 @@ static void write_result(const char* verdict) {
     if (f) { fputs(verdict, f); fclose(f); g_result_written = true; }
 }
 
+// Loaded via NODE_OPTIONS=--require, which (unlike a command-line flag) stays
+// out of process.execArgv, so tests that assert on it are unaffected. Keep in
+// sync with the copy in ios/testnode/testnode/NodeRunner.mm.
+static const char* kExitVerdictHookJS = R"JS('use strict';
+// Written at launch by the testnode harness; see native-lib.cpp.
+// process.exit() leaves through libc exit(), so node::Start() never returns and
+// the native verdict write is skipped. This handler is the only place the real
+// exit code is observable on that path.
+// It requires nothing until the process is already exiting, so it adds no
+// entries to process.moduleLoadList -- which test-bootstrap-modules asserts on.
+try {
+  const f = process.env.NODEJS_MOBILE_TEST_VERDICT_FILE;
+  if (f) {
+    process.on('exit', (code) => {
+      try {
+        if (!require('node:worker_threads').isMainThread) return;
+        require('node:fs').writeFileSync(f, code === 0 ? 'PASS\n' : 'FAIL\n');
+      } catch {}
+    });
+  }
+} catch {}
+)JS";
+
+static bool result_file_exists() {
+    if (g_result_file[0] == '\0') return false;
+    FILE* f = fopen(g_result_file, "r");
+    if (!f) return false;
+    fclose(f);
+    return true;
+}
+
 void AtExitHook()
 {
-    // startNode did not return (crash, abort, or an explicit process.exit()
-    // which routes through node::Exit -> libc exit() and never unwinds to us).
-    // Record FAIL conservatively: a real exit code is unavailable here, and for
-    // the curated gate this is the safe verdict — no curated test calls
-    // process.exit(), so reaching this path means an abnormal termination.
-    // (Option D's SpinEventLoop returns the true code and removes this caveat.)
-    if (!g_result_written) write_result("FAIL\n");
+    // startNode did not return: a crash, an abort, or an explicit process.exit()
+    // (which routes through node::Exit -> libc exit() and never unwinds to us).
+    // The exit() case is now covered by the JS hook above, so check the file
+    // rather than only our own flag — otherwise this would overwrite the real
+    // verdict it just wrote. Anything that reaches here with no file at all
+    // terminated abnormally, and FAIL is the correct verdict.
+    if (!g_result_written && !result_file_exists()) write_result("FAIL\n");
 }
 
 extern "C"
@@ -79,6 +110,27 @@ Java_nodejsmobile_test_testnode_MainActivity_startNodeWithArguments(
     char addon_path[1024];
     snprintf(addon_path, sizeof(addon_path), "%s/crcnative.node", path_path);
     setenv("NODE_MOBILE_ADDON", addon_path, 1);
+
+    // Drop the exit-verdict hook next to the verdict file and preload it. Doing
+    // this natively (rather than shipping it in the bundled test tree) keeps the
+    // upstream-owned test/ directory untouched and the hook next to the code
+    // that reads what it writes.
+    if (tok && tok[0]) {
+        char hook_path[1024];
+        snprintf(hook_path, sizeof(hook_path), "%s/exit-verdict-hook.js", path_path);
+        FILE* hf = fopen(hook_path, "w");
+        if (hf) {
+            fputs(kExitVerdictHookJS, hf);
+            fclose(hf);
+            char node_options[1100];
+            snprintf(node_options, sizeof(node_options), "--require=%s", hook_path);
+            setenv("NODEJS_MOBILE_TEST_VERDICT_FILE", g_result_file, 1);
+            setenv("NODE_OPTIONS", node_options, 1);
+        } else {
+            __android_log_write(ANDROID_LOG_ERROR, TAG,
+                                "could not write exit-verdict-hook.js; process.exit() tests will mis-score");
+        }
+    }
 
     env->ReleaseStringUTFChars(runToken, tok);
     env->ReleaseStringUTFChars(nodePath, path_path);
@@ -131,8 +183,8 @@ Java_nodejsmobile_test_testnode_MainActivity_startNodeWithArguments(
     result = startNode(argc, argv);
 
     // startNode returns the real exit code only when the event loop drains
-    // normally (the case for every curated test). An explicit process.exit()
-    // exits via libc exit() and never reaches here -> handled by AtExitHook.
+    // normally. An explicit process.exit() leaves via libc exit() and never
+    // reaches here -> the preloaded JS hook wrote the verdict instead.
     write_result(result == 0 ? "PASS\n" : "FAIL\n");
 
     return jint(result);

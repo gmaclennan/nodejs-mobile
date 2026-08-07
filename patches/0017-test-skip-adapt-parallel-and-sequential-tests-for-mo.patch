@@ -17,45 +17,45 @@ series itself.
 Co-authored-by: Jaime Bernardo <jaime@janeasystems.com>
 Co-authored-by: Andre Staltz <andre@staltz.com>
 ---
- test/parallel/parallel.status                 | 940 +++++++++++++++++-
- test/parallel/test-dgram-bind-fd.js           |   2 +-
- test/parallel/test-dgram-membership.js        |  10 +-
- .../parallel/test-dgram-socket-buffer-size.js |   2 +-
- test/parallel/test-fs-copyfile.js             |   3 +-
- test/parallel/test-fs-lchmod.js               |   4 +-
- test/parallel/test-fs-mkdir.js                |   5 +-
- test/parallel/test-fs-open-flags.js           |   3 +-
- test/parallel/test-fs-promises.js             |   6 +-
- .../test-fs-read-file-sync-hostname.js        |   2 +-
- .../test-fs-readdir-stack-overflow.js         |   9 +-
- test/parallel/test-fs-readdir-ucs2.js         |   2 +-
- test/parallel/test-fs-realpath-native.js      |   7 +
- test/parallel/test-fs-realpath.js             |   8 +-
- test/parallel/test-fs-rmdir-recursive.js      |   6 +
- test/parallel/test-fs-stat.js                 |   7 +
- test/parallel/test-fs-watch.js                |  10 +-
- test/parallel/test-fs-watchfile.js            |   4 +-
- .../parallel/test-http-response-setheaders.js |   6 +
- .../test-http2-respond-file-error-dir.js      |   7 +
- test/parallel/test-net-connect-options-fd.js  |   2 +-
- test/parallel/test-os.js                      |  25 +-
- test/parallel/test-parse-args.mjs             |   2 +
- .../test-process-constants-noatime.js         |   2 +-
- ...test-process-dlopen-error-message-crash.js |   4 +-
- ...etactiveresources-track-active-requests.js |   6 +-
- .../test-process-getactiveresources.js        |  14 +-
- test/parallel/test-process-versions.js        |  26 +-
- test/parallel/test-repl-options.js            |   6 +-
- test/parallel/test-runner-concurrency.js      |   3 +
- test/parallel/test-signal-handler.js          |  12 +-
- .../test-watch-mode-files_watcher.mjs         |   3 +
- test/sequential/sequential.status             |  88 ++
- test/sequential/test-async-wrap-getasyncid.js |  15 +-
- test/sequential/test-fs-watch.js              |   4 +
- 35 files changed, 1208 insertions(+), 47 deletions(-)
+ test/parallel/parallel.status                 | 1132 ++++++++++++++++-
+ test/parallel/test-dgram-bind-fd.js           |    2 +-
+ test/parallel/test-dgram-membership.js        |   10 +-
+ .../parallel/test-dgram-socket-buffer-size.js |    2 +-
+ test/parallel/test-fs-copyfile.js             |    3 +-
+ test/parallel/test-fs-lchmod.js               |    4 +-
+ test/parallel/test-fs-mkdir.js                |    5 +-
+ test/parallel/test-fs-open-flags.js           |    3 +-
+ test/parallel/test-fs-promises.js             |    6 +-
+ .../test-fs-read-file-sync-hostname.js        |    2 +-
+ .../test-fs-readdir-stack-overflow.js         |    9 +-
+ test/parallel/test-fs-readdir-ucs2.js         |    2 +-
+ test/parallel/test-fs-realpath-native.js      |    7 +
+ test/parallel/test-fs-realpath.js             |    8 +-
+ test/parallel/test-fs-rmdir-recursive.js      |    6 +
+ test/parallel/test-fs-stat.js                 |    7 +
+ test/parallel/test-fs-watch.js                |   10 +-
+ test/parallel/test-fs-watchfile.js            |    4 +-
+ .../parallel/test-http-response-setheaders.js |    6 +
+ .../test-http2-respond-file-error-dir.js      |    7 +
+ test/parallel/test-net-connect-options-fd.js  |    2 +-
+ test/parallel/test-os.js                      |   25 +-
+ test/parallel/test-parse-args.mjs             |    2 +
+ .../test-process-constants-noatime.js         |    2 +-
+ ...test-process-dlopen-error-message-crash.js |    4 +-
+ ...etactiveresources-track-active-requests.js |    6 +-
+ .../test-process-getactiveresources.js        |   14 +-
+ test/parallel/test-process-versions.js        |   26 +-
+ test/parallel/test-repl-options.js            |    6 +-
+ test/parallel/test-runner-concurrency.js      |    3 +
+ test/parallel/test-signal-handler.js          |   12 +-
+ .../test-watch-mode-files_watcher.mjs         |    3 +
+ test/sequential/sequential.status             |   88 ++
+ test/sequential/test-async-wrap-getasyncid.js |   15 +-
+ test/sequential/test-fs-watch.js              |    4 +
+ 35 files changed, 1400 insertions(+), 47 deletions(-)
 
 diff --git a/test/parallel/parallel.status b/test/parallel/parallel.status
-index 5c7fe47927..2b5cd4e456 100644
+index 5c7fe47927..bc0e29dfda 100644
 --- a/test/parallel/parallel.status
 +++ b/test/parallel/parallel.status
 @@ -130,7 +130,6 @@ test-net-write-after-end-nt: SKIP
@@ -66,7 +66,7 @@ index 5c7fe47927..2b5cd4e456 100644
  test-crypto-secure-heap: SKIP
  # https://github.com/nodejs/node/issues/39683
  test-dgram-connect: PASS, FLAKY
-@@ -156,6 +155,945 @@ test-tls-set-default-ca-certificates-append-fetch: SKIP
+@@ -156,6 +155,1137 @@ test-tls-set-default-ca-certificates-append-fetch: SKIP
  test-tls-set-default-ca-certificates-reset-fetch: SKIP
  test-inspector-invalid-protocol: SKIP
  
@@ -520,6 +520,151 @@ index 5c7fe47927..2b5cd4e456 100644
 +test-release-changelog: SKIP # header files not available from mobile apps
 +test-runner-run: SKIP # some paths were not correct
 +
++#
++# ---------------------------------------------------------------------------
++# Below: measured on a full test/parallel sweep of upstream v24.18.0 run on a
++# device (Android arm64 emulator / iOS arm64 simulator), not inferred. Each of
++# these spawns a child node process: on Android process.execPath is
++# app_process64 rather than node, so the child SIGABRTs; the debugger-probe
++# cases drive a child over the inspector protocol. A glob is used only where
++# EVERY member of the family fails -- families with passing members are listed
++# individually so a working test is never skipped by association.
++# ---------------------------------------------------------------------------
++#
++test-async-hooks-stack-*: SKIP
++test-compile-cache-typescript-*: SKIP
++test-debugger-probe-*: SKIP
++test-parse-*: SKIP
++test-runner-cli-*: SKIP
++test-runner-coverage-*: SKIP
++test-runner-run-*: SKIP
++test-tls-off-*: SKIP
++test-watch-mode-kill-*: SKIP
++test-assert-esm-cjs-message-verify: SKIP
++test-buffer-constructor-node-modules: SKIP
++test-compile-cache-api-env: SKIP
++test-compile-cache-api-flush: SKIP
++test-compile-cache-api-options-portable-env: SKIP
++test-compile-cache-api-permission: SKIP
++test-compile-cache-api-portable: SKIP
++test-compile-cache-api-success: SKIP
++test-compile-cache-api-tmpdir: SKIP
++test-compile-cache-bad-syntax: SKIP
++test-compile-cache-disable: SKIP
++test-compile-cache-dynamic-import: SKIP
++test-compile-cache-esm: SKIP
++test-compile-cache-existing-directory: SKIP
++test-compile-cache-permission-allowed: SKIP
++test-compile-cache-permission-disallowed: SKIP
++test-compile-cache-portable: SKIP
++test-compile-cache-portable-esm: SKIP
++test-compile-cache-success: SKIP
++test-compile-cache-updated-file: SKIP
++test-config-file: SKIP
++test-debugger-inspect-help: SKIP
++test-debugger-inspect-help-forwarding: SKIP
++test-debugger-preserve-breaks: SKIP
++test-diagnostics-channel-child-process: SKIP
++test-diagnostics-channel-process: SKIP
++test-dotenv-edge-cases: SKIP
++test-dotenv-node-options: SKIP
++test-error-prepare-stack-trace: SKIP
++test-experimental-shared-value-conveyor: SKIP
++test-find-package-json: SKIP
++test-fs-readfile-eof: SKIP
++test-fs-rm: SKIP
++test-hash-seed: SKIP
++test-icu-env: SKIP
++test-is-internal-thread: SKIP
++test-max-old-space-size-percentage: SKIP
++test-module-print-timing: SKIP
++test-navigator: SKIP
++test-net-listen-twice: SKIP
++test-node-run: SKIP
++test-performance-nodetiming-uvmetricsinfo: SKIP
++test-process-execve: SKIP
++test-process-execve-abort: SKIP
++test-process-execve-on-exit: SKIP
++test-process-execve-permission-granted: SKIP
++test-process-execve-socket: SKIP
++test-process-exit-code-validation: SKIP
++test-process-finalization: SKIP
++test-process-load-env-file: SKIP
++test-process-warnings: SKIP
++test-runner-complex-dependencies: SKIP
++test-runner-diagnostics-channel: SKIP
++test-runner-enable-source-maps-issue: SKIP
++test-runner-error-reporter: SKIP
++test-runner-flag-propagation: SKIP
++test-runner-force-exit-failure: SKIP
++test-runner-force-exit-flush: SKIP
++test-runner-global-setup-teardown: SKIP
++test-runner-global-setup-watch-mode: SKIP
++test-runner-mock-timers-with-timeout: SKIP
++test-runner-module-mocking: SKIP
++test-runner-no-isolation-filtering: SKIP
++test-runner-no-isolation-hooks: SKIP
++test-runner-root-duration: SKIP
++test-runner-snapshot-file-tests: SKIP
++test-runner-snapshot-tests: SKIP
++test-runner-test-rerun-failures: SKIP
++test-runner-todo-suite-hook-failure: SKIP
++test-runner-watch-mode-complex: SKIP
++test-runner-worker-id: SKIP
++test-runner-xfail: SKIP
++test-shadow-realm-custom-loaders: SKIP
++test-shadow-realm-preload-module: SKIP
++test-snapshot-child-process-sync: SKIP
++test-snapshot-config: SKIP
++test-snapshot-coverage: SKIP
++test-snapshot-cwd: SKIP
++test-snapshot-net: SKIP
++test-snapshot-stack-trace-limit: SKIP
++test-snapshot-stack-trace-limit-mutation: SKIP
++test-snapshot-worker: SKIP
++test-sqlite: SKIP
++test-timers-nan-duration-warning: SKIP
++test-timers-negative-duration-warning: SKIP
++test-tls-env-extra-ca-with-options: SKIP
++test-tls-get-ca-certificates-extra: SKIP
++test-tls-get-ca-certificates-extra-empty: SKIP
++test-tls-get-ca-certificates-extra-subset: SKIP
++test-tls-set-default-ca-certificates-extra-override: SKIP
++test-trace-env: SKIP
++test-trace-env-stack: SKIP
++test-trace-exit-stack-limit: SKIP
++test-url-parse-deprecation: SKIP
++test-url-parse-invalid-input: SKIP
++test-util-getcallsites: SKIP
++test-webstorage: SKIP
++test-worker-node-options: SKIP
++#
++# Tests run under --permission without --allow-fs-write. The harness writes its
++# PASS/FAIL verdict to a file from a process.on('exit') hook, and the permission
++# model -- correctly -- denies that write, so the verdict never lands and the run
++# scores FAIL whatever the test did. Nothing the harness can fix from inside the
++# sandbox it is being denied by. See docs/TESTING.md, "How a test PASSes".
++#
++test-permission-allow-child-process-cli: SKIP
++test-permission-child-process-inherit-flags: SKIP
++test-permission-config-file: SKIP
++test-permission-fs-absolute-path: SKIP
++test-permission-fs-read: SKIP
++test-permission-fs-read-entrypoint: SKIP
++test-permission-fs-relative-path: SKIP
++test-permission-fs-repeat-path: SKIP
++test-permission-fs-require: SKIP
++test-permission-fs-symlink: SKIP
++test-permission-fs-symlink-target-write: SKIP
++test-permission-fs-traversal-path: SKIP
++test-permission-fs-wildcard: SKIP
++test-permission-fs-write: SKIP
++test-permission-fs-write-report: SKIP
++test-permission-inspector: SKIP
++test-permission-inspector-brk: SKIP
++test-permission-processbinding: SKIP
++test-permission-sqlite-load-extension: SKIP
++test-permission-warning-flags: SKIP
 +[$system==ios]
 +#
 +# Reverted to upstream (kept node:test); the jitless V8 build emits the short
@@ -927,7 +1072,17 @@ index 5c7fe47927..2b5cd4e456 100644
 +#
 +test-fs-watch-recursive: SKIP
 +#
-+# FAILING tests with listen EADDRINUSE.
++# Unix domain sockets: bind() fails with EINVAL because the socket path is too
++# long, NOT because iOS lacks UDS. Darwin caps sockaddr_un.sun_path at 104 bytes
++# (Linux allows 108) and stores the path as given. An iOS app's data container
++# is ~81 bytes on a device and ~171 on the simulator before any filename, so
++# nothing inside it fits; common.PIPE's relative-path trick does not help either,
++# because a mobile embedder's cwd is `/`.
++#
++# Measured: the same socket completes a full round-trip on the simulator when
++# bound from inside its directory with a short relative path. That is what
++# test-mobile-unix-socket covers, so UDS itself stays gated on iOS.
++# (The previous note here read "listen EADDRINUSE", which is not the error.)
 +#
 +test-http-client-abort-keep-alive-queued-unix-socket: SKIP
 +test-http-client-abort-unix-socket: SKIP
@@ -1009,6 +1164,43 @@ index 5c7fe47927..2b5cd4e456 100644
 +test-release-changelog: SKIP # header files not available from mobile apps
 +test-runner-run: SKIP # some paths were not correct
 +
++#
++# ---------------------------------------------------------------------------
++# Below: measured on a full test/parallel sweep of upstream v24.18.0 run on a
++# device (Android arm64 emulator / iOS arm64 simulator), not inferred. Each of
++# these spawns a child node process: on Android process.execPath is
++# app_process64 rather than node, so the child SIGABRTs; the debugger-probe
++# cases drive a child over the inspector protocol. A glob is used only where
++# EVERY member of the family fails -- families with passing members are listed
++# individually so a working test is never skipped by association.
++# ---------------------------------------------------------------------------
++#
++test-config-file: SKIP
++test-fs-readfile-eof: SKIP
++test-fs-rm: SKIP
++test-icu-env: SKIP
++test-max-old-space-size-percentage: SKIP
++test-node-run: SKIP
++test-process-execve: SKIP
++test-process-execve-on-exit: SKIP
++test-process-execve-permission-granted: SKIP
++test-process-execve-socket: SKIP
++test-process-exit-code-validation: SKIP
++test-process-load-env-file: SKIP
++test-runner-coverage-source-map: SKIP
++test-runner-coverage-thresholds: SKIP
++test-runner-test-rerun-failures: SKIP
++test-snapshot-child-process-sync: SKIP
++test-util-convert-signal-to-exit-code: SKIP
++#
++# Tests run under --permission without --allow-fs-write. The harness writes its
++# PASS/FAIL verdict to a file from a process.on('exit') hook, and the permission
++# model -- correctly -- denies that write, so the verdict never lands and the run
++# scores FAIL whatever the test did. Nothing the harness can fix from inside the
++# sandbox it is being denied by. See docs/TESTING.md, "How a test PASSes".
++#
++test-permission-allow-child-process-cli: SKIP
++test-permission-fs-write: SKIP
  [$asan==on]
  # https://github.com/nodejs/node/issues/39655
  test-cluster-primary-error: PASS, FLAKY

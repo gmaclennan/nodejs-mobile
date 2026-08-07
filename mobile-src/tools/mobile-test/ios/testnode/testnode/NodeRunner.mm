@@ -23,14 +23,45 @@ static void write_result(const char* verdict) {
     FILE* f = fopen(g_result_file, "w");
     if (f) { fputs(verdict, f); fclose(f); g_result_written = true; }
 }
+// Loaded via NODE_OPTIONS=--require, which (unlike a command-line flag) stays
+// out of process.execArgv, so tests that assert on it are unaffected. Keep in
+// sync with the copy in android/testnode/app/src/main/cpp/native-lib.cpp.
+static const char* kExitVerdictHookJS = R"JS('use strict';
+// Written at launch by the testnode harness; see NodeRunner.mm.
+// process.exit() leaves through libc exit(), so node_start() never returns and
+// the native verdict write is skipped. This handler is the only place the real
+// exit code is observable on that path.
+// It requires nothing until the process is already exiting, so it adds no
+// entries to process.moduleLoadList -- which test-bootstrap-modules asserts on.
+try {
+  const f = process.env.NODEJS_MOBILE_TEST_VERDICT_FILE;
+  if (f) {
+    process.on('exit', (code) => {
+      try {
+        if (!require('node:worker_threads').isMainThread) return;
+        require('node:fs').writeFileSync(f, code === 0 ? 'PASS\n' : 'FAIL\n');
+      } catch {}
+    });
+  }
+} catch {}
+)JS";
+
+static bool result_file_exists(void) {
+    if (g_result_file[0] == '\0') return false;
+    FILE* f = fopen(g_result_file, "r");
+    if (!f) return false;
+    fclose(f);
+    return true;
+}
+
 static void NodeRunnerAtExitHook(void) {
-    // node_start did not return (crash, abort, or an explicit process.exit()
-    // which routes through node::Exit -> libc exit() and never unwinds to us).
-    // Record FAIL conservatively: a real exit code is unavailable here, and for
-    // the curated gate this is the safe verdict — no curated test calls
-    // process.exit(), so reaching this path means an abnormal termination.
-    // (Option D's SpinEventLoop returns the true code and removes this caveat.)
-    if (!g_result_written) write_result("FAIL\n");
+    // node_start did not return: a crash, an abort, or an explicit
+    // process.exit() (which routes through node::Exit -> libc exit() and never
+    // unwinds to us). The exit() case is now covered by the JS hook above, so
+    // check the file rather than only our own flag — otherwise this would
+    // overwrite the real verdict it just wrote. Anything that reaches here with
+    // no file at all terminated abnormally, and FAIL is the correct verdict.
+    if (!g_result_written && !result_file_exists()) write_result("FAIL\n");
 }
 
 @implementation NodeRunner
@@ -105,6 +136,32 @@ static void NodeRunnerAtExitHook(void) {
         //still running (a false-PASS vector). Only this launch may hold it.
         unsetenv("NODE_MOBILE_RUN_TOKEN");
         atexit(NodeRunnerAtExitHook);
+
+        //Drop the exit-verdict hook next to the verdict file and preload it.
+        //Doing this natively (rather than shipping it in the bundled test tree)
+        //keeps the upstream-owned test/ directory untouched and the hook next
+        //to the code that reads what it writes.
+        //
+        //Only when the proxy asked for it (--exit-hook, consumed by main.m):
+        //the preload is observable — it adds entries to process.moduleLoadList
+        //and a listener to process('exit') — so tests that assert on either
+        //must not pay for it. Tests that call process.exit() would otherwise be
+        //scored FAIL outright, which is the trade worth making.
+        if (getenv("NODE_MOBILE_EXIT_HOOK") != NULL) {
+            NSString* hook = [docs stringByAppendingPathComponent:@"exit-verdict-hook.js"];
+            const char* hook_path = [hook UTF8String];
+            FILE* hf = fopen(hook_path, "w");
+            if (hf) {
+                fputs(kExitVerdictHookJS, hf);
+                fclose(hf);
+                char node_options[1100];
+                snprintf(node_options, sizeof(node_options), "--require=%s", hook_path);
+                setenv("NODEJS_MOBILE_TEST_VERDICT_FILE", g_result_file, 1);
+                setenv("NODE_OPTIONS", node_options, 1);
+            } else {
+                NSLog(@"could not write exit-verdict-hook.js; process.exit() tests will mis-score");
+            }
+        }
     }
 
     //Native-addon gate: point NODE_MOBILE_ADDON at the .node the harness copied
@@ -118,7 +175,8 @@ static void NodeRunnerAtExitHook(void) {
         setenv("NODE_MOBILE_ADDON", [[d stringByAppendingPathComponent:@"crcnative.node"] UTF8String], 0);
     }
 
-    //Start node; its return is the real exit code. Write it to the verdict file.
+    //Start node; its return is the real exit code, except after a
+    //process.exit() (handled by the preloaded JS hook). Write it to the file.
     int code = node_start(argument_count, argv);
     write_result(code == 0 ? "PASS\n" : "FAIL\n");
     return code;

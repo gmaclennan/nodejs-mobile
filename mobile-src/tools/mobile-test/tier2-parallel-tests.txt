@@ -6,7 +6,13 @@
 # Harvested by running pure-JS categories (buffer, events, url, querystring,
 # string-decoder, path, crypto hash/hmac/cipher, util) through the proxy on both
 # devices and keeping the intersection of passes. Re-run that harvest on a fresh
-# device to grow coverage (see TESTING.md "Expanding the curated list").
+# device to grow coverage — the procedure is in docs/TESTING.md on the recipe
+# branch, "Expanding the curated list".
+#
+# This is an ALLOW-list: a test that is neither listed here nor skipped in
+# test/parallel/parallel.status never runs on a device, and nothing in a green
+# run says so. That is currently ~95% of the runnable suite; see
+# tools/mobile-test/coverage-manifest.py.
 #
 # Deliberately EXCLUDED from this deterministic list:
 #   - test-timers-*  : timing-sensitive; flaky under emulation (pass in isolation,
@@ -135,6 +141,11 @@ parallel/test-mobile-node-path
 # fenced off on iOS. The reader has no other caller, so without this the whole
 # thing can stop returning certificates with every job still green.
 parallel/test-mobile-system-ca
+# No patch: unix domain sockets. Every upstream UDS test is skipped on iOS
+# because the app container makes the socket path exceed Darwin's 104-byte
+# sun_path, so nothing gated UDS there at all. This binds a short relative path,
+# which is the portable form and the one an embedder should use.
+parallel/test-mobile-unix-socket
 # Patch 0008: KVStore::Clone() skips a variable it cannot read back instead of
 # throwing away the whole environment, which is how a worker gets one at all
 # on Android.
