@@ -105,6 +105,18 @@ Java_nodejsmobile_test_testnode_MainActivity_startNodeWithArguments(
     g_launch_pid = getpid();
     snprintf(g_result_file, sizeof(g_result_file), "%s/result-%s.txt", path_path, tok);
 
+    // Match a desktop `tools/test.py` run, which starts node with the working
+    // directory at the tree root. Without this the app inherits cwd=/ and every
+    // cwd-relative path in the suite resolves against the filesystem root:
+    // test-fs-cp-async-file-url looks for /test/fixtures/..., --env-file misses
+    // its fixture, and common.PIPE -- which is deliberately built relative to
+    // cwd so a unix socket path stays short -- expands to the full container
+    // path instead, blowing Darwin's 104-byte sun_path cap on iOS.
+    if (chdir(path_path) != 0) {
+        __android_log_write(ANDROID_LOG_ERROR, TAG,
+                            "could not chdir to the test tree root; cwd-relative tests will fail");
+    }
+
     // Native-addon gate: point NODE_MOBILE_ADDON at the .so the harness pushed
     // into the app's files dir (test-napi-addon.js dlopens it). Harmless absent.
     char addon_path[1024];
