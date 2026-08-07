@@ -32,36 +32,6 @@ TEST_PATH="$( cd "$( dirname "$0" )" && cd .. && cd .. && cd test && pwd )"
 # (a `*` in a --test-name-pattern would be expanded against the cwd).
 ARGS="$*"
 
-# process.exit() never unwinds to the native caller, so the app preloads a JS
-# hook that writes the real exit code (see native-lib.cpp). On iOS that preload
-# rides NODE_OPTIONS, which leaves process.execArgv untouched — but node reads
-# NODE_OPTIONS through SafeGetenv(), and inside an Android app process
-# linux_at_secure() is set, so it is silently ignored (the same reason patch
-# 0015 exists for NODE_PATH). The only channel left here is the command line,
-# which DOES show up in process.execArgv.
-#
-# So inject it only for tests that can reach process.exit(): for those the
-# alternative is a guaranteed false FAIL, and everything else keeps a pristine
-# execArgv. The grep is on the host copy of the test file — the same bytes the
-# device runs.
-#
-# `common.skip()` ends in process.exit(0) too, which is why the pattern is wider
-# than a literal process.exit( — every test that self-skips at runtime (no
-# crypto, no QUIC, Windows-only, …) was otherwise scored FAIL, and none of them
-# spell process.exit themselves. `[^A-Za-z0-9_.]skip\(` catches the ESM tests
-# that import { skip } while skipping node:test's own `t.skip(`/`it.skip(`.
-# Matches ~33% of test/parallel; of those, the only ones that also read
-# process.execArgv already spawn a child, so they cannot run here anyway.
-EXIT_HOOK_TRIGGER='process\.exit\(|common\.skip|[^A-Za-z0-9_.]skip\('
-for _arg in "$@"; do
-  case "$_arg" in
-    /*.js|/*.mjs) TEST_FILE="$_arg" ;;
-  esac
-done
-if [ -n "${TEST_FILE:-}" ] && [ -r "$TEST_FILE" ] \
-   && grep -qE "$EXIT_HOOK_TRIGGER" "$TEST_FILE"; then
-  ARGS="--require=/data/user/0/nodejsmobile.test.testnode/files/exit-verdict-hook.js $ARGS"
-fi
 
 # Per-launch token: the RESULT marker is tagged with it, so a marker emitted by
 # an aborting test or a spawned grandchild can't be mis-attributed to a

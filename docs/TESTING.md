@@ -39,26 +39,16 @@ no crypto, Windows-only, debug-build-only — was scored FAIL. The curated list
 never noticed because it was harvested by keeping what passed, which silently
 discarded every self-skipping test. A full-suite sweep found 40 of them.
 
-The two platforms load the hook differently, and neither choice is free:
+Both platforms preload it the same way, via `NODE_OPTIONS=--require`, which
+stays out of `process.execArgv` entirely. It is installed unconditionally: the
+hook `require()`s nothing until exit, so the only observable trace is one extra
+listener on `process('exit')`, and there is no way to predict which tests need
+it anyway — `common.skip()` reaches `process.exit(0)` from any test, at runtime.
 
-- **iOS** preloads it via `NODE_OPTIONS=--require`, which stays out of
-  `process.execArgv`. The proxy requests it per launch with `--exit-hook`, an
-  argument `main.m` consumes into the environment so it never reaches
-  `process.argv`.
-- **Android** must use the command line, because node reads `NODE_OPTIONS`
-  through `SafeGetenv()` and `linux_at_secure()` reports 1 inside an app
-  process. That does land in `process.execArgv`.
-
-  Patch 0007 now relaxes `SafeGetenv()` on embedded builds, which should make
-  `NODE_OPTIONS` readable on Android too and would let this leg use the same
-  mechanism as iOS. That is not yet confirmed — it needs an Android build to
-  test against — so the command-line path stays until it is.
-
-So the proxies only ask for the hook when the test can reach `process.exit()`,
-matching `process.exit(`, `common.skip`, or a bare `skip(` (the ESM form) on the
-host copy of the file. That is about a third of `test/parallel`; of those, the
-only cases that also read `process.execArgv` already spawn a child process and
-cannot run on a device anyway.
+`NODE_OPTIONS` only became usable on Android once patch 0007 relaxed
+`SafeGetenv()` (see [that patch](./PATCHES.md)); before it, node discarded the
+variable and the harness had to inject `--require` on the command line, which
+did land in `process.execArgv`. That workaround is gone.
 
 A run that produces no verdict file at all is a FAIL, and the proxy says which
 kind: the Android one polls the app process alongside the file, so a native
@@ -120,7 +110,7 @@ BrowserStack device minutes are not.
 
 ### The curated subset
 
-`tools/mobile-test/tier2-parallel-tests.txt` is the allow-list (~150 single-
+`tools/mobile-test/tier2-parallel-tests.txt` is the allow-list (~175 single-
 process `test/parallel` cases) shared by both Tier-2 workflows, so a regression
 fails the same named test on both platforms. The runner invocation is:
 
@@ -145,7 +135,7 @@ of the test bodies.
 
 ### What the subset does not cover
 
-The allow-list is small, and its shape is not the shape of the risk. Of its 157
+The allow-list is small, and its shape is not the shape of the risk. Of its 176
 entries, 114 are `buffer`, `url` and `path` — string and array manipulation that
 touches almost no libuv, no sockets, no filesystem and no threads. One entry
 opens a socket (`test-mobile-fetch`); one reads a file; none exercise `net`,
@@ -158,8 +148,8 @@ separates the two reasons a test is absent from a device run, which a green run
 cannot:
 
 ```
-android   4103 total   839 skipped by .status   3264 runnable   158 run in Tier 2 (4.8%)   3106 never run on a device
-ios       4103 total   732 skipped by .status   3371 runnable   158 run in Tier 2 (4.7%)   3213 never run on a device
+android   4103 total   839 skipped by .status   3264 runnable   176 run in Tier 2 (5.4%)   3088 never run on a device
+ios       4103 total   714 skipped by .status   3389 runnable   176 run in Tier 2 (5.2%)   3213 never run on a device
 ```
 
 A `.status` skip is a recorded decision. The other 3,200-odd are not decisions

@@ -143,12 +143,11 @@ static void NodeRunnerAtExitHook(void) {
         //keeps the upstream-owned test/ directory untouched and the hook next
         //to the code that reads what it writes.
         //
-        //Only when the proxy asked for it (--exit-hook, consumed by main.m):
-        //the preload is observable — it adds entries to process.moduleLoadList
-        //and a listener to process('exit') — so tests that assert on either
-        //must not pay for it. Tests that call process.exit() would otherwise be
-        //scored FAIL outright, which is the trade worth making.
-        if (getenv("NODE_MOBILE_EXIT_HOOK") != NULL) {
+        //Unconditional: the hook require()s nothing until the process is already
+        //exiting, so the only thing a test can observe is one extra listener on
+        //process('exit'). Predicting which tests need it is not possible anyway —
+        //common.skip() reaches process.exit(0) from any test, at runtime.
+        {
             NSString* hook = [docs stringByAppendingPathComponent:@"exit-verdict-hook.js"];
             const char* hook_path = [hook UTF8String];
             FILE* hf = fopen(hook_path, "w");

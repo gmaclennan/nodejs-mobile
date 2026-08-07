@@ -68,30 +68,6 @@ LOG="$(mktemp)"
 RUN_TOKEN="$(/usr/bin/uuidgen | tr 'A-F' 'a-f' | tr -d '-')"
 [ -n "$RUN_TOKEN" ] || { echo "::error::node-ios-proxy: uuidgen produced no run token" >&2; exit 1; }
 
-# process.exit() never unwinds to the native caller, so the app can preload a JS
-# hook that writes the real exit code (see NodeRunner.mm). Ask for it only when
-# the test can reach process.exit(): the preload adds a listener to
-# process('exit'), which a couple of tests assert on.
-#
-# `common.skip()` ends in process.exit(0) too, which is why the pattern is wider
-# than a literal process.exit( — every test that self-skips at runtime (no
-# crypto, no QUIC, Windows-only, ...) was otherwise scored FAIL, and none of them
-# spell process.exit themselves. `[^A-Za-z0-9_.]skip\(` catches the ESM tests
-# that import { skip } while skipping node:test's own `t.skip(`/`it.skip(`.
-#
-# A plain string, expanded unquoted at the launch below: /bin/bash on macOS is
-# 3.2, where an empty array under `set -u` is an "unbound variable" error.
-EXIT_HOOK_TRIGGER='process\.exit\(|common\.skip|[^A-Za-z0-9_.]skip\('
-EXIT_HOOK_ARG=""
-for _arg in "$@"; do
-  case "$_arg" in
-    /*.js|/*.mjs)
-      if [ -r "$_arg" ] && grep -qE "$EXIT_HOOK_TRIGGER" "$_arg"; then
-        EXIT_HOOK_ARG="--exit-hook"
-      fi
-      ;;
-  esac
-done
 
 # main.m consumes --run-token into the environment (NodeRunner builds the
 # verdict path from it, then unsets it so a spawned child can't inherit it) and
@@ -99,10 +75,10 @@ done
 # main.m parses them in this order: --run-token, --exit-hook, --substitute-dir.
 # --console makes devicectl relay the app's output and block until it exits, so
 # the verdict file is complete by the time the copy below runs.
-# shellcheck disable=SC2086 # $EXIT_HOOK_ARG is a whitespace-free literal or empty
+# shellcheck disable=SC2086 # is a whitespace-free literal or empty
 xcrun devicectl device process launch --device "$DEVICE_ID" --console \
     --terminate-existing "$BUNDLE_ID" \
-    --run-token "$RUN_TOKEN" $EXIT_HOOK_ARG --substitute-dir "$TEST_BASE_DIR" "$@" \
+    --run-token "$RUN_TOKEN" --substitute-dir "$TEST_BASE_DIR" "$@" \
     > "$LOG" 2>&1 &
 LP=$!
 waited=0

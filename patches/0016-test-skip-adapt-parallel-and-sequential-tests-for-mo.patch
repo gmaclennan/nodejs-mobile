@@ -17,7 +17,7 @@ series itself.
 Co-authored-by: Jaime Bernardo <jaime@janeasystems.com>
 Co-authored-by: Andre Staltz <andre@staltz.com>
 ---
- test/parallel/parallel.status                 | 1102 ++++++++++++++++-
+ test/parallel/parallel.status                 | 1104 ++++++++++++++++-
  test/parallel/test-dgram-bind-fd.js           |    2 +-
  test/parallel/test-dgram-membership.js        |   10 +-
  .../parallel/test-dgram-socket-buffer-size.js |    2 +-
@@ -52,10 +52,10 @@ Co-authored-by: Andre Staltz <andre@staltz.com>
  test/sequential/sequential.status             |   88 ++
  test/sequential/test-async-wrap-getasyncid.js |   15 +-
  test/sequential/test-fs-watch.js              |    4 +
- 35 files changed, 1370 insertions(+), 47 deletions(-)
+ 35 files changed, 1372 insertions(+), 47 deletions(-)
 
 diff --git a/test/parallel/parallel.status b/test/parallel/parallel.status
-index 5c7fe47927..9fb40ffa49 100644
+index 5c7fe47927..a5c6f0d074 100644
 --- a/test/parallel/parallel.status
 +++ b/test/parallel/parallel.status
 @@ -130,7 +130,6 @@ test-net-write-after-end-nt: SKIP
@@ -66,7 +66,7 @@ index 5c7fe47927..9fb40ffa49 100644
  test-crypto-secure-heap: SKIP
  # https://github.com/nodejs/node/issues/39683
  test-dgram-connect: PASS, FLAKY
-@@ -156,6 +155,1107 @@ test-tls-set-default-ca-certificates-append-fetch: SKIP
+@@ -156,6 +155,1109 @@ test-tls-set-default-ca-certificates-append-fetch: SKIP
  test-tls-set-default-ca-certificates-reset-fetch: SKIP
  test-inspector-invalid-protocol: SKIP
  
@@ -665,6 +665,7 @@ index 5c7fe47927..9fb40ffa49 100644
 +test-permission-processbinding: SKIP
 +test-permission-sqlite-load-extension: SKIP
 +test-permission-warning-flags: SKIP
++test-permission-fs-windows-path: SKIP
 +[$system==ios]
 +#
 +# Reverted to upstream (kept node:test); the jitless V8 build emits the short
@@ -1171,6 +1172,7 @@ index 5c7fe47927..9fb40ffa49 100644
 +#
 +test-permission-allow-child-process-cli: SKIP
 +test-permission-fs-write: SKIP
++test-permission-fs-windows-path: SKIP
  [$asan==on]
  # https://github.com/nodejs/node/issues/39655
  test-cluster-primary-error: PASS, FLAKY

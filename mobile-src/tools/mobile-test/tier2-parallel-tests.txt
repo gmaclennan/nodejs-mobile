@@ -220,3 +220,29 @@ parallel/test-whatwg-url-custom-tostringtag
 parallel/test-whatwg-url-invalidthis
 parallel/test-whatwg-url-override-hostname
 parallel/test-whatwg-url-properties
+# ---------------------------------------------------------------------------
+# Unix domain sockets. These are upstream tests, but they are here as a group
+# on purpose: all 18 were skipped for iOS until the harness started node at the
+# tree root, and while they were skipped nothing gated UDS on iOS at all.
+# Embedders use them, and the failure mode is silent (EINVAL from a path that
+# grew too long), so they earn a place in the deterministic gate.
+# See docs/TESTING.md on the recipe branch, "Unix domain sockets".
+# ---------------------------------------------------------------------------
+parallel/test-http-client-abort-keep-alive-queued-unix-socket
+parallel/test-http-client-abort-unix-socket
+parallel/test-http-client-pipe-end
+parallel/test-http-client-response-domain
+parallel/test-http-unix-socket
+parallel/test-http-unix-socket-keep-alive
+parallel/test-http2-pipe-named-pipe
+parallel/test-https-unix-socket-self-signed
+parallel/test-net-connect-options-path
+parallel/test-net-pingpong
+parallel/test-net-pipe-connect-errors
+parallel/test-net-server-listen-handle
+parallel/test-net-server-listen-path
+parallel/test-pipe-address
+parallel/test-pipe-stream
+parallel/test-pipe-writev
+parallel/test-tls-connect-pipe
+parallel/test-tls-net-connect-prefer-path
