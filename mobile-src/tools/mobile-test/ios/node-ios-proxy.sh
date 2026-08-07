@@ -81,6 +81,9 @@ xcrun devicectl device process launch --device "$DEVICE_ID" --console \
     --run-token "$RUN_TOKEN" --substitute-dir "$TEST_BASE_DIR" "$@" \
     > "$LOG" 2>&1 &
 LP=$!
+# 10 Hz, not 1 Hz: devicectl exits as soon as the app does, and a 1-second tick
+# added up to a second of dead time per test. TIMEOUT stays in seconds.
+ticks=0
 waited=0
 while kill -0 "$LP" 2>/dev/null; do
   if [ "$waited" -ge "$TIMEOUT" ]; then
@@ -88,8 +91,9 @@ while kill -0 "$LP" 2>/dev/null; do
     echo "::warning::node-ios-proxy: launch still running after ${TIMEOUT}s, killed (hang) for: $*" >&2
     break
   fi
-  sleep 1
-  waited=$((waited + 1))
+  sleep 0.1
+  ticks=$((ticks + 1))
+  waited=$((ticks / 10))
 done
 wait "$LP" 2>/dev/null
 LAUNCH_STATUS=$?
