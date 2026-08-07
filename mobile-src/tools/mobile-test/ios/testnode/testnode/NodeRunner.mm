@@ -9,6 +9,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>   // chdir
 
 // Per-launch verdict file in the app's Documents dir (host-readable via
 // `simctl get_app_container`). The proxy reads the test's real exit code from
@@ -161,6 +162,20 @@ static void NodeRunnerAtExitHook(void) {
             } else {
                 NSLog(@"could not write exit-verdict-hook.js; process.exit() tests will mis-score");
             }
+        }
+    }
+
+    //Match a desktop `tools/test.py` run, which starts node with the working
+    //directory at the tree root. Without this the app inherits cwd=/ and every
+    //cwd-relative path in the suite resolves against the filesystem root:
+    //test-fs-cp-async-file-url looks for /test/fixtures/..., --env-file misses
+    //its fixture, and common.PIPE -- built relative to cwd precisely so a unix
+    //socket path stays short -- expands to the full container path instead,
+    //which exceeds Darwin's 104-byte sun_path cap and fails every UDS test.
+    {
+        NSString* root = [NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES) firstObject];
+        if (chdir([root UTF8String]) != 0) {
+            NSLog(@"could not chdir to the test tree root; cwd-relative tests will fail");
         }
     }
 

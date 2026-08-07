@@ -17,7 +17,7 @@ series itself.
 Co-authored-by: Jaime Bernardo <jaime@janeasystems.com>
 Co-authored-by: Andre Staltz <andre@staltz.com>
 ---
- test/parallel/parallel.status                 | 1132 ++++++++++++++++-
+ test/parallel/parallel.status                 | 1102 ++++++++++++++++-
  test/parallel/test-dgram-bind-fd.js           |    2 +-
  test/parallel/test-dgram-membership.js        |   10 +-
  .../parallel/test-dgram-socket-buffer-size.js |    2 +-
@@ -52,10 +52,10 @@ Co-authored-by: Andre Staltz <andre@staltz.com>
  test/sequential/sequential.status             |   88 ++
  test/sequential/test-async-wrap-getasyncid.js |   15 +-
  test/sequential/test-fs-watch.js              |    4 +
- 35 files changed, 1400 insertions(+), 47 deletions(-)
+ 35 files changed, 1370 insertions(+), 47 deletions(-)
 
 diff --git a/test/parallel/parallel.status b/test/parallel/parallel.status
-index 5c7fe47927..bc0e29dfda 100644
+index 5c7fe47927..9fb40ffa49 100644
 --- a/test/parallel/parallel.status
 +++ b/test/parallel/parallel.status
 @@ -130,7 +130,6 @@ test-net-write-after-end-nt: SKIP
@@ -66,7 +66,7 @@ index 5c7fe47927..bc0e29dfda 100644
  test-crypto-secure-heap: SKIP
  # https://github.com/nodejs/node/issues/39683
  test-dgram-connect: PASS, FLAKY
-@@ -156,6 +155,1137 @@ test-tls-set-default-ca-certificates-append-fetch: SKIP
+@@ -156,6 +155,1107 @@ test-tls-set-default-ca-certificates-append-fetch: SKIP
  test-tls-set-default-ca-certificates-reset-fetch: SKIP
  test-inspector-invalid-protocol: SKIP
  
@@ -1072,39 +1072,9 @@ index 5c7fe47927..bc0e29dfda 100644
 +#
 +test-fs-watch-recursive: SKIP
 +#
-+# Unix domain sockets: bind() fails with EINVAL because the socket path is too
-+# long, NOT because iOS lacks UDS. Darwin caps sockaddr_un.sun_path at 104 bytes
-+# (Linux allows 108) and stores the path as given. An iOS app's data container
-+# is ~81 bytes on a device and ~171 on the simulator before any filename, so
-+# nothing inside it fits; common.PIPE's relative-path trick does not help either,
-+# because a mobile embedder's cwd is `/`.
-+#
-+# Measured: the same socket completes a full round-trip on the simulator when
-+# bound from inside its directory with a short relative path. That is what
-+# test-mobile-unix-socket covers, so UDS itself stays gated on iOS.
-+# (The previous note here read "listen EADDRINUSE", which is not the error.)
-+#
-+test-http-client-abort-keep-alive-queued-unix-socket: SKIP
-+test-http-client-abort-unix-socket: SKIP
-+test-http-client-pipe-end: SKIP
-+test-http-client-response-domain: SKIP
-+test-http-unix-socket: SKIP
-+test-http-unix-socket-keep-alive: SKIP
-+test-http2-pipe-named-pipe: SKIP
-+test-https-unix-socket-self-signed: SKIP
 +test-net-connect-options-fd: SKIP
-+test-net-connect-options-path: SKIP
-+test-net-pingpong: SKIP
-+test-net-pipe-connect-errors: SKIP
-+test-net-server-listen-handle: SKIP
-+test-net-server-listen-path: SKIP
-+test-pipe-address: SKIP
-+test-pipe-stream: SKIP
 +test-pipe-unref: SKIP
-+test-pipe-writev: SKIP
 +test-repl: SKIP
-+test-tls-connect-pipe: SKIP
-+test-tls-net-connect-prefer-path: SKIP
 +test-tls-wrap-econnreset-pipe: SKIP
 +#
 +# Tests that require MultiLocalhost

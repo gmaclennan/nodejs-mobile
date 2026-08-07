@@ -317,6 +317,24 @@ Three limits are structural, and worth stating rather than papering over:
   for an empty store. The device runs leave it unset, the same arrangement
   `NODEJS_MOBILE_EXPECT_WASM_IMPL` uses above.
 
+### The working directory
+
+A desktop `tools/test.py` run starts node with the working directory at the tree
+root, and a good part of the suite quietly depends on it: `test-dotenv` passes
+`--env-file test/fixtures/dotenv/valid.env`, `test-fs-cp-async-file-url` opens
+`./test/fixtures/copy/kitchen-sink`, and `common.PIPE` builds a socket path
+relative to `process.cwd()` on purpose, to keep it short.
+
+An embedded node inherits the host app's cwd, which is `/`. Every one of those
+resolved against the filesystem root instead, so the app now `chdir()`s to the
+on-device tree root before starting node — the same starting point a desktop run
+has. That is a harness change only; it says nothing about what cwd a real
+embedder should use, and libnode is untouched.
+
+Worth knowing for embedders regardless: **cwd is `/` in an app process** unless
+you set it. Anything resolving a relative path — including a unix socket path —
+should not assume otherwise.
+
 ### Unix domain sockets
 
 UDS works in both sandboxes. What differs is how long the socket path may be:
@@ -327,12 +345,16 @@ An iOS app's data container is long before you add a filename — about 81 bytes
 on a device, about 171 on the simulator — so an absolute path inside it does not
 fit, and `bind()` fails with **`EINVAL`**. That is a path-length limit, not a
 missing feature: the same socket completes a round-trip when bound from inside
-its own directory with a short relative name. Upstream's `common.PIPE` builds a
-relative path for exactly this reason, but it is relative to `process.cwd()`,
-and a mobile embedder's cwd is `/` — so it saves nothing here and every upstream
-UDS test fails on the simulator. Those tests are skipped for iOS in
-`test/parallel/parallel.status`, which left UDS ungated on iOS entirely;
-`test-mobile-unix-socket` is that gate.
+its own directory with a short relative name.
+
+Upstream's `common.PIPE` builds a relative path for exactly this reason — but
+relative to `process.cwd()`, and the app used to inherit `cwd=/`, so it expanded
+right back to the full container path. Every upstream UDS test failed on the
+simulator and all 18 were skipped for iOS, which left UDS ungated there
+entirely. The app now `chdir()`s to the on-device tree root at launch (see
+[the working directory](#the-working-directory)), `common.PIPE` is short again,
+and **all 18 run and pass**. `test-mobile-unix-socket` gates the behaviour
+directly, independent of upstream's helper.
 
 On Android the container path is short (~50 bytes) and the limit never bites:
 the upstream UDS tests pass there. Abstract-namespace sockets (`@`-prefixed) are
