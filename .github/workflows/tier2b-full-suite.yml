@@ -1,0 +1,192 @@
+# Tier 2b: the whole non-skipped test/parallel suite on device, sharded.
+#
+# Tier 2a (emulator-tests / simulator-tests, driven from build.yml) runs a
+# curated ~195-test allow-list on every PR: fast and deterministic, but by
+# construction it only covers what someone thought to add. About 95% of the
+# runnable suite has never run on a device, and a test upstream adds tomorrow
+# joins that group silently. This job is the other half: everything
+# test/parallel/parallel.status does NOT skip, so new upstream tests are picked
+# up automatically and the .status file — not an allow-list — is what records a
+# decision to exclude something.
+#
+# ADVISORY for now, and deliberately not wired into the release chain. The
+# pass-set on a full device sweep has been measured once, by hand, not yet over
+# time; promoting this to a gate means dropping continue-on-error below and
+# adding it to publish's needs:, and should wait until a few nightlies agree.
+# Same posture smoke-host's full-suite step already takes.
+#
+# Sharding uses test.py's own --run=i,N (it sorts before selecting, so the
+# split is stable across runs and platforms). -j 1 still applies within a
+# shard: the proxy relaunches the app per test, so concurrency has to come from
+# more devices, not more threads on one.
+
+name: Tier 2b full suite
+
+on:
+  schedule:
+    # 03:00 UTC. Off-peak for hosted macOS, which is the scarce runner here.
+    - cron: '0 3 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  # Needed to find and download the libnode/xcframework from the Build run.
+  actions: read
+
+env:
+  ANDROID_NDK_VERSION: r27d
+  ANDROID_TARGET_SDK_VERSION: 24
+  TARGET_ARCH: x86_64
+  EMULATOR_API_LEVEL: 30
+  TESTNODE_NDK_VERSION: 27.3.13750724
+  ORG_GRADLE_PROJECT_testnodeAbis: x86_64
+  # full only. lite differs in ICU and a handful of build flags; a broad sweep
+  # of both would double the cost for near-duplicate runtime signal, and Tier 2a
+  # already covers lite on every PR.
+  NODEJS_MOBILE_FLAVOR: full
+
+jobs:
+  android-full:
+    strategy:
+      fail-fast: false
+      # Keep in step with the ,4 in --run below: test.py takes the shard count
+      # as an argument, so a matrix of a different length would silently skip or
+      # double-run tests rather than fail.
+      matrix:
+        shard: [0, 1, 2, 3]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 1
+      - uses: ./.github/actions/materialize
+
+      - name: Install build utils
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc-multilib g++-multilib
+
+      - name: Fetch libnode (Android) from the Build run
+        uses: ./.github/actions/fetch-build-artifact
+        with:
+          name: nodejs-mobile-android
+          dest: nm-android
+          token: ${{ github.token }}
+
+      - name: Stage libnode for the emulator ABI
+        run: |
+          mkdir -p "out_android/${TARGET_ARCH}"
+          cp "nm-android/bin/${TARGET_ARCH}/libnode.so" "out_android/${TARGET_ARCH}/libnode.so"
+
+      - name: Set up JDK
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Install testnode app NDK
+        run: yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "ndk;$TESTNODE_NDK_VERSION"
+
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' \
+            | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - name: Run shard ${{ matrix.shard }} on emulator
+        id: run
+        continue-on-error: true
+        uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2.38.0
+        with:
+          api-level: ${{ env.EMULATOR_API_LEVEL }}
+          target: default
+          arch: x86_64
+          force-avd-creation: false
+          emulator-options: -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          disable-animations: true
+          script: |
+            set -e
+            adb wait-for-device
+            ./tools/mobile-test/android/prepare-android-test.sh
+            ./tools/test.py -j 1 --flaky-tests=skip --timeout=300 --arch android --run=${{ matrix.shard }},4 parallel 2>&1 | tee shard.log
+
+      - name: Summarize shard ${{ matrix.shard }}
+        if: always()
+        run: |
+          ./tools/mobile-test/summarize-suite-run.sh shard.log "android shard ${{ matrix.shard }}"
+
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: tier2b-android-shard-${{ matrix.shard }}
+          path: shard.log
+          if-no-files-found: ignore
+
+  ios-full:
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [0, 1, 2, 3]
+    runs-on: macos-26
+    # Roughly 3x the per-test cost of the emulator (simctl launch dominates),
+    # so a quarter of the suite lands near an hour. Headroom, not a target.
+    timeout-minutes: 150
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 1
+      - uses: ./.github/actions/materialize
+
+      - name: Fetch NodeMobile.xcframework from the Build run
+        uses: ./.github/actions/fetch-build-artifact
+        with:
+          name: nodejs-mobile-ios
+          dest: nm-ios
+          token: ${{ github.token }}
+
+      - name: Stage xcframework
+        run: |
+          mkdir -p out_ios
+          rm -rf out_ios/NodeMobile.xcframework
+          cp -R nm-ios/NodeMobile.xcframework out_ios/NodeMobile.xcframework
+
+      - name: Boot iPhone simulator
+        id: boot-sim
+        uses: ./.github/actions/boot-ios-simulator
+        with:
+          device_name: nodejs-mobile-test
+
+      - name: Prepare tests on simulator
+        env:
+          DEVICE_ID: ${{ steps.boot-sim.outputs.udid }}
+        run: ./tools/mobile-test/ios/prepare-ios-sim-tests.sh
+
+      - name: Run shard ${{ matrix.shard }} on simulator
+        continue-on-error: true
+        env:
+          DEVICE_ID: ${{ steps.boot-sim.outputs.udid }}
+        run: |
+          set -o pipefail
+          ./tools/test.py -j 1 --flaky-tests=skip --timeout=300 \
+            --arch ios --shell=./tools/mobile-test/ios/node-ios-sim-proxy.sh \
+            --run=${{ matrix.shard }},4 parallel 2>&1 | tee shard.log
+
+      - name: Summarize shard ${{ matrix.shard }}
+        if: always()
+        run: |
+          ./tools/mobile-test/summarize-suite-run.sh shard.log "ios shard ${{ matrix.shard }}"
+
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: tier2b-ios-shard-${{ matrix.shard }}
+          path: shard.log
+          if-no-files-found: ignore
+
+      - name: Shutdown simulator
+        if: always()
+        run: |
+          xcrun simctl shutdown "${{ steps.boot-sim.outputs.udid }}" || true
+          xcrun simctl delete "${{ steps.boot-sim.outputs.udid }}" || true
