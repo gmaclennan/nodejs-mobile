@@ -19,11 +19,14 @@ TIMEOUT="${NODE_ANDROID_PROXY_TIMEOUT:-120}"
 # drop any verdict files left by previous launches. The per-launch token already
 # makes a stale file un-readable (different name), but clearing them keeps the
 # sandbox from accumulating files across a 151-test run and removes any doubt.
-# None of these three are the verdict channel, so a transient adb hiccup in one
-# of them must not become a test FAIL via set -e: tolerate failure and let the
-# verdict poll below be the only thing that decides.
-adb $TARGET shell 'am force-stop nodejsmobile.test.testnode' || true
-adb $TARGET shell "run-as nodejsmobile.test.testnode sh -c 'rm -f files/result-*.txt'" 2>/dev/null || true
+# None of this is the verdict channel, so a transient adb hiccup here must not
+# become a test FAIL via set -e: tolerate failure and let the verdict poll below
+# be the only thing that decides.
+#
+# The force-stop and the cleanup share one round trip. Each adb invocation
+# spawns a client and costs ~30 ms, which is pure overhead on every one of
+# ~3,300 tests. `logcat -c` is a different adb subcommand, so it stays separate.
+adb $TARGET shell "am force-stop nodejsmobile.test.testnode; run-as nodejsmobile.test.testnode sh -c 'rm -f files/result-*.txt'" 2>/dev/null || true
 adb $TARGET logcat -c || true
 
 TEST_PATH="$( cd "$( dirname "$0" )" && cd .. && cd .. && cd test && pwd )"
@@ -77,7 +80,19 @@ verdict=""
 # crash burns the full TIMEOUT and is then indistinguishable from a hang. The
 # verdict direction is FAIL either way — this buys wall-clock and a triage
 # signal, never a score.
+#
+# Poll fast. `am start -W` returns in well under 100 ms and the median test runs
+# in about the same, so a 1-second tick used to set the floor for the whole
+# harness: a trivial test cost ~1.5 s end to end, nearly all of it waiting for
+# the next poll. At 10 Hz the same test costs a fraction of that, which is worth
+# roughly an hour across a full-suite run.
+#
+# The liveness probe stays at ~1 Hz. It is a second adb round trip and only
+# buys triage detail (crash vs hang), so there is no reason to pay for it ten
+# times a second.
+POLL_HZ=10
 waited=0
+ticks=0
 gone=""
 while :; do
   verdict=$(adb $TARGET shell "run-as nodejsmobile.test.testnode cat ${RESULT_REL} 2>/dev/null" 2>/dev/null | tr -d '\r\n' || true)
@@ -88,13 +103,14 @@ while :; do
   # Re-read once after the process died — it may have written the verdict and
   # exited between the two probes — then stop.
   if [ -n "$gone" ]; then break; fi
-  if [ -n "$liveness" ] && ! app_alive; then
+  if [ -n "$liveness" ] && [ $((ticks % POLL_HZ)) -eq 0 ] && ! app_alive; then
     gone=1
     continue
   fi
   if [ "$waited" -ge "$TIMEOUT" ]; then break; fi
-  sleep 1
-  waited=$((waited + 1))
+  sleep 0.1
+  ticks=$((ticks + 1))
+  waited=$((ticks / POLL_HZ))
 done
 case "$verdict" in
   PASS|FAIL) ;;

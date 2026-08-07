@@ -52,14 +52,18 @@ for attempt in $(seq 1 "$LAUNCH_ATTEMPTS"); do
   xcrun simctl launch --console --terminate-running-process "$UDID" "$BUNDLE" \
     --run-token "$RUN_TOKEN" --substitute-dir "$TEST_BASE" "$@" >| "$LOG" 2>&1 &
   LP=$!
+  # Poll at 10 Hz, not 1 Hz. The verdict file is local (the simulator's data
+  # container is a directory on this filesystem), so a probe is a stat and costs
+  # nothing; a 1-second tick just added up to a second of dead time to every
+  # single test. TIMEOUT stays in seconds.
   verdict=""
-  for _ in $(seq 1 "$TIMEOUT"); do
+  for _ in $(seq 1 $((TIMEOUT * 10))); do
     if [ -f "$RESULT_FILE" ]; then
       verdict=$(tr -d '\r\n' < "$RESULT_FILE")
       [ -n "$verdict" ] && break
     fi
     kill -0 "$LP" 2>/dev/null || { [ -f "$RESULT_FILE" ] && verdict=$(tr -d '\r\n' < "$RESULT_FILE"); break; }
-    sleep 1
+    sleep 0.1
   done
   kill "$LP" 2>/dev/null || true
   wait "$LP" 2>/dev/null || true
