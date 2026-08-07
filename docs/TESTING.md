@@ -356,6 +356,29 @@ path works on Android and on an iOS *device* if the whole string stays under 104
 bytes, and cannot work on the iOS simulator. Note `os.tmpdir()` on iOS returns a
 path inside the container, so it carries the full prefix.
 
+### fs.watch
+
+`fs.watch()` works on both platforms, but on **iOS it cannot tell you which file
+changed** for a non-recursive watch. libuv compiles FSEvents out on iOS —
+*"iOS (currently) doesn't provide the FSEvents-API (nor CoreServices)"*,
+`deps/uv/src/unix/fsevents.c` — and falls back to kqueue, which watches a
+directory file descriptor and reports only that the directory changed. The
+`filename` argument comes back as the watched directory's own name.
+
+The visible consequence is that the **`ignore` option filters out everything**,
+even a predicate that never matches, because node applies it to that filename.
+Recursive watching is unaffected: node implements that in JS and does report
+proper relative paths.
+
+This is upstream libuv behaviour on the platform, not something this fork can
+fix. Isolated by testing three builds — it works on Android (also a
+`NODE_MOBILE` build), on stock node 24.18.0 for macOS, and on **this fork's own
+macOS host build** — so neither the patch series nor the node version is
+involved. The ten affected tests are skipped for iOS with that reason recorded.
+
+**For embedders:** don't rely on `filename` from a non-recursive `fs.watch` on
+iOS, and don't use the `ignore` option there.
+
 ### Tests under `--permission`
 
 A test that runs with `--permission` but without `--allow-fs-write` cannot be
