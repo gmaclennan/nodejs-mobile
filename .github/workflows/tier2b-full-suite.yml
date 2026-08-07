@@ -21,10 +21,16 @@
 # adding it to publish's needs:, and should wait until a few nightlies agree.
 # Same posture smoke-host's full-suite step already takes.
 #
-# Sharding uses test.py's own --run=i,N (it sorts before selecting, so the
-# split is stable across runs and platforms). -j 1 still applies within a
-# shard: the proxy relaunches the app per test, so concurrency has to come from
-# more devices, not more threads on one.
+# Shards are balanced by measured time, not by test count. test.py's own
+# --run=i,N splits round-robin over a sorted list, which sounds fair and is not:
+# durations run from under a second to half a minute, and a measured 4-way split
+# came out 18.8 / 19.3 / 33.5 / 20.3 minutes against a 19.3-minute ideal. The job
+# waits on the slowest shard, so that tail was ~40% wasted wall-clock.
+# shard-tests.py assigns longest-first to the lightest shard, from durations
+# recorded in tier2b-durations.tsv, and lands every shard within a few percent.
+#
+# -j 1 still applies within a shard: the proxy relaunches the app per test, so
+# concurrency has to come from more devices, not more threads on one.
 
 name: Tier 2b full suite
 
@@ -55,8 +61,8 @@ jobs:
   android-full:
     strategy:
       fail-fast: false
-      # Keep in step with the ,4 in --run below: test.py takes the shard count
-      # as an argument, so a matrix of a different length would silently skip or
+      # Keep in step with --shards below: shard-tests.py partitions into exactly
+      # that many bins, so a matrix of a different length would drop or
       # double-run tests rather than fail.
       matrix:
         shard: [0, 1, 2, 3]
@@ -116,7 +122,9 @@ jobs:
             set -e
             adb wait-for-device
             ./tools/mobile-test/android/prepare-android-test.sh
-            ./tools/test.py -j 1 --flaky-tests=skip --timeout=300 --arch android --run=${{ matrix.shard }},4 parallel sequential 2>&1 | tee shard.log
+            ./tools/mobile-test/shard-tests.py --arch android --shards 4 --shard ${{ matrix.shard }} > shard-list.txt
+            test -s shard-list.txt || { echo "::error::empty shard list"; exit 1; }
+            xargs ./tools/test.py -j 1 --flaky-tests=skip --timeout=300 --arch android < shard-list.txt 2>&1 | tee shard.log
 
       - name: Summarize shard ${{ matrix.shard }}
         if: always()
@@ -175,9 +183,10 @@ jobs:
           DEVICE_ID: ${{ steps.boot-sim.outputs.udid }}
         run: |
           set -o pipefail
-          ./tools/test.py -j 1 --flaky-tests=skip --timeout=300 \
-            --arch ios --shell=./tools/mobile-test/ios/node-ios-sim-proxy.sh \
-            --run=${{ matrix.shard }},4 parallel sequential 2>&1 | tee shard.log
+          ./tools/mobile-test/shard-tests.py --arch ios --shards 4 --shard ${{ matrix.shard }} > shard-list.txt
+          test -s shard-list.txt || { echo "::error::empty shard list"; exit 1; }
+          xargs ./tools/test.py -j 1 --flaky-tests=skip --timeout=300 \
+            --arch ios --shell=./tools/mobile-test/ios/node-ios-sim-proxy.sh < shard-list.txt 2>&1 | tee shard.log
 
       - name: Summarize shard ${{ matrix.shard }}
         if: always()
