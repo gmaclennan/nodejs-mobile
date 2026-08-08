@@ -1,7 +1,7 @@
 #!/bin/bash
 # Push the embedder + libnode.so + libc++_shared.so + smoke.js to a connected
 # Android device/emulator and assert the smoke marker and a clean exit.
-# Tier 1 smoke (docs/TESTING.md on the recipe branch).
+# Boot smoke (docs/TESTING.md on the recipe branch).
 #
 # Usage: run-android-smoke.sh <embedder> <libnode.so> <libc++_shared.so> [serial]
 set -euo pipefail

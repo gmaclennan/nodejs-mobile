@@ -1,6 +1,6 @@
 #!/usr/bin/env ruby
 # Add a transient XCUITest target (testnodeUITests) + a shared scheme to the
-# testnode Xcode project, for the BrowserStack Tier-3 smoke. Run at CI time on
+# testnode Xcode project, for the BrowserStack real-device smoke. Run at CI time on
 # a scratch checkout — the modified project is a build input, never committed.
 # Using the xcodeproj gem keeps the pbxproj edit correct-by-construction
 # instead of hand-maintaining target boilerplate in the repo.

@@ -3,7 +3,7 @@ set -euo pipefail
 
 # Build the testnode app for the iOS *simulator*, install it on $DEVICE_ID, and
 # copy the bundled test assets into the app's Documents dir.
-# Tier 2 simulator harness (docs/TESTING.md on the recipe branch).
+# Simulator harness for the device test suites (docs/TESTING.md on the recipe branch).
 #
 # This is the simulator counterpart of prepare-ios-tests.sh, which targets a
 # physical device via ios-deploy (ios-deploy cannot drive a simulator).

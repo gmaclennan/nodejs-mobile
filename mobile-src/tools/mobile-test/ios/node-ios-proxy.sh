@@ -17,7 +17,7 @@
 # code: same contract as the simulator and Android proxies. See TESTING.md on
 # the recipe branch.
 #
-# Local-only — no CI job runs this; Tier-3 device coverage goes through
+# Local-only — no CI job runs this; real-device coverage goes through
 # BrowserStack.
 set -uo pipefail
 

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Report what Tier 2 actually covers on each mobile platform.
+"""Report what the curated device gate actually covers on each platform.
 
 A test can be absent from a device run for two very different reasons: it is
 skipped by a `[$system==android]` / `[$system==ios]` section in a `.status`
@@ -28,7 +28,7 @@ import sys
 import tempfile
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-CURATED = os.path.join(ROOT, 'tools', 'mobile-test', 'tier2-parallel-tests.txt')
+CURATED = os.path.join(ROOT, 'tools', 'mobile-test', 'curated-device-tests.txt')
 PLATFORMS = ('android', 'ios')
 
 
@@ -117,21 +117,21 @@ def main():
             rows.append((arch, total, skipped, runnable, run, runnable - run))
 
     width = max(len(r[0]) for r in rows)
-    print(f'Tier-2 coverage manifest — test/{args.suite}')
+    print(f'Device-test coverage manifest — test/{args.suite}')
     print()
     for arch, total, skipped, runnable, run, absent in rows:
         pct = 100.0 * run / runnable if runnable else 0.0
         print(f'  {arch:<{width}}  {total:5d} total'
               f'   {skipped:5d} skipped by .status'
               f'   {runnable:5d} runnable'
-              f'   {run:5d} run in Tier 2 ({pct:.1f}%)'
+              f'   {run:5d} run on PRs ({pct:.1f}%)'
               f'   {absent:5d} never run on a device')
 
     if args.summary and os.environ.get('GITHUB_STEP_SUMMARY'):
         with open(os.environ['GITHUB_STEP_SUMMARY'], 'a', encoding='utf-8') as handle:
-            handle.write(f'\n### Tier-2 coverage — `test/{args.suite}`\n\n')
+            handle.write(f'\n### Device-test coverage — `test/{args.suite}`\n\n')
             handle.write('| Platform | Total | Skipped by `.status` | Runnable | '
-                         'Run in Tier 2 | Never run on a device |\n')
+                         'Run on PRs (curated) | Never run on a device |\n')
             handle.write('|---|---:|---:|---:|---:|---:|\n')
             for arch, total, skipped, runnable, run, absent in rows:
                 pct = 100.0 * run / runnable if runnable else 0.0

@@ -22,7 +22,7 @@ import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 
 /**
- * Tier-3 real-device smoke, self-driving so it can run on BrowserStack App
+ * Real-device smoke, self-driving so it can run on BrowserStack App
  * Automate (Espresso) where there is no adb/proxy harness. The CI workflow
  * stages bs-smoke.js, test-napi-addon.js and the prebuilt crcnative.node into
  * this test APK's assets (src/androidTest/assets/, created at build time).
