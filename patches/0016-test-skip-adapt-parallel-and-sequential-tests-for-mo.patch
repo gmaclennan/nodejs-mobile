@@ -17,7 +17,7 @@ series itself.
 Co-authored-by: Jaime Bernardo <jaime@janeasystems.com>
 Co-authored-by: Andre Staltz <andre@staltz.com>
 ---
- test/parallel/parallel.status                 | 1355 ++++++++++++++++-
+ test/parallel/parallel.status                 | 1366 ++++++++++++++++-
  test/parallel/test-dgram-bind-fd.js           |    2 +-
  test/parallel/test-dgram-membership.js        |   10 +-
  .../parallel/test-dgram-socket-buffer-size.js |    2 +-
@@ -52,10 +52,10 @@ Co-authored-by: Andre Staltz <andre@staltz.com>
  test/sequential/sequential.status             |  129 ++
  test/sequential/test-async-wrap-getasyncid.js |   15 +-
  test/sequential/test-fs-watch.js              |    4 +
- 35 files changed, 1664 insertions(+), 47 deletions(-)
+ 35 files changed, 1675 insertions(+), 47 deletions(-)
 
 diff --git a/test/parallel/parallel.status b/test/parallel/parallel.status
-index 5c7fe47927..0ec8e64ae1 100644
+index 5c7fe47927..8975481548 100644
 --- a/test/parallel/parallel.status
 +++ b/test/parallel/parallel.status
 @@ -130,7 +130,6 @@ test-net-write-after-end-nt: SKIP
@@ -66,7 +66,7 @@ index 5c7fe47927..0ec8e64ae1 100644
  test-crypto-secure-heap: SKIP
  # https://github.com/nodejs/node/issues/39683
  test-dgram-connect: PASS, FLAKY
-@@ -156,6 +155,1360 @@ test-tls-set-default-ca-certificates-append-fetch: SKIP
+@@ -156,6 +155,1371 @@ test-tls-set-default-ca-certificates-append-fetch: SKIP
  test-tls-set-default-ca-certificates-reset-fetch: SKIP
  test-inspector-invalid-protocol: SKIP
  
@@ -1424,6 +1424,17 @@ index 5c7fe47927..0ec8e64ae1 100644
 +test-worker-process-argv: SKIP
 +test-worker-stdio: SKIP
 +test-worker-terminate-http2-respond-with-file: SKIP
++#
++# Same stdout-shape caveat as test-process-getactiveresources: the set of active
++# handles depends on what stdout *is*, and the harness gives node a file.
++#
++test-process-getactiveresources-track-active-requests: SKIP
++#
++# Load sensitive, not broken: 5/5 standalone, fails inside a full-suite run.
++# FLAKY keeps them running; SKIP would retire them.
++#
++test-https-client-renegotiation-limit: PASS, FLAKY
++test-https-selfsigned-no-keycertsign-no-crash: PASS, FLAKY
  [$asan==on]
  # https://github.com/nodejs/node/issues/39655
  test-cluster-primary-error: PASS, FLAKY
