@@ -6,11 +6,13 @@ always sits on an upstream release tag, so every test in it already passes on a
 desktop build. The only thing Tier 2a can catch is a regression introduced by
 this fork -- the patch series, the build flags, or the platform underneath.
 
-The list it replaces did not reflect that. It was 195 tests, of which 139 (71%)
-were buffer, url, whatwg-url, path, querystring, string_decoder and util --
-pure JS over V8 builtins, which no patch in the series touches -- and 26 (13%)
-were anything to do with the platform boundary. Sixty-four buffer tests cannot
-fail unless V8 itself is broken, and if V8 is broken the first five will say so.
+The list it replaces did not reflect that. Of its 195 tests, 134 (69%) were
+buffer, url, whatwg-url, path, querystring, string_decoder and util -- pure JS
+over V8 builtins, which no patch in the series touches. Widen that to the whole
+non-platform surface, adding assert, events, the EventTarget family, ICU/Intl
+and WHATWG encoding, and it was 157 (81%), leaving 19% that went anywhere near
+the platform boundary. Sixty-four buffer tests cannot fail unless V8 itself is
+broken, and if V8 is broken the first five will say so.
 
 So weight by blast radius instead, taken from patches/files.map:
 
