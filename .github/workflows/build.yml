@@ -993,7 +993,11 @@ jobs:
           git config user.name "nodejs-mobile-bot"
           git config user.email "bot@users.noreply.github.com"
           TAG="v${V}"
-          git tag -a "$TAG" -m "nodejs-mobile ${V}"
+          # Recipe-Commit records which recipe-branch commit generated this
+          # release. The tag object is the durable home for that link: the run
+          # that knows it expires, and the materialized commit itself carries
+          # only the generic overlay message.
+          git tag -a "$TAG" -m "nodejs-mobile ${V}" -m "Recipe-Commit: ${GITHUB_SHA}"
           git remote add fork "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
           if [ "$DRY" = "1" ]; then
             echo "DRY RUN: would push tag $TAG (materialized tree $(git rev-parse 'HEAD^{tree}'))"
@@ -1035,15 +1039,18 @@ jobs:
         run: |
           TAG="v${V}"
           NOTES=$(cat "$RUNNER_TEMP/release-notes.md")
+          # Human-visible copy of the tag's Recipe-Commit trailer.
+          PROV="Generated from [\`recipe@${GITHUB_SHA:0:10}\`](https://github.com/${GITHUB_REPOSITORY}/commit/${GITHUB_SHA})."
           if [ "$DRY" = "1" ]; then
             echo "DRY RUN: would publish prerelease $TAG with:"
             ls -la out
-            printf '%s\n' "--- notes ---" "$NOTES"
+            printf '%s\n' "--- notes ---" "$NOTES" "" "$PROV"
           else
+            BODY="$(printf '%s\n\n%s' "${NOTES:-Release ${V}. See https://github.com/${GITHUB_REPOSITORY}/blob/recipe/docs/CHANGELOG.md}" "$PROV")"
             gh release create "$TAG" out/*.zip \
               --repo "$GITHUB_REPOSITORY" \
               --title "nodejs-mobile ${V}" \
               --prerelease \
-              --notes "${NOTES:-Release ${V}. See https://github.com/${GITHUB_REPOSITORY}/blob/recipe/docs/CHANGELOG.md}"
+              --notes "$BODY"
             echo "Published prerelease $TAG"
           fi
