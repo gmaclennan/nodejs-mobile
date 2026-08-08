@@ -19,6 +19,11 @@ on:
     # 03:00 UTC. Off-peak for hosted macOS, which is the scarce runner here.
     - cron: '0 3 * * *'
   workflow_dispatch:
+  # TEMPORARY (revert before merge): dispatch only works for workflows on the
+  # default branch, so trigger by push while this file only exists on the PR
+  # branch.
+  push:
+    branches: [test/tier2-device-coverage]
 
 permissions:
   contents: read
@@ -63,6 +68,9 @@ jobs:
           name: nodejs-mobile-android
           dest: nm-android
           token: ${{ github.token }}
+          # TEMPORARY (revert before merge): pin the dispatched Build run —
+          # the by-commit lookup only finds a Build for this exact SHA.
+          build_run_id: '31261350908'
 
       - name: Stage libnode for the emulator ABI
         run: |
@@ -133,6 +141,9 @@ jobs:
           name: nodejs-mobile-ios
           dest: nm-ios
           token: ${{ github.token }}
+          # TEMPORARY (revert before merge): pin the dispatched Build run —
+          # the by-commit lookup only finds a Build for this exact SHA.
+          build_run_id: '31261350908'
 
       - name: Stage xcframework
         run: |
