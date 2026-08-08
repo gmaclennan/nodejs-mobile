@@ -4,9 +4,8 @@ Bumping to a newer upstream Node.js release means re-basing the patch
 series onto the new tag. There is no branch rebasing and no force-pushing —
 the patches are files, and the upgrade is an ordinary reviewable PR.
 
-The procedure below is what the 24.15.0 → 24.18.0 upgrade actually took
-(five small conflicts, all resolved in minutes, plus one that only the
-compile caught — see the warning below).
+Expect a handful of small conflicts resolvable in minutes — plus,
+occasionally, one that only the compile catches (see the warning below).
 
 ## Re-base the series
 
@@ -34,20 +33,20 @@ Patterns seen in practice:
 - **Wholesale-replacement docs** (the fork `README.md` replaces the upstream
   remainder): resolve to ours.
 
-A clean `git am` is **not** proof of semantic correctness: in the 24.18.0
-bump, an upstream restructure of `crypto_context.cc` merged cleanly but left
-our `#endif // TARGET_OS_OSX` above a new function tail that used
-guard-scoped identifiers — caught only by the iOS compile. Treat the full
-Build matrix as part of the upgrade loop, and re-check that every
-platform-guard (`TARGET_OS_OSX` / `__ANDROID__`) still encloses everything
-it needs to.
+A clean `git am` is **not** proof of semantic correctness: an upstream
+restructure can merge cleanly yet leave a platform guard (`#endif //
+TARGET_OS_OSX`) above code that needs it — caught only by the cross-compile.
+Treat the full Build matrix as part of the upgrade loop, and re-check that
+every platform guard (`TARGET_OS_OSX` / `__ANDROID__`) still encloses
+everything it needs to.
 
 Also:
 
 - check `.github/workflows/` in `out/` for **new upstream workflows** the
-  removal patch doesn't cover yet — delete-and-own them in patch 0019 if
-  they would actually run on this fork (most are gated on
-  `github.repository == 'nodejs/node'` and are harmless).
+  removal patch doesn't cover yet — delete-and-own them in the upstream-CI
+  removal patch (`ci-remove-upstream-only-workflows-and-config.patch`); a
+  `verify-patches` job asserts the materialized tree carries zero workflow
+  files, so a missed one fails loudly.
 
 Then regenerate and commit:
 

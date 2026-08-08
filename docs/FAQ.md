@@ -13,23 +13,27 @@
 
 ## Can I use npm node-modules with nodejs-mobile?
 
-npm modules can be used with nodejs-mobile. They need to be installed at development time in the application source folder that contains the Node.js project files. There are samples that show how to use npm modules for [Android](https://github.com/janeasystems/nodejs-mobile-samples/tree/master/android/native-gradle-node-folder) and [iOS](https://github.com/janeasystems/nodejs-mobile-samples/tree/master/ios/native-xcode-node-folder) when using the native library directly. There are instructions in the [nodejs-mobile-cordova](https://github.com/janeasystems/nodejs-mobile-cordova#node-modules) and [nodejs-mobile-react-native](https://github.com/janeasystems/nodejs-mobile-react-native#node-modules) plugins README on how to use them.
+npm modules can be used with nodejs-mobile. They need to be installed at development time in the application source folder that contains the Node.js project files. There are samples that show how to use npm modules for [Android](https://github.com/nodejs-mobile/nodejs-mobile-samples/tree/master/android/native-gradle-node-folder) and [iOS](https://github.com/nodejs-mobile/nodejs-mobile-samples/tree/master/ios/native-xcode-node-folder) when using the native library directly. There are instructions in the [nodejs-mobile-cordova](https://github.com/nodejs-mobile/nodejs-mobile-cordova#node-modules) and [nodejs-mobile-react-native](https://github.com/nodejs-mobile/nodejs-mobile-react-native#node-modules) plugins README on how to use them.
 
 ## Are all Node.js APIs supported on mobile?
 
 Not every API is supported on mobile, the main reason for this being that the mobile operating systems won't allow applications to call certain APIs that are expected to be available on other operating systems. Examples:
 
 - `child_process.spawn()`, `child_process.fork()` and other APIs that create new processes will run into permission issues
-- `process.exit()` is not allowed by the Apple App Store guildelines
+- `process.exit()` is not allowed by the Apple App Store guidelines
 - `os.cpus()` returns unreliable or no data on mobile:
   - **iOS**: CPU speed values are always 0.
   - **Android 8.0+**: the call returns `undefined` (the OS no longer exposes per-core frequency to apps).
   - **Android < 8.0**: values can be inconsistent — some devices power cores on and off as an energy-saving strategy, so a core that is off at the moment of the call reports zero.
-- `os.availableParallelism()`
+- `os.availableParallelism()` — subject to the same platform limits as `os.cpus()`; treat the value as advisory.
 
-A few other general JavaScript APIs are also unsupported due to Node.js Mobile not including full internationalization support:
-
-- RegExp Unicode Property Names, for example `/\p{Letter}+/u`
+On the **`lite`** flavor (built without ICU — see
+[BUILDING.md](./BUILDING.md#the-lite-variant)), JavaScript features that
+depend on internationalization support are unavailable — `Intl.*`, and RegExp
+Unicode property escapes such as `/\p{Letter}+/u`. The default `full` flavor
+supports them, with English-only locale data built in (`small-icu`); point
+`NODE_ICU_DATA` at a full `icudt*.dat` for more locales
+([EMBEDDING.md](./EMBEDDING.md#situational)).
 
 WebAssembly is a special case on iOS — see
 [the next question](#does-fetch-work-what-about-webassembly).
@@ -120,13 +124,13 @@ until you set the variable — anything writing there fails with `ENOENT`. And a
 embedded runtime inherits the host process's working directory, which on Android
 is `/`, so relative paths do not resolve where you would expect.
 
-The older [nodejs-mobile-cordova](https://github.com/janeasystems/nodejs-mobile-cordova#cordovaappdatadir)
-and [nodejs-mobile-react-native](https://github.com/janeasystems/nodejs-mobile-react-native#rn_bridgeappdatadir)
+The older [nodejs-mobile-cordova](https://github.com/nodejs-mobile/nodejs-mobile-cordova#cordovaappdatadir)
+and [nodejs-mobile-react-native](https://github.com/nodejs-mobile/nodejs-mobile-react-native#rn_bridgeappdatadir)
 plugins expose an app-data-dir call that does this for you.
 
 ## Are Node.js native modules supported?
 
-Node native modules, which contain native code, are able to run on nodejs-mobile, as long as they can be cross-compiled for the target platform / CPU. The cross-compiling feature is integrated into the plugins and instructions can be found in the [nodejs-mobile-cordova](https://github.com/janeasystems/nodejs-mobile-cordova#native-modules) or in the [nodejs-mobile-react-native](https://github.com/janeasystems/nodejs-mobile-react-native#native-modules) README, but only Linux and MacOS development machines are currently supported. Modules that contain custom build steps and platform specific code may need workarounds/changes to get them to work. We've created a github repository so that the workarounds/changes can be discussed and shared: https://github.com/janeasystems/nodejs-mobile-module-compat
+Node native modules, which contain native code, are able to run on nodejs-mobile, as long as they can be cross-compiled for the target platform / CPU. The cross-compiling feature is integrated into the plugins and instructions can be found in the [nodejs-mobile-cordova](https://github.com/nodejs-mobile/nodejs-mobile-cordova#native-modules) or in the [nodejs-mobile-react-native](https://github.com/nodejs-mobile/nodejs-mobile-react-native#native-modules) README, but only Linux and MacOS development machines are currently supported. Modules that contain custom build steps and platform specific code may need workarounds/changes to get them to work. We've created a github repository so that the workarounds/changes can be discussed and shared: https://github.com/nodejs-mobile/nodejs-mobile-module-compat
 
 ## How can I improve Node.js load times?
 
@@ -149,6 +153,9 @@ This technique is used in the `nodejs-mobile-cordova` plugin, where Cordova uses
 
 ## Can you support a plugin for the X mobile framework?
 
-We are currently focused on supporting cordova and react-native plugins only, but we are open to community contributions for other frameworks.
-If you are interested in a particular framework, please see if [an issue](https://github.com/janeasystems/nodejs-mobile/issues/) for it has already been opened, and let us know about your interest in there. Otherwise, feel free to open a new issue.
+The maintained plugins are [nodejs-mobile-react-native](https://github.com/nodejs-mobile/nodejs-mobile-react-native)
+and [nodejs-mobile-cordova](https://github.com/nodejs-mobile/nodejs-mobile-cordova); community contributions for
+other frameworks are welcome. If you are interested in a particular framework,
+see whether [an issue](https://github.com/nodejs-mobile/nodejs-mobile/issues/)
+for it exists and add your interest there, or open a new one.
 

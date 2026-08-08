@@ -55,7 +55,7 @@ sdkmanager "ndk;27.3.13750724"
 This repository holds the recipe, not the source. Generate a tree from it:
 
 ```sh
-git clone -b patches https://github.com/nodejs-mobile/nodejs-mobile
+git clone -b recipe https://github.com/nodejs-mobile/nodejs-mobile
 cd nodejs-mobile && scripts/prepare.sh && cd out
 ```
 
@@ -138,7 +138,7 @@ patch-stack surface):
 | `--without-amaro` (TS type-stripping) | for consumers shipping plain `.js` |
 | `--without-inspector` | not used in production |
 | `--without-sqlite` | for consumers using the `better-sqlite3` addon, not `node:sqlite` |
-| `--with-intl=none` (no ICU) | for consumers that use no `Intl.*` — verify per consumer (e.g. valibot's only `Intl` user, `Intl.Segmenter`, sits behind grapheme validators that may be unused); also shipped on Node 18 with `intl=none` |
+| `--with-intl=none` (no ICU) | for consumers that use no `Intl.*` — verify against your own dependency tree (a dependency may reference `Intl` from a code path you never call) |
 | `-ffunction-sections`/`--gc-sections` | dead-code strip; no behavior change |
 | **iOS only:** `--v8-lite-mode` | drops the compiled JIT + V8 WASM engine, both **dead on iOS** (it runs jitless; WebAssembly is served by the bundled polywasm polyfill — see [FAQ](./FAQ.md#does-fetch-work-what-about-webassembly)). This is the big lever. |
 
@@ -149,7 +149,8 @@ Measured shipping sizes (arm64, after symbol strip):
   `--v8-lite-mode` (Android keeps the JIT and V8's native WASM for undici).
 
 `build-id` (`-Wl,--build-id=sha1`) is emitted on the Android `libnode.so` in
-**both** flavors so Sentry can symbolicate native crashes. The standing
-safeguard for `intl=none` is the consumer's own backend test suite run against the
-lite binary — it catches any `Intl` breakage from future dependency changes.
+**both** flavors so crash reporters (e.g. Sentry) can symbolicate native
+crashes. The safeguard for `intl=none` is running your own application's test
+suite against the lite binary — it catches `Intl` breakage from future
+dependency changes.
 
