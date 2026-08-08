@@ -88,8 +88,12 @@ jobs:
       # the materialized tree so an upstream bump can't silently shrink it.
       # tools/test.py ignores a path that matches nothing, so a deleted or
       # renamed upstream test would otherwise vanish from the gate while every
-      # job stays green. process.exit() is banned by the harness contract
-      # (libc exit() beats the verdict write — docs/TESTING.md).
+      # job stays green.
+      #
+      # process.exit() used to be banned here because libc exit() beat the
+      # verdict write. The app now preloads an exit-verdict hook on every
+      # launch, so an exiting test records its real code and the ban would only
+      # exclude the self-skipping tests it exists to score.
       - name: Lint the curated Tier-2 list
         run: |
           set -euo pipefail
@@ -104,29 +108,24 @@ jobs:
               fail=1
               continue
             fi
-            f="test/$t.js"; [ -f "$f" ] || f="test/$t.mjs"
-            if grep -qE 'process\.exit\(' "$f"; then
-              echo "::error::curated entry calls process.exit() (mis-scored by the per-process harness): $t"
-              fail=1
-            fi
           done < tools/mobile-test/tier2-parallel-tests.txt
           echo "curated list: $count entries validated"
           [ "$count" -ge 100 ] || { echo "::error::curated list implausibly small ($count)"; fail=1; }
           [ "$fail" -eq 0 ]
 
-      # Patch 0019 removes ALL upstream workflows so no ref carrying the
+      # Patch 0018 removes ALL upstream workflows so no ref carrying the
       # materialized tree (a release tag, a branch cut from one) can run
       # upstream CI here. Zero files — not an allowlist of inert ones —
       # because an inert workflow's triggers can change on an upstream bump,
       # and a filename check would accept the file while it went live. The
-      # removal is by enumeration inside 0019, so an upstream bump that ADDS
+      # removal is by enumeration inside 0018, so an upstream bump that ADDS
       # a workflow reappears here as a loud failure; the fix is always to
       # extend the patch.
       - name: Assert the materialized tree has no workflow files
         run: |
           set -euo pipefail
           if [ -d out/.github/workflows ] && [ -n "$(ls -A out/.github/workflows)" ]; then
-            echo "::error::workflow files in the materialized tree (extend patch 0019):"
+            echo "::error::workflow files in the materialized tree (extend patch 0018):"
             ls out/.github/workflows
             exit 1
           fi
