@@ -9,7 +9,7 @@
 
 // Mobile rebuild revision of the same upstream Node version: the -X in the
 // nodejs-mobile-<upstream>-<rev> tag (e.g. 24.15.0-0). Bumped by prepare-release.
-#define NODE_MOBILE_REVISION 0
+#define NODE_MOBILE_REVISION 1
 
 #define NODE_MOBILE_VERSION_IS_RELEASE NODE_VERSION_IS_RELEASE
 
