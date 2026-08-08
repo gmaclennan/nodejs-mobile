@@ -115,11 +115,11 @@ Tier 2 is split, because one job cannot be both fast enough for a PR and broad
 enough to be trusted:
 
 - **Tier 2a** — `emulator-tests` / `simulator-tests`, driven from `build.yml`
-  on every PR and push. The curated ~195-test allow-list, deterministic and a
+  on every PR and push. The curated 208-test allow-list, deterministic and a
   few minutes per platform. It answers "did this change break something we
   already care about".
 - **Tier 2b** — `tier2b-full-suite.yml`, nightly. Everything `parallel.status`
-  and `sequential.status` do not skip: ~3,280 + ~57 tests on Android and ~3,400
+  and `sequential.status` do not skip: ~3,260 + ~54 tests on Android and ~3,200
   + ~53 on iOS, split four ways per platform. It answers "what is true on a
   device that we have not looked at", which is the larger question — Tier 2a
   covers about 6% of the runnable suite.
@@ -148,9 +148,11 @@ they mean different things) and uploads its log.
 
 ### The curated subset
 
-`tools/mobile-test/tier2-parallel-tests.txt` is the allow-list (~195 single-
+`tools/mobile-test/tier2-parallel-tests.txt` is the allow-list (208 single-
 process `test/parallel` cases) shared by both Tier-2 workflows, so a regression
-fails the same named test on both platforms. The runner invocation is:
+fails the same named test on both platforms. It is **generated** by
+`tools/mobile-test/select-tier2a.py` — change the risk weights there and
+regenerate rather than adding lines by hand. The runner invocation is:
 
 ```sh
 # Android emulator
@@ -173,27 +175,24 @@ of the test bodies.
 
 ### What the subset does not cover
 
-The allow-list is small, and its shape is not the shape of the risk. Of its 195
-entries, 114 are `buffer`, `url` and `path` — string and array manipulation that
-touches almost no libuv, no sockets, no filesystem and no threads. One entry
-opens a socket (`test-mobile-fetch`); one reads a file; none exercise `net`,
-`http`, `tls`, `dns`, `dgram`, `zlib`, `worker_threads`, `vm` or `timers` on a
-device, while the patch series touches libuv, the V8 trap handler, c-ares, the
-crypto context and the worker environment clone.
+The allow-list is weighted towards the patch series' blast radius — `net`,
+`tls`, `timers`, `process`, `fs`, `dns`, `dgram`, `crypto`, `worker` and `http`
+are its ten largest modules — so what it misses is not a module the fork can
+break, but sheer breadth: 208 of ~3,200 runnable tests.
 
 Run `tools/mobile-test/coverage-manifest.py` for the current numbers. It
 separates the two reasons a test is absent from a device run, which a green run
 cannot:
 
 ```
-android   4103 total   819 skipped by .status   3284 runnable   195 run in Tier 2 (5.9%)   3089 never run on a device
-ios       4103 total   701 skipped by .status   3402 runnable   195 run in Tier 2 (5.7%)   3207 never run on a device
+android   4103 total   839 skipped by .status   3264 runnable   208 run in Tier 2 (6.4%)   3056 never run on a device
+ios       4103 total   906 skipped by .status   3197 runnable   208 run in Tier 2 (6.5%)   2989 never run on a device
 ```
 
-A `.status` skip is a recorded decision. The other 3,200-odd are not decisions
+A `.status` skip is a recorded decision. The other 3,000-odd are not decisions
 at all — they are tests nobody has tried on a device. That gap, not the skip
-list, is where the missing coverage lives. `smoke-host` prints this table on
-every run.
+list, is where the missing coverage lives, and Tier 2b is what closes it.
+`smoke-host` prints this table on every run.
 
 ### Expanding the curated list
 
@@ -239,21 +238,21 @@ three is a `PASS, FLAKY` entry, not a skip.
 Only the first two produce a `.status` edit, and both carry a reason. An
 uncommented skip is indistinguishable from an oversight a year later.
 
-**5. Add the survivors** to `tools/mobile-test/tier2-parallel-tests.txt`, keeping
-it sorted, and re-run the whole list once on both platforms — a test can pass
-alone and fail in company (the proxy relaunches the app per test, so device load
-is a real variable).
+**5. Regenerate the list** with `tools/mobile-test/select-tier2a.py` — it picks
+from whatever `.status` now leaves runnable, so recovering a test in step 4 is
+what makes it eligible. Then re-run the whole list once on both platforms: a
+test can pass alone and fail in company (the proxy relaunches the app per test,
+so device load is a real variable).
 
 Because these are all edits to files the fork owns (`.status` files are patched
-by `0017`, the list lives in `mobile-src/`), they go back through
+by `0016`, the list lives in `mobile-src/`), they go back through
 `scripts/regenerate-patches.py` like any other change, and `expected-tree.txt`
 moves with them.
 
 ### The fetch / WebAssembly gate
 
-`test/parallel/test-mobile-fetch` is the one entry in the curated list that
-isn't pure JS: it runs a `fetch()` against an
-in-process HTTP server. That exercises undici's WebAssembly build of llhttp,
+`test/parallel/test-mobile-fetch` runs a `fetch()` against an in-process HTTP
+server. That exercises undici's WebAssembly build of llhttp,
 which on iOS runs on the bundled polywasm polyfill because a jitless V8 has no
 WebAssembly of its own ([FAQ](./FAQ.md#does-fetch-work-what-about-webassembly)).
 
@@ -307,7 +306,7 @@ patched behaviour is the behaviour).
 | `test-mobile-worker-env-clone` | 0008 (env clone) | a default-`env` worker comes up with a missing or partial environment; on Android, with one unclonable variable present, it does not come up at all |
 | `test-mobile-system-ca` | 0010 (iOS TLS trust) | `tls.getCACertificates('system')` throws, hands back expired or duplicated certificates, or comes back empty where the platform has a readable store |
 | `test-mobile-node-path` | 0007 (`SafeGetenv()` on embedded builds) | `NODE_PATH`, as the embedder set it, stops reaching module resolution |
-| `test-mobile-fetch` | 0020 (WebAssembly polyfill) | see [the fetch / WebAssembly gate](#the-fetch--webassembly-gate) |
+| `test-mobile-fetch` | 0019 (WebAssembly polyfill) | see [the fetch / WebAssembly gate](#the-fetch--webassembly-gate) |
 | `test-mobile-unix-socket` | none — a platform property | a unix socket bound from its own directory with a short relative path stops accepting connections. See [unix domain sockets](#unix-domain-sockets) |
 
 Three limits are structural, and worth stating rather than papering over:
