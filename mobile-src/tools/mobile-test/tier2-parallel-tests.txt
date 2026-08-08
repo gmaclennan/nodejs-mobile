@@ -7,11 +7,13 @@
 # Tier 2a can catch is a regression *this fork* introduced -- the patch series,
 # the build flags, or the platform underneath.
 #
-# The previous list did not reflect that. 195 tests, of which 78% were buffer,
-# url, whatwg-url, path, querystring, string_decoder and util: pure JS over V8
-# builtins that no patch touches. Sixty-four buffer tests cannot fail unless V8
-# itself is broken, and the first three would say so. Only 19% went anywhere
-# near the platform boundary. This list is 86% platform, 13% pure-JS smoke.
+# The previous list did not reflect that. Of its 195 tests, 134 (69%) were
+# buffer, url, whatwg-url, path, querystring, string_decoder and util: pure JS
+# over V8 builtins that no patch touches. Widen that to the whole non-platform
+# surface -- adding assert, events, the EventTarget family, ICU/Intl and WHATWG
+# encoding -- and it was 157 (81%), leaving 19% anywhere near the platform
+# boundary. Sixty-four buffer tests cannot fail unless V8 itself is broken, and
+# the first three would say so. This list inverts it: 87% platform, 13% pure-JS.
 #
 # Weighting follows patches/files.map -- fs/net/dgram/timers/os from the libuv
 # patch, tls/crypto from crypto_context.cc, dns from c-ares, vm/wasm from the
