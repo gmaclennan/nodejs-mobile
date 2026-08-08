@@ -91,6 +91,7 @@ carries no docs of its own.
 
 - [BUILDING.md](docs/BUILDING.md) — build Android and iOS by hand, host requirements, build flavors
 - [TESTING.md](docs/TESTING.md) — the test tiers, what CI runs, running tests locally
+- [EMBEDDING.md](docs/EMBEDDING.md) — the environment node inherits: what to set before starting it, and where to write
 - [FAQ.md](docs/FAQ.md) — what is and isn't supported on mobile
 - [CHANGELOG.md](docs/CHANGELOG.md) — release history
 

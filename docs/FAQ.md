@@ -108,7 +108,21 @@ as the trust base and add private CAs explicitly.
 
 ## Trying to write a file results in an error. What's going on?
 
-Mobile platforms are different than the usual desktop platforms in that they require applications to write in specific sandboxed paths and don't have permissions to write elsewhere. You should pass an appropriate writable path for your use case to the Node.js runtime and write there. An API call to return the path most regularly used for data in each platform has been added to the [nodejs-mobile-cordova](https://github.com/janeasystems/nodejs-mobile-cordova#cordovaappdatadir) and [nodejs-mobile-react-native](https://github.com/janeasystems/nodejs-mobile-react-native#rn_bridgeappdatadir) plugins.
+Mobile platforms require applications to write inside specific sandboxed paths
+and have no permission to write elsewhere. Query the platform for the right
+directory and pass it to the runtime, rather than assuming a desktop layout
+exists — [EMBEDDING.md](./EMBEDDING.md#data-and-temp-directories) lists which
+directory to use for what on each platform.
+
+Two traps in particular. On Android there is **no `/tmp`**, and an app process
+starts with no `TMPDIR`, so `os.tmpdir()` returns a path that does not exist
+until you set the variable — anything writing there fails with `ENOENT`. And an
+embedded runtime inherits the host process's working directory, which on Android
+is `/`, so relative paths do not resolve where you would expect.
+
+The older [nodejs-mobile-cordova](https://github.com/janeasystems/nodejs-mobile-cordova#cordovaappdatadir)
+and [nodejs-mobile-react-native](https://github.com/janeasystems/nodejs-mobile-react-native#rn_bridgeappdatadir)
+plugins expose an app-data-dir call that does this for you.
 
 ## Are Node.js native modules supported?
 
@@ -117,6 +131,11 @@ Node native modules, which contain native code, are able to run on nodejs-mobile
 ## How can I improve Node.js load times?
 
 Applications that contain a large number of files in the Node.js project can have their load times decreased by reducing the number of files. While installing npm modules, these can be installed with the `--production` flag, so that modules that are used for development only are not included in your project, e.g.: `npm install --production <module_name>`. Using tools that merge all nodejs project files into a bundle, such as [`noderify`](https://www.npmjs.com/package/noderify) or [`esbuild`](https://esbuild.github.io/) and using the bundle instead has been observed to improve load times in most situations.
+
+Beyond reducing files, set `NODE_COMPILE_CACHE` to a directory in your app's
+cache location to persist V8's code cache across launches, and pair it with
+`NODE_COMPILE_CACHE_PORTABLE=1` so the cache survives the container path
+changing. See [EMBEDDING.md](./EMBEDDING.md#worth-setting).
 
 ## Can I run two or more Node.js instances?
 
