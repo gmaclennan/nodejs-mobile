@@ -64,17 +64,18 @@ it through `tools/test.py`.
 | `verify-patches.yml` → `tree-diff` | ubuntu | PR | *not a gate* — publishes the diff between the base and head **materialized trees** as a job summary + artifact, so review isn't a diff-of-a-diff |
 | `build.yml` → `smoke-host` | ubuntu | PR · push `recipe` | C++ patches compile; `node -e` runs; `test-mobile-fetch` passes on that build run `--jitless` (see below); `test-mobile-system-ca` finds a non-empty system trust store; the curated list passes on the host build (plus the full `parallel` suite, advisory). Gates `ci-required` and `publish` |
 | `build.yml` → `build-*` / `combine-*` | ubuntu / macos | PR · push `recipe` | the cross-compile actually succeeds — the only check that compiles target code |
-| `build.yml` → `smoke-{android,ios}` (+ the NAPI symbol assert in `combine-android`) | ubuntu+KVM / macos | PR · push `recipe` | the exact shipping artifact boots and runs JS (Tier 1); NAPI symbols in `.dynsym` |
-| `build.yml` → `emulator-tests` / `simulator-tests` | ubuntu+KVM / macos | PR · push `recipe` · releases | curated `test/parallel` subset + crc-native addon load on an x86_64 emulator and arm64 simulator (Tier 2) |
-| `tier2b-full-suite.yml` | ubuntu+KVM / macos | nightly 03:00 UTC · dispatch | *advisory* — the **whole** non-`.status`-skipped `test/parallel` + `test/sequential` suite on both platforms, 4 round-robin shards each (`test.py --run=n,4`). Tier 2a covers what someone curated; this covers everything else, so a test upstream adds tomorrow is picked up without anyone noticing it exists |
-| `build.yml` → `device-smoke` | ubuntu / macos-15 + BrowserStack | releases (untagged version of record; required to publish) · dispatch | boot smoke + crc-native addon load on **physical devices** — Android arm64 (Pixel 9, 16 KB pages) via Espresso and iPhone via XCUITest (Tier 3). Needs `BROWSERSTACK_USER`/`BROWSERSTACK_PW` secrets. |
+| `build.yml` → `smoke-{android,ios}` (+ the NAPI symbol assert in `combine-android`) | ubuntu+KVM / macos | PR · push `recipe` | **boot smoke**: the exact shipping artifact boots and runs JS; NAPI symbols in `.dynsym` |
+| `build.yml` → `curated-tests-android` / `curated-tests-ios` | ubuntu+KVM / macos | PR · push `recipe` · releases | **curated device tests**: the curated subset + crc-native addon load on an x86_64 emulator and arm64 simulator |
+| `full-device-suite.yml` (also `build.yml` → `full-suite` on releases) | ubuntu+KVM / macos | nightly 03:00 UTC · dispatch · releases | **full device suite**: the whole non-`.status`-skipped `test/parallel` + `test/sequential` suite on both platforms, 4 round-robin shards each (`test.py --run=n,4`). The curated gate covers what someone chose; this covers everything else, so a test upstream adds tomorrow is picked up without anyone noticing it exists |
+| `build.yml` → `real-device-smoke` | ubuntu / macos-15 + BrowserStack | releases (untagged version of record; required to publish) · dispatch | **real-device smoke**: boot + crc-native addon load on physical devices — Android arm64 (Pixel 9, 16 KB pages) via Espresso and iPhone via XCUITest. Needs `BROWSERSTACK_USER`/`BROWSERSTACK_PW` secrets. |
 
 Every job first **materializes** the source tree from the recipe branch
 (`.github/actions/materialize` runs `scripts/prepare.sh` and verifies the
 tree hash), then proceeds exactly as it would on a full checkout. On a release
 (or a `release-dryrun:` rehearsal commit), one `build.yml` run carries the
-whole gate chain — Tier 1/2/3 and publish — connected by `needs:`; there is
-no cross-run lookup, label contract, or manual step.
+whole gate chain — smokes, device suites, real devices, and publish —
+connected by `needs:`; there is no cross-run lookup, label contract, or
+manual step.
 
 ### Flavors, and what's required to merge
 
@@ -89,63 +90,66 @@ the merge run anyway. Android runs both flavors everywhere (ubuntu+KVM is
 `build.yml` exposes a single aggregate check, **`ci-required`**, which is what
 branch protection should require — the matrix produces check names that change
 whenever the matrix does, so a hand-maintained required list silently stops
-enforcing. It covers the builds, the combines and Tier 1.
+enforcing. It covers the builds, the combines and the boot smokes.
 
-**Tier 2 runs on PRs but is deliberately not required.** Emulator and simulator
-lifecycles (AVD boot, `simctl` races, adb disconnects) are the flakiest part of
-this system, and a required check that flakes teaches everyone to re-run or
-bypass — which costs more than the check is worth. Read it; don't merge through
-a red one without knowing why it's red. It is blocking on the release chain,
-where `publish` `needs:` it.
+**The curated device tests run on PRs but are deliberately not required.**
+Emulator and simulator lifecycles (AVD boot, `simctl` races, adb disconnects)
+are the flakiest part of this system, and a required check that flakes teaches
+everyone to re-run or bypass — which costs more than the check is worth. Read
+it; don't merge through a red one without knowing why it's red. They are
+blocking on the release chain, where `publish` `needs:` them.
 
-Tier 3 stays release-only: GitHub Actions minutes are free for this project,
-BrowserStack device minutes are not.
+The real-device smoke stays release-only: GitHub Actions minutes are free for
+this project, BrowserStack device minutes are not.
 
-### Tier 2a and Tier 2b
+### The curated gate and the full suite
 
-Tier 2 is split, because one job cannot be both fast enough for a PR and broad
-enough to be trusted:
+Device testing is split in two, because one job cannot be both fast enough
+for a PR and broad enough to be trusted:
 
-- **Tier 2a** — `emulator-tests` / `simulator-tests`, driven from `build.yml`
-  on every PR and push. The curated allow-list (~200 tests), deterministic and
-  a few minutes per platform. It answers "did this change break something we
-  already care about".
-- **Tier 2b** — `tier2b-full-suite.yml`, nightly. Everything `parallel.status`
-  and `sequential.status` do not skip — a few thousand tests per platform,
-  split four ways. It answers "what is true on a device that we have not
-  looked at", which is the larger question: Tier 2a covers about 6% of the
-  runnable suite. `sequential`'s mobile skips are measured, not assumed —
-  every non-structural skip covers a test that spawns a child process, and
-  the tests the skips leave pass on both platforms.
+- **Curated device tests** — `curated-tests-android` / `curated-tests-ios`,
+  driven from `build.yml` on every PR and push. The curated allow-list
+  (~200 tests), deterministic and a few minutes per platform. It answers
+  "did this change break something we already care about".
+- **The full device suite** — `full-device-suite.yml`. Everything
+  `parallel.status` and `sequential.status` do not skip — a few thousand
+  tests per platform, split four ways. It answers "what is true on a device
+  that we have not looked at", which is the larger question: the curated gate
+  covers about 6% of the runnable suite. `sequential`'s mobile skips are
+  measured, not assumed — every non-structural skip covers a test that spawns
+  a child process, and the tests the skips leave pass on both platforms.
 
-The important property of Tier 2b is that it is **not an allow-list**. A test
-upstream adds in the next bump runs the night after the bump lands, with no
-curation step; excluding something requires a `.status` entry, which is a
-decision with a name and a reason attached. An allow-list drifts silently —
-a test nobody added is indistinguishable from a test somebody excluded.
+The important property of the full suite is that it is **not an allow-list**.
+A test upstream adds in the next bump runs the night after the bump lands,
+with no curation step; excluding something requires a `.status` entry, which
+is a decision with a name and a reason attached. An allow-list drifts
+silently — a test nobody added is indistinguishable from a test somebody
+excluded.
 
-Tier 2b is **advisory** and deliberately not on the release chain; promoting
-it to a gate (drop `continue-on-error`, add it to `publish`'s `needs:`) is
-tracked in [#27](https://github.com/gmaclennan/nodejs-mobile/issues/27) and
-waits for enough nightlies to agree on what green looks like. Each shard
+The full suite runs two ways: **nightly** (03:00 UTC, against the head
+commit's Build artifacts) and as a **release gate** — `build.yml` calls it as
+the `full-suite` job on release runs, and `publish` `needs:` it, so a release
+cannot ship with a full-suite failure. It is release-only rather than
+per-PR because it costs about eight device-hours per run, which the PR loop
+cannot absorb; the nightly covers drift the rest of the time. Each shard
 writes a summary (counts, plus the failing names, with hangs and crashes
 counted separately — they mean different things) and uploads its log.
 
 ### The curated subset
 
-`tools/mobile-test/tier2-parallel-tests.txt` is the allow-list (~200
-single-process `test/parallel` cases) shared by both Tier-2 workflows, so a
+`tools/mobile-test/curated-device-tests.txt` is the allow-list (~200
+single-process `test/parallel` cases) shared by both device workflows, so a
 regression fails the same named test on both platforms. It is hand-maintained:
 add and remove entries directly, following [the expansion
 procedure](#expanding-the-curated-list) below. The runner invocation is:
 
 ```sh
 # Android emulator
-grep -vE '^[[:space:]]*#|^[[:space:]]*$' tools/mobile-test/tier2-parallel-tests.txt \
+grep -vE '^[[:space:]]*#|^[[:space:]]*$' tools/mobile-test/curated-device-tests.txt \
   | xargs ./tools/test.py -j 1 --flaky-tests=skip --timeout=300 --arch android
 
 # iOS simulator
-grep -vE '^[[:space:]]*#|^[[:space:]]*$' tools/mobile-test/tier2-parallel-tests.txt \
+grep -vE '^[[:space:]]*#|^[[:space:]]*$' tools/mobile-test/curated-device-tests.txt \
   | xargs ./tools/test.py -j 1 --flaky-tests=skip --timeout=300 \
       --arch ios --shell=./tools/mobile-test/ios/node-ios-sim-proxy.sh
 ```
@@ -169,11 +173,12 @@ Run `tools/mobile-test/coverage-manifest.py` for the current numbers. It
 separates the two reasons a test is absent from a device run, which a green run
 cannot: a `.status` skip is a recorded decision; everything else is a test
 nobody has tried on a PR run. That gap, not the skip list, is where the
-missing PR-time coverage lives, and the nightly Tier 2b is what covers it.
+missing PR-time coverage lives, and the full device suite is what covers it.
 `smoke-host` prints the table on every run.
 
 Suites other than `parallel` and `sequential` (`message`, `es-module`,
-`pummel`, …) never run on a device; they are out of scope for Tier 2.
+`pummel`, …) never run on a device; they are out of scope for the device
+gates.
 
 ### Expanding the curated list
 
@@ -219,7 +224,7 @@ three is a `PASS, FLAKY` entry, not a skip.
 Only the first two produce a `.status` edit, and both carry a reason. An
 uncommented skip is indistinguishable from an oversight a year later.
 
-**5. Add the survivors** to `tools/mobile-test/tier2-parallel-tests.txt` and
+**5. Add the survivors** to `tools/mobile-test/curated-device-tests.txt` and
 re-run the whole list once on both platforms: a test can pass alone and fail
 in company (the proxy relaunches the app per test, so device load is a real
 variable).
@@ -400,7 +405,7 @@ cases are skipped, with that reason recorded next to them in `parallel.status`.
 
 ### The NAPI addon gate
 
-After the curated subset, each Tier-2 workflow builds the **crc-native** N-API
+After the curated subset, each device workflow builds the **crc-native** N-API
 addon (`tools/mobile-test/addon/`) against that build's library and loads it in
 the testnode app — proving a real `.node` addon `dlopen`s and runs (the
 "blocker B-1" check the symbol-grep smoke only approximates).
@@ -471,7 +476,7 @@ account, export `NODE_IOS_BUNDLE_ID` for both scripts.
 The device proxy scores from the same verdict file as the other two: it passes
 a per-launch token and pulls `Documents/result-<token>.txt` back out of the
 app's data container with `devicectl device copy from`, rather than trusting an
-exit code. This flow is local-only; no CI job runs it (Tier-3 device coverage
+exit code. This flow is local-only; no CI job runs it (real-device coverage
 goes through BrowserStack).
 
 ### Running the addon gate locally

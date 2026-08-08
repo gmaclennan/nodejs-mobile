@@ -45,7 +45,7 @@ env:
   ANDROID_TARGET_SDK_VERSION: 24
   # Flavor is a per-job matrix dimension ([full, lite]) so every Build produces
   # BOTH the shipped full binary and the size-reduced lite binary, and the
-  # Tier-2 gate covers both (see docs/BUILDING.md "The lite variant"). Each
+  # curated device gate covers both (see docs/BUILDING.md "The lite variant"). Each
   # job derives NODEJS_MOBILE_FLAVOR + FLAVOR_SUFFIX from matrix.flavor (matrix
   # isn't visible at workflow-env scope). FLAVOR_SUFFIX ('' for full, '-lite'
   # for lite) keeps caches + the public combined artifacts distinct so the full
@@ -66,7 +66,7 @@ jobs:
   # PRs running the complete iOS matrix can saturate the pool and queue the
   # release pipeline behind them. What lite-on-iOS uniquely catches is
   # lite-specific configure/link breakage, and build-ios still catches that at
-  # compile time on the merge run; the Tier-2 lists are identical across
+  # compile time on the merge run; the curated lists are identical across
   # flavors (see the note in ios-simulator-tests.yml), so the runtime signal
   # from the lite leg is near-duplicate. Pushes and releases run both.
   build-android:
@@ -402,7 +402,7 @@ jobs:
 
       # overwrite: artifacts are immutable within a run, and that includes
       # re-run attempts — without this, "Re-run all jobs" (the standard answer
-      # to Tier-1/2 flake, including on a release run) 409s right here.
+      # to smoke/device-test flake, including on a release run) 409s right here.
       - uses: actions/upload-artifact@v7
         with:
           name: nodejs-mobile-android${{ env.FLAVOR_SUFFIX }}
@@ -469,7 +469,7 @@ jobs:
         with:
           name: node-ios-*-${{ matrix.flavor }}
 
-  # Tier 1 on-device smoke (docs/TESTING.md): boot an emulator, run a
+  # Boot smoke (docs/TESTING.md): boot an emulator, run a
   # console.log via the freshly built libnode, assert it ran and exited cleanly.
   # Consumes the nodejs-mobile-android artifact, so it smoke-tests the exact
   # binary that would ship — no rebuild. ubuntu + KVM keeps it at 1x billing.
@@ -534,7 +534,7 @@ jobs:
             adb wait-for-device
             ./tools/mobile-test/smoke/run-android-smoke.sh "$PWD/node_smoke" "$PWD/artifacts/bin/x86_64/libnode.so" "$PWD/libc++_shared.so"
 
-  # Tier 1 on-device smoke for iOS: install the testnode app on a booted
+  # Boot smoke for iOS: install the testnode app on a booted
   # simulator and run a console.log via the freshly built NodeMobile.xcframework.
   smoke-ios:
     needs: [combine-ios]
@@ -719,20 +719,20 @@ jobs:
         run: |
           ./out/Release/node test/parallel/test-mobile-system-ca.js
 
-      # The same curated list the Tier-2 mobile workflows run, executed on the
+      # The same curated list the device workflows run, executed on the
       # host build. Everything in it is an upstream test that passes on mobile,
       # so it passes on a host build too unless a patch actually broke it —
       # which makes this a zero-flake blocking check that catches lib/ and
-      # src/ regressions minutes into a PR instead of at the Tier-2 stage.
-      - name: Run the curated Tier-2 list on the host build
+      # src/ regressions minutes into a PR instead of on a device.
+      - name: Run the curated device-test list on the host build
         run: |
           source bin/activate
           # pipefail + count guard: a missing/emptied list must fail loudly,
           # not run the wrong suite (GNU xargs) or nothing (BSD xargs).
           set -o pipefail
-          COUNT=$(grep -cvE '^[[:space:]]*#|^[[:space:]]*$' tools/mobile-test/tier2-parallel-tests.txt)
+          COUNT=$(grep -cvE '^[[:space:]]*#|^[[:space:]]*$' tools/mobile-test/curated-device-tests.txt)
           [ "$COUNT" -ge 100 ] || { echo "::error::curated list missing or implausibly small ($COUNT entries)"; exit 1; }
-          grep -vE '^[[:space:]]*#|^[[:space:]]*$' tools/mobile-test/tier2-parallel-tests.txt \
+          grep -vE '^[[:space:]]*#|^[[:space:]]*$' tools/mobile-test/curated-device-tests.txt \
             | xargs ./tools/test.py -j "$(nproc)" --flaky-tests=skip
 
       # The full parallel suite is far broader than the curated list and is the
@@ -746,11 +746,11 @@ jobs:
           source bin/activate
           ./tools/test.py -j "$(nproc)" --flaky-tests=skip parallel
 
-      # What Tier 2 does NOT run: a test absent from a device run is either
+      # What the device gates do NOT run: a test absent from a device run is either
       # skipped by a .status decision or simply not curated, and a green run
       # cannot tell those apart. Host-only (stub shell, no device); never fails
       # the build.
-      - name: Tier-2 coverage manifest
+      - name: Device-test coverage manifest
         run: |
           source bin/activate
           ./tools/mobile-test/coverage-manifest.py --summary
@@ -764,8 +764,8 @@ jobs:
   #
   # if: always() so this still runs (and fails) when something upstream of it
   # failed; the explicit result check is what makes a skipped or cancelled job
-  # fail closed instead of passing vacuously. Tier-2 is intentionally absent —
-  # see the emulator-tests comment.
+  # fail closed instead of passing vacuously. The curated device tests are
+  # intentionally absent — see the curated-tests-android comment.
   ci-required:
     if: always()
     needs:
@@ -805,10 +805,11 @@ jobs:
   #     it. That push would satisfy release-check on the PR branch.
   #   - workflow_dispatch: Build is dispatchable against ANY ref. Dispatching
   #     it on a feature branch to test something would otherwise run
-  #     device-smoke (real BrowserStack spend) and publish (tag + GitHub
+  #     real-device-smoke (real BrowserStack spend) and publish (tag + GitHub
   #     release) from that branch.
   #
-  # Skipping this job also skips device-smoke and publish, which need: it.
+  # Skipping this job also skips real-device-smoke, full-suite and publish,
+  # which need: it.
   # Belt and braces: a deployment branch rule on the `release` Environment
   # restricting it to recipe would stop publish independently of this.
   release-check:
@@ -853,16 +854,16 @@ jobs:
           { echo "version=$V"; echo "release=$REL"; echo "dryrun=$DR"; } >> "$GITHUB_OUTPUT"
           echo "version=$V release=$REL dryrun=$DR"
 
-  # Tier-3 real-device gate: on release branches, run the BrowserStack smoke
+  # Real-device gate: on release branches, run the BrowserStack smoke
   # (boot + N-API addon dlopen on a physical Android arm64 + iPhone) as part
   # of this Build run, using the artifacts the combine jobs just uploaded.
-  # publish-release.yml requires the gating Build run to contain these jobs
-  # green, so a release cannot be tagged without real-device validation.
-  device-smoke:
+  # publish needs: it, so a release cannot be tagged without real-device
+  # validation.
+  real-device-smoke:
     if: >-
       needs.release-check.outputs.release == 'true' ||
       needs.release-check.outputs.dryrun == 'true'
-    # Also needs the Tier-1 boot smokes: BrowserStack device minutes are the
+    # Also needs the boot smokes: BrowserStack device minutes are the
     # one genuinely metered resource here, so don't spend them on a binary that
     # has already failed to start on an emulator.
     needs: [release-check, combine-android, combine-ios, smoke-android, smoke-ios]
@@ -877,18 +878,18 @@ jobs:
     with:
       build_run_id: ${{ github.run_id }}
 
-  # Tier-2: the curated JS subset on an Android emulator and an iOS simulator,
-  # consuming the combine artifacts of this run. Runs on EVERY event that gets
-  # this far — PR, push, release — because it is the project's only functional
-  # coverage of the mobile runtime, and gating it on releases meant a JS
-  # regression from an ordinary PR surfaced at tag time with a bisect surface
-  # of every commit since the last release.
+  # Curated device tests: the curated JS subset on an Android emulator and an
+  # iOS simulator, consuming the combine artifacts of this run. Runs on EVERY
+  # event that gets this far — PR, push, release — because it is the fast
+  # functional coverage of the mobile runtime, and gating it on releases meant
+  # a JS regression from an ordinary PR surfaced at tag time with a bisect
+  # surface of every commit since the last release.
   #
   # Deliberately NOT in ci-required. Emulator/simulator lifecycles (AVD boot,
   # simctl races, adb disconnects) are the flakiest thing in this system, and a
   # required check that flakes trains everyone to re-run or bypass — which
   # costs more than the check is worth. Read it, don't merge through a red one.
-  emulator-tests:
+  curated-tests-android:
     needs: combine-android
     permissions:
       contents: read
@@ -897,7 +898,7 @@ jobs:
     with:
       build_run_id: ${{ github.run_id }}
 
-  simulator-tests:
+  curated-tests-ios:
     needs: [combine-ios]
     permissions:
       contents: read
@@ -906,6 +907,23 @@ jobs:
     with:
       build_run_id: ${{ github.run_id }}
       flavors: ${{ github.event_name == 'pull_request' && '["full"]' || '["full","lite"]' }}
+
+  # Full device suite as a release gate: the whole non-.status-skipped
+  # parallel + sequential suite on emulator and simulator, called from the
+  # same workflow the nightly runs. Release-only — it costs ~8 device-hours
+  # per run, which the PR loop cannot absorb; the nightly covers drift the
+  # rest of the time.
+  full-suite:
+    if: >-
+      needs.release-check.outputs.release == 'true' ||
+      needs.release-check.outputs.dryrun == 'true'
+    needs: [release-check, combine-android, combine-ios, smoke-android, smoke-ios]
+    permissions:
+      contents: read
+      actions: read
+    uses: ./.github/workflows/full-device-suite.yml
+    with:
+      build_run_id: ${{ github.run_id }}
 
   # Publish: on a release commit, once every gate in this run is green, tag
   # the materialized tree and publish the GitHub prerelease with this run's
@@ -921,9 +939,10 @@ jobs:
       - smoke-android
       - smoke-ios
       - smoke-host
-      - emulator-tests
-      - simulator-tests
-      - device-smoke
+      - curated-tests-android
+      - curated-tests-ios
+      - full-suite
+      - real-device-smoke
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     permissions:

@@ -54,7 +54,7 @@ an unowned upstream edit is an error until you assign it. → [docs/CONTRIBUTING
 ## Test
 
 The gate is a curated `test/parallel` subset
-(`mobile-src/tools/mobile-test/tier2-parallel-tests.txt`) run through the
+(`mobile-src/tools/mobile-test/curated-device-tests.txt`) run through the
 proxy harness on an Android emulator and an iOS simulator, plus boot smokes,
 a NAPI symbol smoke, and a real-device smoke on BrowserStack. A test passes
 when the app writes `PASS` to its per-launch sandbox verdict file — never
@@ -64,7 +64,7 @@ Curation caveats: tests that **spawn a child node process** can't pass on
 Android and are excluded. The curated list is an **allow-list**, so a test
 that is neither listed nor `.status`-skipped never runs on a PR — run
 `tools/mobile-test/coverage-manifest.py` for how much that is (roughly 95%
-of the runnable suite). The nightly `tier2b-full-suite.yml` sweeps that
+of the runnable suite). The nightly `full-device-suite.yml` sweeps that
 remainder on both platforms. → [TESTING.md](./docs/TESTING.md)
 
 ## Upgrading upstream

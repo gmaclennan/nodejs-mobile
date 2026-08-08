@@ -24,8 +24,8 @@ Releasing is a button, a review, and (optionally) an approval:
 3. The merge push makes the version of record **untagged at HEAD**, which
    is the release trigger (`release-check` in `build.yml` — content-derived
    and idempotent; no magic commit wording). One run then carries the full
-   gate chain — build matrix both flavors, Tier-1 smokes, NAPI smoke,
-   Tier-2 emulator/simulator, Tier-3 BrowserStack real devices — and the
+   gate chain — build matrix both flavors, boot smokes, NAPI smoke, the
+   curated and full device suites, BrowserStack real devices — and the
    publish job, which `needs:` all of it.
 4. **Optional human gate:** the publish job runs in the `release`
    Environment. Add required reviewers under Settings → Environments →

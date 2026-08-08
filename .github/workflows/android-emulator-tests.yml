@@ -1,4 +1,4 @@
-# Runs the curated Tier 2 subset of the Node.js JS suite on an Android emulator
+# Runs the curated device-test subset of the Node.js JS suite on an Android emulator
 # (docs/TESTING.md). Builds libnode for x86_64, builds + installs the
 # testnode app, and drives test/parallel cases through the proxy harness.
 #
@@ -164,8 +164,8 @@ jobs:
             # separate `/usr/bin/sh -c` (dash) — `set -o pipefail` is an illegal
             # option there and set state wouldn't persist across lines anyway;
             # the one-line guard alone covers the missing/empty-list case.
-            test "$(grep -cvE '^[[:space:]]*#|^[[:space:]]*$' tools/mobile-test/tier2-parallel-tests.txt)" -ge 100 || { echo "::error::curated list missing or implausibly small"; exit 1; }
-            grep -vE '^[[:space:]]*#|^[[:space:]]*$' tools/mobile-test/tier2-parallel-tests.txt | xargs ./tools/test.py -j 1 --flaky-tests=skip --timeout=300 --arch android
+            test "$(grep -cvE '^[[:space:]]*#|^[[:space:]]*$' tools/mobile-test/curated-device-tests.txt)" -ge 100 || { echo "::error::curated list missing or implausibly small"; exit 1; }
+            grep -vE '^[[:space:]]*#|^[[:space:]]*$' tools/mobile-test/curated-device-tests.txt | xargs ./tools/test.py -j 1 --flaky-tests=skip --timeout=300 --arch android
 
             # Native-addon gate: stage the prebuilt addon into the (primed) app and run it.
             ./tools/mobile-test/addon/run-android-addon.sh "$PWD/crcnative.node"

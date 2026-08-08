@@ -84,13 +84,13 @@ jobs:
       - name: Reconstruct + verify
         run: scripts/prepare.sh out
 
-      # The curated Tier-2 list is the functional gate; validate it against
+      # The curated device-test list is the functional gate; validate it against
       # the materialized tree so an upstream bump can't silently shrink it.
       # tools/test.py ignores a path that matches nothing, so a deleted or
       # renamed upstream test would otherwise vanish from the gate while every
       # job stays green. (process.exit() is fine here: the app preloads an
       # exit-verdict hook that records the real code — docs/TESTING.md.)
-      - name: Lint the curated Tier-2 list
+      - name: Lint the curated device-test list
         run: |
           set -euo pipefail
           cd out
@@ -104,7 +104,7 @@ jobs:
               fail=1
               continue
             fi
-          done < tools/mobile-test/tier2-parallel-tests.txt
+          done < tools/mobile-test/curated-device-tests.txt
           echo "curated list: $count entries validated"
           [ "$count" -ge 100 ] || { echo "::error::curated list implausibly small ($count)"; fail=1; }
           [ "$fail" -eq 0 ]
