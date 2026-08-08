@@ -17,15 +17,15 @@ sandbox (`result-<token>.txt`). The proxy reads that file back and reports to
 
 The verdict rides a **durable sandbox file, never the log stream** — `logcat`
 and `simctl --console` are shared, lossy streams that truncate and ring-buffer-
-evict, which silently turned dropped lines into false failures under the old
-log-scraping design. The token prevents a stale file or a spawned grandchild
-from being mis-attributed.
+evict, so a dropped line would read as a false failure. The token prevents a
+stale file or a spawned grandchild from being mis-attributed.
 
 A test that calls `process.exit()` never unwinds back to the native caller —
 libc `exit()` runs first — so the native write never happens. The app therefore
 also drops a small `exit-verdict-hook.js` into its sandbox at launch and
-preloads it, registering a `process.on('exit')` handler that writes the real
-code. The handler is confined to the main thread, so a worker calling
+preloads it via `NODE_OPTIONS=--require` (which stays out of
+`process.execArgv`), registering a `process.on('exit')` handler that writes the
+real code. The handler is confined to the main thread, so a worker calling
 `process.exit()` cannot overwrite the parent's verdict, and it `require()`s
 nothing until the process is already exiting, so it adds no entries to
 `process.moduleLoadList` (which `test-bootstrap-modules` asserts on exactly).
@@ -33,22 +33,14 @@ The `atexit` `FAIL` fallback remains for the cases that reach neither path — a
 crash or an abort — and checks for an existing verdict file rather than only its
 own flag, so it cannot clobber what the hook just wrote.
 
-**This matters far more than "some test calls `process.exit()`".** `common.skip()`
-ends in `process.exit(0)`, so *every* test that self-skips at runtime — no QUIC,
-no crypto, Windows-only, debug-build-only — was scored FAIL. The curated list
-never noticed because it was harvested by keeping what passed, which silently
-discarded every self-skipping test. A full-suite sweep found 40 of them.
-
-Both platforms preload it the same way, via `NODE_OPTIONS=--require`, which
-stays out of `process.execArgv` entirely. It is installed unconditionally: the
-hook `require()`s nothing until exit, so the only observable trace is one extra
-listener on `process('exit')`, and there is no way to predict which tests need
-it anyway — `common.skip()` reaches `process.exit(0)` from any test, at runtime.
-
-`NODE_OPTIONS` only became usable on Android once patch 0007 relaxed
-`SafeGetenv()` (see [that patch](./PATCHES.md)); before it, node discarded the
-variable and the harness had to inject `--require` on the command line, which
-did land in `process.execArgv`. That workaround is gone.
+This matters far beyond tests that exit deliberately: `common.skip()` ends in
+`process.exit(0)`, so every test that self-skips at runtime — no QUIC, no
+crypto, Windows-only, debug-build-only — depends on the hook to be scored
+correctly. That is also why it is installed unconditionally: which tests need
+it is decided at runtime, and its only observable trace is one extra
+`process.on('exit')` listener. (A test that calls
+`process.removeAllListeners('exit')` would drop the hook and score FAIL —
+none currently does.)
 
 A run that produces no verdict file at all is a FAIL, and the proxy says which
 kind: the Android one polls the app process alongside the file, so a native
@@ -74,7 +66,7 @@ it through `tools/test.py`.
 | `build.yml` → `build-*` / `combine-*` | ubuntu / macos | PR · push `recipe` | the cross-compile actually succeeds — the only check that compiles target code |
 | `build.yml` → `smoke-{android,ios}` (+ the NAPI symbol assert in `combine-android`) | ubuntu+KVM / macos | PR · push `recipe` | the exact shipping artifact boots and runs JS (Tier 1); NAPI symbols in `.dynsym` |
 | `build.yml` → `emulator-tests` / `simulator-tests` | ubuntu+KVM / macos | PR · push `recipe` · releases | curated `test/parallel` subset + crc-native addon load on an x86_64 emulator and arm64 simulator (Tier 2) |
-| `tier2b-full-suite.yml` | ubuntu+KVM / macos | nightly 03:00 UTC · dispatch | *advisory* — the **whole** non-`.status`-skipped `test/parallel` suite on both platforms, 4 shards each via `test.py --run=i,4`. Tier 2a covers what someone curated; this covers everything else, so a test upstream adds tomorrow is picked up without anyone noticing it exists |
+| `tier2b-full-suite.yml` | ubuntu+KVM / macos | nightly 03:00 UTC · dispatch | *advisory* — the **whole** non-`.status`-skipped `test/parallel` + `test/sequential` suite on both platforms, 4 round-robin shards each (`test.py --run=n,4`). Tier 2a covers what someone curated; this covers everything else, so a test upstream adds tomorrow is picked up without anyone noticing it exists |
 | `build.yml` → `device-smoke` | ubuntu / macos-15 + BrowserStack | releases (untagged version of record; required to publish) · dispatch | boot smoke + crc-native addon load on **physical devices** — Android arm64 (Pixel 9, 16 KB pages) via Espresso and iPhone via XCUITest (Tier 3). Needs `BROWSERSTACK_USER`/`BROWSERSTACK_PW` secrets. |
 
 Every job first **materializes** the source tree from the recipe branch
@@ -115,44 +107,37 @@ Tier 2 is split, because one job cannot be both fast enough for a PR and broad
 enough to be trusted:
 
 - **Tier 2a** — `emulator-tests` / `simulator-tests`, driven from `build.yml`
-  on every PR and push. The curated 208-test allow-list, deterministic and a
-  few minutes per platform. It answers "did this change break something we
+  on every PR and push. The curated allow-list (~200 tests), deterministic and
+  a few minutes per platform. It answers "did this change break something we
   already care about".
 - **Tier 2b** — `tier2b-full-suite.yml`, nightly. Everything `parallel.status`
-  and `sequential.status` do not skip: ~3,260 + ~54 tests on Android and ~3,200
-  + ~53 on iOS, split four ways per platform. It answers "what is true on a
-  device that we have not looked at", which is the larger question — Tier 2a
-  covers about 6% of the runnable suite.
-
-  `test/sequential` is included because it had never run anywhere. It has had
-  mobile `.status` sections since the harness landed, so it *looked* covered,
-  but no job invoked the suite — the skips had never been tested and neither had
-  the ~57 tests they leave. Both are now measured: the skip list turns out to be
-  sound (every non-structural skip that passes spawns a child process), and the
-  tests it leaves pass on both platforms.
+  and `sequential.status` do not skip — a few thousand tests per platform,
+  split four ways. It answers "what is true on a device that we have not
+  looked at", which is the larger question: Tier 2a covers about 6% of the
+  runnable suite. `sequential`'s mobile skips are measured, not assumed —
+  every non-structural skip covers a test that spawns a child process, and
+  the tests the skips leave pass on both platforms.
 
 The important property of Tier 2b is that it is **not an allow-list**. A test
 upstream adds in the next bump runs the night after the bump lands, with no
 curation step; excluding something requires a `.status` entry, which is a
-decision with a name and a reason attached. That is the drift this fork already
-had once — whole families like `test-compile-cache-*` were excluded by
-enumerating individual test names, so every test upstream added to them
-afterwards failed silently until a full sweep went looking.
+decision with a name and a reason attached. An allow-list drifts silently —
+a test nobody added is indistinguishable from a test somebody excluded.
 
-Tier 2b is **advisory** and deliberately not on the release chain. Its pass-set
-has been measured by hand, once; promoting it to a gate means dropping
-`continue-on-error` and adding it to `publish`'s `needs:`, and should wait for a
-few nightlies to agree on what green looks like. Each shard writes a summary
-(counts, plus the failing names, and hangs and crashes counted separately —
-they mean different things) and uploads its log.
+Tier 2b is **advisory** and deliberately not on the release chain; promoting
+it to a gate (drop `continue-on-error`, add it to `publish`'s `needs:`) is
+tracked in [#27](https://github.com/gmaclennan/nodejs-mobile/issues/27) and
+waits for enough nightlies to agree on what green looks like. Each shard
+writes a summary (counts, plus the failing names, with hangs and crashes
+counted separately — they mean different things) and uploads its log.
 
 ### The curated subset
 
-`tools/mobile-test/tier2-parallel-tests.txt` is the allow-list (208 single-
-process `test/parallel` cases) shared by both Tier-2 workflows, so a regression
-fails the same named test on both platforms. It is **generated** by
-`tools/mobile-test/select-tier2a.py` — change the risk weights there and
-regenerate rather than adding lines by hand. The runner invocation is:
+`tools/mobile-test/tier2-parallel-tests.txt` is the allow-list (~200
+single-process `test/parallel` cases) shared by both Tier-2 workflows, so a
+regression fails the same named test on both platforms. It is hand-maintained:
+add and remove entries directly, following [the expansion
+procedure](#expanding-the-curated-list) below. The runner invocation is:
 
 ```sh
 # Android emulator
@@ -178,21 +163,17 @@ of the test bodies.
 The allow-list is weighted towards the patch series' blast radius — `net`,
 `tls`, `timers`, `process`, `fs`, `dns`, `dgram`, `crypto`, `worker` and `http`
 are its ten largest modules — so what it misses is not a module the fork can
-break, but sheer breadth: 208 of ~3,200 runnable tests.
+break, but sheer breadth: roughly 6% of the runnable suite.
 
 Run `tools/mobile-test/coverage-manifest.py` for the current numbers. It
 separates the two reasons a test is absent from a device run, which a green run
-cannot:
+cannot: a `.status` skip is a recorded decision; everything else is a test
+nobody has tried on a PR run. That gap, not the skip list, is where the
+missing PR-time coverage lives, and the nightly Tier 2b is what covers it.
+`smoke-host` prints the table on every run.
 
-```
-android   4103 total   839 skipped by .status   3264 runnable   208 run in Tier 2 (6.4%)   3056 never run on a device
-ios       4103 total   906 skipped by .status   3197 runnable   208 run in Tier 2 (6.5%)   2989 never run on a device
-```
-
-A `.status` skip is a recorded decision. The other 3,000-odd are not decisions
-at all — they are tests nobody has tried on a device. That gap, not the skip
-list, is where the missing coverage lives, and Tier 2b is what closes it.
-`smoke-host` prints this table on every run.
+Suites other than `parallel` and `sequential` (`message`, `es-module`,
+`pummel`, …) never run on a device; they are out of scope for Tier 2.
 
 ### Expanding the curated list
 
@@ -238,14 +219,13 @@ three is a `PASS, FLAKY` entry, not a skip.
 Only the first two produce a `.status` edit, and both carry a reason. An
 uncommented skip is indistinguishable from an oversight a year later.
 
-**5. Regenerate the list** with `tools/mobile-test/select-tier2a.py` — it picks
-from whatever `.status` now leaves runnable, so recovering a test in step 4 is
-what makes it eligible. Then re-run the whole list once on both platforms: a
-test can pass alone and fail in company (the proxy relaunches the app per test,
-so device load is a real variable).
+**5. Add the survivors** to `tools/mobile-test/tier2-parallel-tests.txt` and
+re-run the whole list once on both platforms: a test can pass alone and fail
+in company (the proxy relaunches the app per test, so device load is a real
+variable).
 
-Because these are all edits to files the fork owns (`.status` files are patched
-by `0016`, the list lives in `mobile-src/`), they go back through
+Because these are all edits to files the fork owns (`.status` files belong to
+the test-adaptations patch, the list lives in `mobile-src/`), they go back through
 `scripts/regenerate-patches.py` like any other change, and `expected-tree.txt`
 moves with them.
 
@@ -285,9 +265,8 @@ engine:
 shape rather than just calling it: `internal/freeze_intrinsics.js` reads seven
 `WebAssembly.*.prototype`s the moment the global exists, so a member the
 polyfill doesn't implement doesn't fail a `fetch()` — it stops the runtime from
-booting at all. That is how `LinkError` and `RuntimeError` missing from
-polywasm were found; keeping the step means the next such gap fails here
-instead of in an embedder's app.
+booting at all. This step makes such a gap fail here instead of in an
+embedder's app.
 
 ### What covers which patch
 
@@ -300,40 +279,35 @@ patch, each running on the host build (where it proves the assertion is
 well-formed, and catches an outright break) and on both devices (where the
 patched behaviour is the behaviour).
 
+Patches are named as in [the series table](./PATCHES.md#the-series).
+
 | Test | Patch | What a regression looks like |
 |---|---|---|
-| `test-mobile-credentials` | 0006 (POSIX credentials on Android), 0007 (credential guards) | on Android, `process.getuid()` disappears (0006 gone) or `process.setuid()` reaches the native setter instead of being inert (0007 gone). Everywhere, `process.initgroups()` stops resolving group names — the only JS path into the bionic `getgrnam()` lookup 0007 adds |
-| `test-mobile-worker-env-clone` | 0008 (env clone) | a default-`env` worker comes up with a missing or partial environment; on Android, with one unclonable variable present, it does not come up at all |
-| `test-mobile-system-ca` | 0010 (iOS TLS trust) | `tls.getCACertificates('system')` throws, hands back expired or duplicated certificates, or comes back empty where the platform has a readable store |
-| `test-mobile-node-path` | 0007 (`SafeGetenv()` on embedded builds) | `NODE_PATH`, as the embedder set it, stops reaching module resolution |
-| `test-mobile-fetch` | 0019 (WebAssembly polyfill) | see [the fetch / WebAssembly gate](#the-fetch--webassembly-gate) |
+| `test-mobile-credentials` | node.cc guards, credentials | on Android, `process.getuid()` disappears (guards gone) or `process.setuid()` reaches the native setter instead of being inert (credentials gone). Everywhere, `process.initgroups()` stops resolving group names — the only JS path into the bionic `getgrnam()` lookup the credentials patch adds |
+| `test-mobile-worker-env-clone` | env clone | a default-`env` worker comes up with a missing or partial environment; on Android, with one unclonable variable present, it does not come up at all |
+| `test-mobile-system-ca` | crypto trust | `tls.getCACertificates('system')` throws, hands back expired or duplicated certificates, or comes back empty where the platform has a readable store |
+| `test-mobile-node-path` | credentials (`SafeGetenv()`) | `NODE_PATH`, as the embedder set it, stops reaching module resolution |
+| `test-mobile-fetch` | WebAssembly polyfill | see [the fetch / WebAssembly gate](#the-fetch--webassembly-gate) |
 | `test-mobile-unix-socket` | none — a platform property | a unix socket bound from its own directory with a short relative path stops accepting connections. See [unix domain sockets](#unix-domain-sockets) |
 
 Three limits are structural, and worth stating rather than papering over:
 
-- **Patch 0008 has no deterministic trigger from JS.** `KVStore::Clone()`
-  only fails when a name enumerates and then doesn't resolve, which is a
-  property of the real process environment (bionic strips `LD_PRELOAD` and
-  friends out of a starting app) and can't be staged from a test. The test
-  asserts the post-condition instead — the worker starts, and its environment
-  is the parent's — which is what a lost patch breaks on Android.
-- **Patch 0007's `SafeGetenv()` change is invisible on a host build.**
-  `SafeGetenv()` and `process.env` agree unless the process looks privileged,
-  so the host run passes either way. The Android leg is the gate — an app
-  process is `fork()`ed from the zygote without `exec()`, so it inherits an
-  auxiliary vector saying `AT_SECURE=1` and `AT_{,E}{U,G}ID=0` while actually
-  running unprivileged with `uid == euid`. `linux_at_secure()` therefore reports
-  1 for every app, forever, and upstream's check declines *every* variable the
-  embedder sets that is read this way: `TMPDIR` (so `os.tmpdir()` falls back to a
-  `/tmp` that does not exist on Android), `NODE_EXTRA_CA_CERTS`,
-  `NODE_USE_SYSTEM_CA`, `NODE_ICU_DATA`, `NODE_OPTIONS`, `OPENSSL_CONF`,
-  `NODE_PATH`, `NODE_COMPILE_CACHE`. Not `TZ` — its only `SafeGetenv()` read is
-  Windows-only (`#ifndef __POSIX__` in `node.cc`); on mobile `TZ` reaches libc
-  and ICU through plain `getenv`, so it was never affected. The fix is gated on
-  `NODE_MOBILE` — the embedded-library build — rather than on the OS, because a
-  standalone `node` `exec()`ed on Android would have a truthful auxv and should
-  keep upstream's behaviour. The `uid`/`gid` comparisons stay live.
-- **Patch 0010's trust store can legitimately be empty on iOS**, where an app
+- **The env-clone patch has no deterministic trigger from JS.**
+  `KVStore::Clone()` only fails when a name enumerates and then doesn't
+  resolve, which is a property of the real process environment (bionic strips
+  `LD_PRELOAD` and friends out of a starting app) and can't be staged from a
+  test. The test asserts the post-condition instead — the worker starts, and
+  its environment is the parent's — which is what a lost patch breaks on
+  Android.
+- **The `SafeGetenv()` change is invisible on a host build.** `SafeGetenv()`
+  and `process.env` agree unless the process looks privileged, so the host run
+  passes either way. The Android leg is the gate: a zygote-forked app process
+  inherits an auxiliary vector that makes upstream's privilege heuristic
+  decline every variable read through `SafeGetenv()`, permanently — see
+  [EMBEDDING.md](./EMBEDDING.md#two-read-paths-and-why-it-matters) for the
+  mechanism and the affected variables, and the credentials patch body for why
+  the fix is gated on `NODE_MOBILE` rather than on the OS.
+- **The crypto-trust patch's store can legitimately be empty on iOS**, where an app
   is sandboxed away from the system keychain — that's a platform fact, not a
   regression. So the test asserts the reader's invariants unconditionally and
   demands a non-empty result only when the caller says the platform has one:
@@ -355,10 +329,10 @@ root, and a good part of the suite quietly depends on it: `test-dotenv` passes
 `./test/fixtures/copy/kitchen-sink`, and `common.PIPE` builds a socket path
 relative to `process.cwd()` on purpose, to keep it short.
 
-An embedded node inherits the host app's cwd, which is `/`. Every one of those
-resolved against the filesystem root instead, so the app now `chdir()`s to the
-on-device tree root before starting node — the same starting point a desktop run
-has. That is a harness change only; it says nothing about what cwd a real
+An embedded node inherits the host app's cwd, which is `/`, where every one of
+those would resolve against the filesystem root — so the app `chdir()`s to the
+on-device tree root before starting node, the same starting point a desktop run
+has. That is a harness behaviour only; it says nothing about what cwd a real
 embedder should use, and libnode is untouched.
 
 Worth knowing for embedders regardless: **cwd is `/` in an app process** unless
@@ -378,13 +352,11 @@ missing feature: the same socket completes a round-trip when bound from inside
 its own directory with a short relative name.
 
 Upstream's `common.PIPE` builds a relative path for exactly this reason — but
-relative to `process.cwd()`, and the app used to inherit `cwd=/`, so it expanded
-right back to the full container path. Every upstream UDS test failed on the
-simulator and all 18 were skipped for iOS, which left UDS ungated there
-entirely. The app now `chdir()`s to the on-device tree root at launch (see
-[the working directory](#the-working-directory)), `common.PIPE` is short again,
-and **all 18 run and pass**. `test-mobile-unix-socket` gates the behaviour
-directly, independent of upstream's helper.
+relative to `process.cwd()`, so it only stays short because the app `chdir()`s
+to the on-device tree root at launch (see
+[the working directory](#the-working-directory)). With that in place all 18
+upstream UDS tests run and pass on the simulator; `test-mobile-unix-socket`
+gates the behaviour directly, independent of upstream's helper.
 
 On Android the container path is short (~50 bytes) and the limit never bites:
 the upstream UDS tests pass there. Abstract-namespace sockets (`@`-prefixed) are
@@ -411,10 +383,8 @@ Recursive watching is unaffected: node implements that in JS and does report
 proper relative paths.
 
 This is upstream libuv behaviour on the platform, not something this fork can
-fix. Isolated by testing three builds — it works on Android (also a
-`NODE_MOBILE` build), on stock node 24.18.0 for macOS, and on **this fork's own
-macOS host build** — so neither the patch series nor the node version is
-involved. The ten affected tests are skipped for iOS with that reason recorded.
+fix — a stock macOS build of the same node version behaves identically. The
+affected tests are skipped for iOS with that reason recorded.
 
 **For embedders:** don't rely on `filename` from a non-recursive `fs.watch` on
 iOS, and don't use the `ignore` option there.
@@ -501,9 +471,8 @@ account, export `NODE_IOS_BUNDLE_ID` for both scripts.
 The device proxy scores from the same verdict file as the other two: it passes
 a per-launch token and pulls `Documents/result-<token>.txt` back out of the
 app's data container with `devicectl device copy from`, rather than trusting an
-exit code. Verified end-to-end on an iPhone 16 Pro running iOS 26. This flow is
-local-only; no CI job runs it (Tier-3 device coverage goes through
-BrowserStack).
+exit code. This flow is local-only; no CI job runs it (Tier-3 device coverage
+goes through BrowserStack).
 
 ### Running the addon gate locally
 

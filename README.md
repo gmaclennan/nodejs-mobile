@@ -11,7 +11,7 @@ in-app, with npm modules and N-API native addons.
 
 Current line: **Node.js 24** (`v24.18.0`). `process.version` reports the
 upstream version unchanged, so version-parsing tools keep working; the
-mobile build is identified by `process.versions.mobile` (e.g. `"24.18.0-1"`).
+mobile build is identified by `process.versions.mobile` (e.g. `"24.18.0-0"`).
 
 ## Get it
 
@@ -43,7 +43,7 @@ for building one — about 1.5 MB instead of a 1 GB fork:
 | | |
 |---|---|
 | `upstream-base.txt` | the pinned upstream release tag (`v24.18.0`) |
-| `patches/` | 20 per-concern patches to upstream files, plus `series` (apply order) and `files.map` (which patch owns which file) |
+| `patches/` | per-concern patches to upstream files, plus `series` (apply order) and `files.map` (which patch owns which file) |
 | `mobile-src/` | files that have no upstream counterpart — build scripts, the iOS framework project, test apps and harness |
 | `expected-tree.txt` | the git tree hash the reconstruction must produce |
 | `scripts/` | `prepare.sh` (recipe → source tree) and `regenerate-patches.py` (source tree → recipe) |

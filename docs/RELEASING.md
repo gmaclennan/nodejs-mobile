@@ -47,7 +47,7 @@ commit whose subject starts with `release-dryrun:`.
 
 - `process.version` stays upstream's (`v24.18.0`) so every tool that parses
   Node versions keeps working; the mobile release is readable at runtime as
-  **`process.versions.mobile`** (`"24.18.0-1"`, `-pre`-suffixed on
+  **`process.versions.mobile`** (`"24.18.0-0"`, `-pre`-suffixed on
   non-release builds).
 - Tags are `vX.Y.Z-R` (semver reads `-R` as a prerelease qualifier — apt
   for a variant build, and irrelevant to tag/URL consumers). Releases

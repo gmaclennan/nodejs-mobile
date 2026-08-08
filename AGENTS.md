@@ -62,9 +62,10 @@ scraped from logs.
 
 Curation caveats: tests that **spawn a child node process** can't pass on
 Android and are excluded. The curated list is an **allow-list**, so a test
-that is neither listed nor `.status`-skipped simply never runs on a device —
-run `tools/mobile-test/coverage-manifest.py` for how much that is (currently
-~95% of the runnable suite). → [TESTING.md](./docs/TESTING.md)
+that is neither listed nor `.status`-skipped never runs on a PR — run
+`tools/mobile-test/coverage-manifest.py` for how much that is (roughly 95%
+of the runnable suite). The nightly `tier2b-full-suite.yml` sweeps that
+remainder on both platforms. → [TESTING.md](./docs/TESTING.md)
 
 ## Upgrading upstream
 

@@ -40,9 +40,10 @@ auxiliary vector describing init's exec of the zygote — `AT_SECURE=1`,
 `AT_{,E}{U,G}ID=0` — while running unprivileged. The check therefore declined
 **every** variable in this group inside **every** Android app, permanently.
 
-Patch `0007` relaxes the heuristic on `NODE_MOBILE` builds, so these work from
-that patch onwards. On iOS they were never affected. If you are on an older
-build and one of these appears to be ignored on Android, this is why.
+The credentials patch (see [PATCHES.md](./PATCHES.md#the-series)) relaxes the
+heuristic on `NODE_MOBILE` builds, so these work from that patch onwards. On
+iOS they were never affected. If you are on an older build and one of these
+appears to be ignored on Android, this is why.
 
 ## Data and temp directories
 
@@ -159,8 +160,9 @@ entirely**. Prefer a bundler or explicit paths.
 
 ## Gotchas
 
-- **`os.tmpdir()` on Android returns `/tmp` unless you set `TMPDIR`.** Patch
-  `0007` made the variable *readable*; it does not set it. Nothing else will.
+- **`os.tmpdir()` on Android returns `/tmp` unless you set `TMPDIR`.** The
+  credentials patch made the variable *readable*; it does not set it. Nothing
+  else will.
 - **`os.homedir()` is not a writable location** you should rely on. On iOS it is
   the container root; on Android it is unset or `/`.
 - **The working directory is not yours by default.** An embedded runtime
