@@ -1,6 +1,6 @@
 name: iOS Simulator Tests
 
-# Runs the curated Tier 2 subset of the Node.js JS suite (docs/TESTING.md)
+# Runs the curated device-test subset of the Node.js JS suite (docs/TESTING.md)
 # inside the testnode harness on a booted iOS simulator, via simctl. This gives
 # signal that the framework executes JS correctly on-device-like, beyond the
 # compile-only coverage of build-mobile.yml.
@@ -113,10 +113,10 @@ jobs:
           # passes vacuously — grep's failure is masked by the pipe, and BSD
           # xargs runs nothing (exit 0) on empty input.
           set -o pipefail
-          COUNT=$(grep -cvE '^[[:space:]]*#|^[[:space:]]*$' tools/mobile-test/tier2-parallel-tests.txt)
+          COUNT=$(grep -cvE '^[[:space:]]*#|^[[:space:]]*$' tools/mobile-test/curated-device-tests.txt)
           [ "$COUNT" -ge 100 ] || { echo "::error::curated list missing or implausibly small ($COUNT entries)"; exit 1; }
           echo "running $COUNT curated tests"
-          grep -vE '^[[:space:]]*#|^[[:space:]]*$' tools/mobile-test/tier2-parallel-tests.txt \
+          grep -vE '^[[:space:]]*#|^[[:space:]]*$' tools/mobile-test/curated-device-tests.txt \
             | xargs ./tools/test.py -j 1 --flaky-tests=skip --timeout=300 \
                 --arch ios --shell="./tools/mobile-test/ios/node-ios-sim-proxy.sh"
 

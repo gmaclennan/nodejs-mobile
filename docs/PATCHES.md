@@ -74,7 +74,7 @@ One row per patch, in apply order (`patches/series`); patch files are named
 after their commit subjects, and the short name in the first column is how the
 prose here and in [TESTING.md](./TESTING.md) refers to them. Each patch's own
 commit body carries the reasoning in long form, and the fork-only
-`test-mobile-*` gates named below run in the curated Tier-2 list on both
+`test-mobile-*` gates named below run in the curated device-test list on both
 device legs.
 
 | Patch | What it changes | Why |

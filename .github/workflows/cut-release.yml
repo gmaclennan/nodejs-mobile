@@ -122,4 +122,4 @@ jobs:
           - [ ] CHANGELOG entry filled in
           - [ ] review + merge = release sign-off
 
-          Merging makes the version-of-record untagged-at-HEAD, so the merge push runs the **full gate chain** (build matrix, Tier-1/2/3 including real devices) and, if everything is green, tags \`v${V}\` and publishes the prerelease. PR checks do not run on this bot-pushed branch; nothing publishes unverified (all gates re-run on the merge push)."
+          Merging makes the version-of-record untagged-at-HEAD, so the merge push runs the **full gate chain** (build matrix, boot smokes, curated and full device suites, real devices) and, if everything is green, tags \`v${V}\` and publishes the prerelease. PR checks do not run on this bot-pushed branch; nothing publishes unverified (all gates re-run on the merge push)."

@@ -84,19 +84,20 @@ The reviewer does **not** have to take the author's word for
 every PR and fails with the correct hash. That's the one check no human can
 substitute for.
 
-CI is tiered:
+CI escalates with the event:
 
 - **on the PR**: byte-for-byte reconstruction (`verify`), per-patch
   `./android-configure` validation, the host build running the curated JS
-  list, the full cross-compile matrix, and the Tier-1 boot smokes — plus the
-  Tier-2 emulator/simulator suites, which run but are advisory;
+  list, the full cross-compile matrix, and the boot smokes — plus the
+  curated emulator/simulator tests, which run but are advisory;
 - **on merge**: the same, all of it blocking, with both flavors on both
   platforms;
-- **on release**: everything above plus the Tier-3 real-device smoke, all
+- **on release**: everything above plus the full device suite and the
+  real-device smoke, all
   gating an automated publish (see [RELEASING.md](./RELEASING.md)).
 
 See [TESTING.md](./TESTING.md#what-ci-runs) for the job-by-job table and why
-Tier 2 is advisory rather than required.
+the curated device tests are advisory rather than required.
 
 A clean `git am` is not proof of correctness — when a patch touches C++ or
 the build system, let the cross-compile matrix finish before assuming an
