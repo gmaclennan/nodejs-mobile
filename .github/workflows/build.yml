@@ -711,8 +711,8 @@ jobs:
       # device leg and the test cannot demand certificates unconditionally. A
       # Linux build reading /etc/ssl has no such excuse, so this run says so —
       # which is what turns "the trust store reader still returns something"
-      # into a check that fails when patch 0010's guard stops enclosing the
-      # right span. See docs/TESTING.md, "What covers which patch".
+      # into a check that fails when the crypto-trust patch's guard stops
+      # enclosing the right span. See docs/TESTING.md, "What covers which patch".
       - name: system trust store gate
         env:
           NODEJS_MOBILE_EXPECT_SYSTEM_CA: nonempty
@@ -746,16 +746,15 @@ jobs:
           source bin/activate
           ./tools/test.py -j "$(nproc)" --flaky-tests=skip parallel
 
-      # What Tier 2 does NOT run, stated out loud. A test missing from a device
-      # run is either skipped by a .status decision or simply absent from the
-      # curated list, and a green run cannot tell those apart — the second group
-      # is far the larger. Host-only (stub shell, no device), so it belongs here
-      # rather than in the Tier-2 jobs, and it still reports when they are
-      # skipped. Never fails the build; it reports.
+      # What Tier 2 does NOT run: a test absent from a device run is either
+      # skipped by a .status decision or simply not curated, and a green run
+      # cannot tell those apart. Host-only (stub shell, no device); never fails
+      # the build.
       - name: Tier-2 coverage manifest
         run: |
           source bin/activate
           ./tools/mobile-test/coverage-manifest.py --summary
+          ./tools/mobile-test/coverage-manifest.py --summary --suite sequential
 
   # The single required status check for this workflow. Branch protection
   # should require `ci-required` rather than the individual jobs: the build

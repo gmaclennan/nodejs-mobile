@@ -1,36 +1,16 @@
-# Tier 2b: the whole non-skipped test/parallel + test/sequential suite on device, sharded.
+# Tier 2b: the whole non-.status-skipped test/parallel + test/sequential suite
+# on device, nightly, 4 round-robin shards per platform (test.py --run=n,4).
 #
-# Tier 2a (emulator-tests / simulator-tests, driven from build.yml) runs a
-# curated 208-test allow-list on every PR: fast and deterministic, but by
-# construction it only covers what someone thought to add. About 95% of the
-# runnable suite has never run on a device, and a test upstream adds tomorrow
-# joins that group silently. This job is the other half: everything
-# test/parallel/parallel.status does NOT skip, so new upstream tests are picked
-# up automatically and the .status file — not an allow-list — is what records a
-# decision to exclude something.
+# Tier 2a (in build.yml) is a curated allow-list; this job is the complement:
+# a test upstream adds is picked up automatically, and excluding one requires
+# a .status entry — a decision with a reason attached.
 #
-# Runs `parallel sequential`. test/sequential has had mobile .status sections
-# since the harness landed but no job has ever run it, so nothing had ever
-# checked whether those skips were right — they are (every one of its
-# non-structural skips that passes turns out to spawn a child process), but the
-# ~57 tests it does run were pure uncovered ground.
+# ADVISORY: shards run with continue-on-error and the job is not on the
+# release chain. Promotion to a gate is tracked in
+# https://github.com/gmaclennan/nodejs-mobile/issues/27
 #
-# ADVISORY for now, and deliberately not wired into the release chain. The
-# pass-set on a full device sweep has been measured once, by hand, not yet over
-# time; promoting this to a gate means dropping continue-on-error below and
-# adding it to publish's needs:, and should wait until a few nightlies agree.
-# Same posture smoke-host's full-suite step already takes.
-#
-# Shards are balanced by measured time, not by test count. test.py's own
-# --run=i,N splits round-robin over a sorted list, which sounds fair and is not:
-# durations run from under a second to half a minute, and a measured 4-way split
-# came out 18.8 / 19.3 / 33.5 / 20.3 minutes against a 19.3-minute ideal. The job
-# waits on the slowest shard, so that tail was ~40% wasted wall-clock.
-# shard-tests.py assigns longest-first to the lightest shard, from durations
-# recorded in tier2b-durations.tsv, and lands every shard within a few percent.
-#
-# -j 1 still applies within a shard: the proxy relaunches the app per test, so
-# concurrency has to come from more devices, not more threads on one.
+# -j 1 because the proxy relaunches the app per test; concurrency comes from
+# shards, not threads.
 
 name: Tier 2b full suite
 
@@ -52,18 +32,16 @@ env:
   EMULATOR_API_LEVEL: 30
   TESTNODE_NDK_VERSION: 27.3.13750724
   ORG_GRADLE_PROJECT_testnodeAbis: x86_64
-  # full only. lite differs in ICU and a handful of build flags; a broad sweep
-  # of both would double the cost for near-duplicate runtime signal, and Tier 2a
-  # already covers lite on every PR.
+  # full only; lite is near-duplicate runtime signal and already covered by
+  # Tier 2a on every PR.
   NODEJS_MOBILE_FLAVOR: full
 
 jobs:
   android-full:
     strategy:
       fail-fast: false
-      # Keep in step with --shards below: shard-tests.py partitions into exactly
-      # that many bins, so a matrix of a different length would drop or
-      # double-run tests rather than fail.
+      # Keep in step with the ,4 in --run below: a matrix of a different
+      # length would drop or double-run tests rather than fail.
       matrix:
         shard: [0, 1, 2, 3]
     runs-on: ubuntu-24.04
@@ -119,12 +97,9 @@ jobs:
           emulator-options: -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
           disable-animations: true
           script: |
-            set -e
             adb wait-for-device
             ./tools/mobile-test/android/prepare-android-test.sh
-            ./tools/mobile-test/shard-tests.py --arch android --shards 4 --shard ${{ matrix.shard }} > shard-list.txt
-            test -s shard-list.txt || { echo "::error::empty shard list"; exit 1; }
-            xargs ./tools/test.py -j 1 --flaky-tests=skip --timeout=300 --arch android < shard-list.txt 2>&1 | tee shard.log
+            bash -o pipefail -c "./tools/test.py -j 1 --flaky-tests=skip --timeout=300 --arch android --run=${{ matrix.shard }},4 parallel sequential 2>&1 | tee shard.log"
 
       - name: Summarize shard ${{ matrix.shard }}
         if: always()
@@ -144,8 +119,7 @@ jobs:
       matrix:
         shard: [0, 1, 2, 3]
     runs-on: macos-26
-    # Roughly 3x the per-test cost of the emulator (simctl launch dominates),
-    # so a quarter of the suite lands near an hour. Headroom, not a target.
+    # simctl launch dominates per-test cost on iOS. Headroom, not a target.
     timeout-minutes: 150
     steps:
       - uses: actions/checkout@v7
@@ -183,10 +157,9 @@ jobs:
           DEVICE_ID: ${{ steps.boot-sim.outputs.udid }}
         run: |
           set -o pipefail
-          ./tools/mobile-test/shard-tests.py --arch ios --shards 4 --shard ${{ matrix.shard }} > shard-list.txt
-          test -s shard-list.txt || { echo "::error::empty shard list"; exit 1; }
-          xargs ./tools/test.py -j 1 --flaky-tests=skip --timeout=300 \
-            --arch ios --shell=./tools/mobile-test/ios/node-ios-sim-proxy.sh < shard-list.txt 2>&1 | tee shard.log
+          ./tools/test.py -j 1 --flaky-tests=skip --timeout=300 \
+            --arch ios --shell=./tools/mobile-test/ios/node-ios-sim-proxy.sh \
+            --run=${{ matrix.shard }},4 parallel sequential 2>&1 | tee shard.log
 
       - name: Summarize shard ${{ matrix.shard }}
         if: always()
