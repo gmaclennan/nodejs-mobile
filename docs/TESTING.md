@@ -127,7 +127,9 @@ silently — a test nobody added is indistinguishable from a test somebody
 excluded.
 
 The full suite runs two ways: **nightly** (03:00 UTC, against the head
-commit's Build artifacts) and as a **release gate** — `build.yml` calls it as
+commit's Build artifacts; skipped when that commit already has a green run,
+since retesting identical bytes buys nothing) and as a **release gate** —
+`build.yml` calls it as
 the `full-suite` job on release runs, and `publish` `needs:` it, so a release
 cannot ship with a full-suite failure. It is release-only rather than
 per-PR because it costs about eight device-hours per run, which the PR loop
