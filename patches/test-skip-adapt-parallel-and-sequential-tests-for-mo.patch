@@ -16,7 +16,7 @@ series itself.
 Co-authored-by: Jaime Bernardo <jaime@janeasystems.com>
 Co-authored-by: Andre Staltz <andre@staltz.com>
 ---
- test/parallel/parallel.status                 | 1365 +++++++++++++++++
+ test/parallel/parallel.status                 | 1366 +++++++++++++++++
  test/parallel/test-dgram-bind-fd.js           |    2 +-
  test/parallel/test-dgram-membership.js        |   10 +-
  .../parallel/test-dgram-socket-buffer-size.js |    2 +-
@@ -51,13 +51,13 @@ Co-authored-by: Andre Staltz <andre@staltz.com>
  test/sequential/sequential.status             |  129 ++
  test/sequential/test-async-wrap-getasyncid.js |   15 +-
  test/sequential/test-fs-watch.js              |    4 +
- 35 files changed, 1675 insertions(+), 46 deletions(-)
+ 35 files changed, 1676 insertions(+), 46 deletions(-)
 
 diff --git a/test/parallel/parallel.status b/test/parallel/parallel.status
-index 5c7fe47927..728367a45d 100644
+index 5c7fe47927..3a0944702d 100644
 --- a/test/parallel/parallel.status
 +++ b/test/parallel/parallel.status
-@@ -156,6 +156,1371 @@ test-tls-set-default-ca-certificates-append-fetch: SKIP
+@@ -156,6 +156,1372 @@ test-tls-set-default-ca-certificates-append-fetch: SKIP
  test-tls-set-default-ca-certificates-reset-fetch: SKIP
  test-inspector-invalid-protocol: SKIP
  
@@ -801,6 +801,7 @@ index 5c7fe47927..728367a45d 100644
 +test-net-socket-constructor: SKIP
 +test-node-output-console: SKIP
 +test-node-output-errors: SKIP
++test-node-output-eval: SKIP
 +test-node-output-sourcemaps: SKIP
 +test-node-output-vm: SKIP
 +test-npm-install: SKIP
