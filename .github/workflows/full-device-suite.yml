@@ -7,7 +7,10 @@
 # one requires a .status entry — a decision with a reason attached.
 #
 # Runs nightly against the head commit's Build artifacts, and as a release
-# gate via workflow_call from build.yml, where publish needs: it.
+# gate via workflow_call from build.yml, where publish needs: it. A nightly
+# whose head commit already has a green run of this workflow is skipped —
+# retesting an identical commit buys nothing. Release calls and manual
+# dispatches always run.
 #
 # -j 1 because the proxy relaunches the app per test; concurrency comes from
 # shards, not threads.
@@ -44,7 +47,35 @@ env:
   NODEJS_MOBILE_FLAVOR: full
 
 jobs:
+  # Skip a scheduled run when this commit already has a green one: the suite
+  # is deterministic per commit, so a quiet day would retest the same bytes.
+  # Only the nightly skips — a workflow_call (release gate) or manual dispatch
+  # always runs, and event_name here is the caller's event, never 'schedule'.
+  precheck:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      skip: ${{ steps.check.outputs.skip }}
+    steps:
+      - id: check
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          skip=false
+          if [ "${{ github.event_name }}" = "schedule" ]; then
+            prev=$(gh run list --repo "$GITHUB_REPOSITORY" --workflow full-device-suite.yml \
+                     --commit "$GITHUB_SHA" --status success --limit 1 \
+                     --json databaseId -q '.[0].databaseId')
+            if [ -n "$prev" ]; then
+              skip=true
+              echo "::notice::already green at $GITHUB_SHA (run $prev) — skipping"
+            fi
+          fi
+          echo "skip=$skip" >> "$GITHUB_OUTPUT"
+
   android:
+    needs: precheck
+    if: needs.precheck.outputs.skip != 'true'
     strategy:
       fail-fast: false
       # Keep in step with the ,4 in --run below: a matrix of a different
@@ -120,6 +151,8 @@ jobs:
           if-no-files-found: ignore
 
   ios:
+    needs: precheck
+    if: needs.precheck.outputs.skip != 'true'
     strategy:
       fail-fast: false
       matrix:
