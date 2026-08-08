@@ -324,9 +324,12 @@ Three limits are structural, and worth stating rather than papering over:
   auxiliary vector saying `AT_SECURE=1` and `AT_{,E}{U,G}ID=0` while actually
   running unprivileged with `uid == euid`. `linux_at_secure()` therefore reports
   1 for every app, forever, and upstream's check declines *every* variable the
-  embedder sets: `TMPDIR` (so `os.tmpdir()` falls back to a `/tmp` that does not
-  exist on Android), `TZ`, `NODE_EXTRA_CA_CERTS`, `NODE_USE_SYSTEM_CA`,
-  `NODE_ICU_DATA`, `NODE_OPTIONS`, `OPENSSL_CONF`. The fix is gated on
+  embedder sets that is read this way: `TMPDIR` (so `os.tmpdir()` falls back to a
+  `/tmp` that does not exist on Android), `NODE_EXTRA_CA_CERTS`,
+  `NODE_USE_SYSTEM_CA`, `NODE_ICU_DATA`, `NODE_OPTIONS`, `OPENSSL_CONF`,
+  `NODE_PATH`, `NODE_COMPILE_CACHE`. Not `TZ` — its only `SafeGetenv()` read is
+  Windows-only (`#ifndef __POSIX__` in `node.cc`); on mobile `TZ` reaches libc
+  and ICU through plain `getenv`, so it was never affected. The fix is gated on
   `NODE_MOBILE` — the embedded-library build — rather than on the OS, because a
   standalone `node` `exec()`ed on Android would have a truthful auxv and should
   keep upstream's behaviour. The `uid`/`gid` comparisons stay live.
