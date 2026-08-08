@@ -106,9 +106,16 @@ xcrun devicectl device copy from --device "$DEVICE_ID" \
     --source "Documents/result-${RUN_TOKEN}.txt" \
     --destination "$DL_DIR/result.txt" >> "$LOG" 2>&1 || true
 
+# The app redirects its own stdout/stderr into the sandbox (NodeRunner.mm), so
+# --console above relays devicectl's chrome and nothing else. Pull the real
+# output back the same way as the verdict.
+xcrun devicectl device copy from --device "$DEVICE_ID" \
+    --domain-type appDataContainer --domain-identifier "$BUNDLE_ID" \
+    --source "Documents/stdout-${RUN_TOKEN}.txt" \
+    --destination "$DL_DIR/stdout.txt" >> "$LOG" 2>&1 || true
+
 verdict=""
 [ -f "$DL_DIR/result.txt" ] && verdict="$(tr -d '\r\n' < "$DL_DIR/result.txt")"
-rm -rf "$DL_DIR"
 
 case "$verdict" in
   PASS) RESULT=0 ;;
@@ -120,13 +127,10 @@ esac
 # Echo the app's output for test.py's .out comparison, dropping devicectl's own
 # chrome: its status lines are HH:MM:SS-prefixed, plus three fixed phrases.
 # The verdict does not ride this stream.
-sed -E \
-  -e '/^[0-9]{2}:[0-9]{2}:[0-9]{2}[[:space:]]/d' \
-  -e '/^Launched application with /d' \
-  -e '/^Waiting for the application to terminate/d' \
-  -e '/^The app terminated with the exit code /d' \
-  "$LOG"
+# node's own output, complete, from the file the app wrote.
+[ -f "$DL_DIR/stdout.txt" ] && cat "$DL_DIR/stdout.txt"
 rm -f "$LOG"
+rm -rf "$DL_DIR"
 
 # On-device verdict files are left in place on purpose: deleting each one costs
 # another device round-trip per test, the token makes a stale file unreadable,

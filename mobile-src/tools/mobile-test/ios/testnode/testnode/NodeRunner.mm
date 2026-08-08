@@ -126,8 +126,12 @@ static void NodeRunnerAtExitHook(void) {
     //Build the per-launch verdict file path (<Documents>/result-<token>.txt) from
     //the token set by main.m, before starting node, so the atexit fallback can
     //write even if node aborts.
-    const char* tok = getenv("NODE_MOBILE_RUN_TOKEN");
-    if (tok && tok[0]) {
+    const char* tok_env = getenv("NODE_MOBILE_RUN_TOKEN");
+    //Copy it: unsetenv() below may free the string getenv() pointed at, and the
+    //token is still needed afterwards to name the stdout file.
+    char tok[128] = {0};
+    if (tok_env) strncpy(tok, tok_env, sizeof(tok) - 1);
+    if (tok[0]) {
         NSString* docs = [NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES) firstObject];
         NSString* rf = [docs stringByAppendingPathComponent:[NSString stringWithFormat:@"result-%s.txt", tok]];
         strncpy(g_result_file, [rf UTF8String], sizeof(g_result_file) - 1);
@@ -137,6 +141,28 @@ static void NodeRunnerAtExitHook(void) {
         //still running (a false-PASS vector). Only this launch may hold it.
         unsetenv("NODE_MOBILE_RUN_TOKEN");
         atexit(NodeRunnerAtExitHook);
+
+        //Redirect stdout/stderr into the sandbox, next to the verdict file, and
+        //let the proxy read it back afterwards. The alternative is
+        //`simctl launch --console`, which pipes the app's output over a FIFO
+        //that simctl fails to establish on a rapid relaunch ("Unable to
+        //establish FIFO ... Error 17") -- the proxy carries a retry loop purely
+        //for that. Same argument the verdict file already won: a durable file in
+        //the sandbox beats a shared, lossy stream.
+        //
+        //Unbuffered, because the JS process.on('exit') hook can write the
+        //verdict and the process can then die without libc flushing whatever is
+        //still sitting in stdout's buffer -- which would silently truncate the
+        //output test.py compares against a .out file.
+        NSString* outPath = [docs stringByAppendingPathComponent:
+                             [NSString stringWithFormat:@"stdout-%s.txt", tok]];
+        if (freopen([outPath UTF8String], "w", stdout) != NULL) {
+            setvbuf(stdout, NULL, _IONBF, 0);
+            dup2(fileno(stdout), fileno(stderr));
+            setvbuf(stderr, NULL, _IONBF, 0);
+        } else {
+            NSLog(@"could not redirect stdout to %@; falling back to --console", outPath);
+        }
 
         //Drop the exit-verdict hook next to the verdict file and preload it.
         //Doing this natively (rather than shipping it in the bundled test tree)

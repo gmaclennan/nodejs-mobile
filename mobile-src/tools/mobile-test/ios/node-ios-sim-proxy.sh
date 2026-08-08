@@ -44,36 +44,49 @@ for attempt in $(seq 1 "$LAUNCH_ATTEMPTS"); do
   # write race this attempt's poll.
   RUN_TOKEN="$(/usr/bin/uuidgen | tr 'A-F' 'a-f' | tr -d '-')"
   RESULT_FILE="$DOCS/result-${RUN_TOKEN}.txt"
-  rm -f "$RESULT_FILE"
+  STDOUT_FILE="$DOCS/stdout-${RUN_TOKEN}.txt"
+  rm -f "$RESULT_FILE" "$STDOUT_FILE"
   : >| "$LOG"
   # main.m consumes --run-token into the env (NodeRunner builds the verdict path)
   # and applies --substitute-dir to rewrite host test paths to the Documents copy.
-  # shellcheck disable=SC2086 # is a whitespace-free literal or empty
-  xcrun simctl launch --console --terminate-running-process "$UDID" "$BUNDLE" \
-    --run-token "$RUN_TOKEN" --substitute-dir "$TEST_BASE" "$@" >| "$LOG" 2>&1 &
-  LP=$!
+  #
+  # No --console: the app redirects its own stdout/stderr into the sandbox (see
+  # NodeRunner.mm) and we read that file below. --console pipes the output over a
+  # FIFO that simctl intermittently fails to establish on a rapid relaunch, which
+  # is what the retry loop below exists for; without it the launch just returns.
+  # Synchronous, not backgrounded: without --console this returns as soon as the
+  # app is launched rather than when it exits, and it prints "<bundle>: <pid>".
+  # A simulator app is an ordinary macOS process, so that pid is one this shell
+  # can signal — which is what replaces the old "did simctl exit yet" liveness
+  # check. Watching the launcher instead would end the poll immediately here.
+  xcrun simctl launch --terminate-running-process "$UDID" "$BUNDLE" \
+    --run-token "$RUN_TOKEN" --substitute-dir "$TEST_BASE" "$@" >| "$LOG" 2>&1
+  APP_PID="$(sed -nE 's/^.*: ([0-9]+)$/\1/p' "$LOG" | tail -1)"
+
   # Poll at 10 Hz, not 1 Hz. The verdict file is local (the simulator's data
   # container is a directory on this filesystem), so a probe is a stat and costs
   # nothing; a 1-second tick just added up to a second of dead time to every
   # single test. TIMEOUT stays in seconds.
   verdict=""
+  gone=""
   for _ in $(seq 1 $((TIMEOUT * 10))); do
     if [ -f "$RESULT_FILE" ]; then
       verdict=$(tr -d '\r\n' < "$RESULT_FILE")
       [ -n "$verdict" ] && break
     fi
-    kill -0 "$LP" 2>/dev/null || { [ -f "$RESULT_FILE" ] && verdict=$(tr -d '\r\n' < "$RESULT_FILE"); break; }
+    # Re-read once after the process died: it may have written the verdict and
+    # exited between the two probes. Without a pid, fall back to the timeout.
+    if [ -n "$gone" ]; then break; fi
+    if [ -n "$APP_PID" ] && ! kill -0 "$APP_PID" 2>/dev/null; then gone=1; continue; fi
     sleep 0.1
   done
-  kill "$LP" 2>/dev/null || true
-  wait "$LP" 2>/dev/null || true
 
   # A real PASS/FAIL verdict is authoritative -> stop (never retry a genuine
   # FAIL). Retry only when there is no verdict AND simctl reported a launch
   # failure (the --console FIFO race); a no-verdict with no launch error is a
   # genuine hang -> let it stand as FAIL rather than burn retries.
   case "$verdict" in PASS|FAIL) break ;; esac
-  if grep -qiE "Unable to establish FIFO|error was encountered|NSPOSIXErrorDomain|Could not (launch|find)" "$LOG"; then
+  if grep -qiE "error was encountered|NSPOSIXErrorDomain|Could not (launch|find)" "$LOG"; then
     echo "::warning::node-ios-sim-proxy: simctl launch failed (attempt ${attempt}/${LAUNCH_ATTEMPTS}), retrying: $*" >&2
     sleep 2
     continue
@@ -86,9 +99,9 @@ case "$verdict" in
   *) RESULT=1; echo "::warning::node-ios-sim-proxy: no verdict file after ${LAUNCH_ATTEMPTS} attempt(s) (timeout/crash/launch-failure) for: $*" >&2 ;;
 esac
 
-# Echo node's output for test.py's .out comparison (best-effort via --console),
-# dropping the "<bundle>: <pid>" line simctl prints. The verdict no longer rides
-# this stream.
-grep -vE "^${BUNDLE}: [0-9]+$" "$LOG" || true
-rm -f "$LOG" "$RESULT_FILE"
+# Echo node's output for test.py's .out comparison. It comes from the app's own
+# redirect, so it is complete rather than best-effort: nothing here depends on
+# simctl having managed to hold a pipe open for the life of the process.
+[ -f "$STDOUT_FILE" ] && cat "$STDOUT_FILE"
+rm -f "$LOG" "$RESULT_FILE" "$STDOUT_FILE"
 exit "$RESULT"
