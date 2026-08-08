@@ -735,13 +735,11 @@ jobs:
           grep -vE '^[[:space:]]*#|^[[:space:]]*$' tools/mobile-test/curated-device-tests.txt \
             | xargs ./tools/test.py -j "$(nproc)" --flaky-tests=skip
 
-      # The full parallel suite is far broader than the curated list and is the
-      # real prize here. It is advisory for now: `make node` alone doesn't build
-      # cctest or the addon fixtures, so a handful of cases may need extra
-      # targets or a skip list. Promote to blocking (drop continue-on-error)
-      # once a few runs confirm the pass-set — see docs/TESTING.md.
-      - name: Run the full parallel suite on the host build (advisory)
-        continue-on-error: true
+      # The full parallel suite is far broader than the curated list. Host runs
+      # are deterministic (no emulator lifecycle), so this is a blocking check:
+      # an always-green advisory step hides its failures behind an annotation
+      # nobody reads.
+      - name: Run the full parallel suite on the host build
         run: |
           source bin/activate
           ./tools/test.py -j "$(nproc)" --flaky-tests=skip parallel
