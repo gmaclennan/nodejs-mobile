@@ -1,6 +1,6 @@
 #!/bin/bash
 # Install the testnode app on a booted iOS simulator, run a one-line console.log
-# via `node -e`, and assert it booted and exited cleanly. Tier 1 smoke
+# via `node -e`, and assert it booted and exited cleanly. Boot smoke
 # (docs/TESTING.md on the recipe branch).
 #
 # Usage: run-ios-smoke.sh <testnode.app> <simulator-udid>

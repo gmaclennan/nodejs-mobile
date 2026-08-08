@@ -41,7 +41,7 @@ NCRASH="$(grep -ac 'crashed (process gone' "$NORM" || true)"
 NOVERD="$(grep -ac 'no verdict file after' "$NORM" || true)"
 
 {
-  echo "### Tier 2b — ${LABEL}"
+  echo "### Full device suite — ${LABEL}"
   echo
   echo "| passed | failed | no verdict: hung | no verdict: crashed | no verdict: other |"
   echo "|---:|---:|---:|---:|---:|"

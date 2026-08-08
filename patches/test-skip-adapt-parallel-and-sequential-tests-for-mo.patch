@@ -54,7 +54,7 @@ Co-authored-by: Andre Staltz <andre@staltz.com>
  35 files changed, 1676 insertions(+), 46 deletions(-)
 
 diff --git a/test/parallel/parallel.status b/test/parallel/parallel.status
-index 5c7fe47927..3a0944702d 100644
+index 5c7fe47927..cd7df2fbbe 100644
 --- a/test/parallel/parallel.status
 +++ b/test/parallel/parallel.status
 @@ -156,6 +156,1372 @@ test-tls-set-default-ca-certificates-append-fetch: SKIP
@@ -65,7 +65,7 @@ index 5c7fe47927..3a0944702d 100644
 +#
 +# Reverted to upstream (kept node:test); the jitless V8 build emits the short
 +# assert diff format, so these fail the .out comparison on mobile. None are in
-+# the curated Tier-2 gate, so skip them in the full suite rather than rewriting
++# the curated gate, so skip them in the full suite rather than rewriting
 +# them (test-aborted-util may pass unmodified - un-skip after on-device check).
 +#
 +test-aborted-util: SKIP
@@ -673,7 +673,7 @@ index 5c7fe47927..3a0944702d 100644
 +#
 +# Reverted to upstream (kept node:test); the jitless V8 build emits the short
 +# assert diff format, so these fail the .out comparison on mobile. None are in
-+# the curated Tier-2 gate, so skip them in the full suite rather than rewriting
++# the curated gate, so skip them in the full suite rather than rewriting
 +# them (test-aborted-util may pass unmodified - un-skip after on-device check).
 +#
 +test-aborted-util: SKIP

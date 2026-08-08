@@ -13,7 +13,7 @@ android {
         targetSdk 34
         versionCode 1
         versionName '1.0'
-        // Self-driving Tier-3 smoke (BrowserStack Espresso) — see
+        // Self-driving real-device smoke (BrowserStack Espresso) — see
         // src/androidTest/.../NodeSmokeTest.java.
         testInstrumentationRunner 'androidx.test.runner.AndroidJUnitRunner'
 

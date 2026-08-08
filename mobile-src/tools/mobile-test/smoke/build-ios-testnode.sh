@@ -1,6 +1,6 @@
 #!/bin/bash
 # Build the testnode app for the iOS simulator (arm64) against the prebuilt
-# out_ios/NodeMobile.xcframework. Tier 1 smoke (docs/TESTING.md on the
+# out_ios/NodeMobile.xcframework. Boot smoke (docs/TESTING.md on the
 # recipe branch).
 #
 # The xcframework must already be at <repo>/out_ios/NodeMobile.xcframework

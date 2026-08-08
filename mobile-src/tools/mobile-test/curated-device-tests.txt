@@ -1,7 +1,7 @@
-# Tier 2a: the fast device gate, run on every PR and push (docs/TESTING.md on
-# the recipe branch). Hand-maintained: edit entries directly, following the
-# expansion procedure in TESTING.md -- measure a candidate on both platforms
-# before adding it.
+# The curated device-test allow-list: the fast gate run on every PR and push
+# (docs/TESTING.md on the recipe branch). Hand-maintained: edit entries
+# directly, following the expansion procedure in TESTING.md -- measure a
+# candidate on both platforms before adding it.
 #
 # Entries are `<suite>/<test>`. A test must run on BOTH platforms to be
 # listed, so a regression fails the same named test on both. The list is

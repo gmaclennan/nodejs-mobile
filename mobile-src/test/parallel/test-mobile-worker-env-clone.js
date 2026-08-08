@@ -17,7 +17,7 @@
 //
 // What is asserted here is the post-condition Clone() owes its caller: a
 // default-env worker starts, and its environment is the parent's. Note the
-// division of labour between the legs of the Tier-2 run: the Android leg is
+// division of labour between the device legs of the curated run: the Android leg is
 // the one that can actually meet an unclonable variable (a revert shows up
 // there as a dead worker), while the host and iOS legs prove the same code
 // path copies the environment faithfully, long values and all.

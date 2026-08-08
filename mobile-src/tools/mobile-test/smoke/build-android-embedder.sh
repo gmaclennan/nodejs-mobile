@@ -1,6 +1,6 @@
 #!/bin/bash
 # Compile the minimal Node embedder (node_embedder.cpp) for one Android ABI,
-# linking the prebuilt libnode.so. Tier 1 smoke (docs/TESTING.md on the
+# linking the prebuilt libnode.so. Boot smoke (docs/TESTING.md on the
 # recipe branch).
 #
 # Usage: build-android-embedder.sh <ndk_path> <abi> <libnode_dir> <out_path>

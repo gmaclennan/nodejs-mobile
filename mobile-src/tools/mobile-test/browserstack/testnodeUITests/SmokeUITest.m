@@ -1,7 +1,7 @@
 //
 //  SmokeUITest.m
 //
-//  Tier-3 real-device smoke for BrowserStack XCUITest: launch the testnode app
+//  Real-device smoke for BrowserStack XCUITest: launch the testnode app
 //  in --smoke-ui mode (ViewController runs node + the N-API addon gate on a
 //  background thread) and assert the verdict label lands on SMOKE:PASS.
 //  The target that compiles this file is generated at build time by

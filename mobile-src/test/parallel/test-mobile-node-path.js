@@ -15,7 +15,7 @@
 // The contract is therefore simply: NODE_PATH, as visible in process.env when
 // Module._initPaths() runs, reaches module resolution. On a host build
 // SafeGetenv() and process.env agree, so this passes with or without the
-// patch there -- it is the Android and iOS legs of the Tier-2 run that fail
+// patch there -- it is the Android and iOS device runs that fail
 // when the patch goes away. Running it on the host is still worth it: it is
 // what keeps the assertion honest as upstream moves _initPaths() around.
 

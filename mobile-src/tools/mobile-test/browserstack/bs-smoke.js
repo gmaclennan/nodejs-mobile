@@ -1,5 +1,5 @@
 'use strict';
-// Tier-3 real-device smoke (BrowserStack App Automate): prove the shipped
+// Real-device smoke (BrowserStack App Automate): prove the shipped
 // binary boots and runs JavaScript on physical hardware, then run the
 // crc-native N-API addon gate (the "B-1" concern: napi_* resolution via a real
 // process.dlopen on a device loader). Runs alongside test-napi-addon.js, which

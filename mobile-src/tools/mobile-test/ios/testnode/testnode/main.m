@@ -8,7 +8,7 @@
 #import "NodeRunner.hpp"
 int main(int argc, char * argv[]) {
 
-    //--smoke-ui: self-driving Tier-3 smoke mode for BrowserStack XCUITest,
+    //--smoke-ui: self-driving real-device smoke mode for BrowserStack XCUITest,
     //where there is no simctl/proxy harness. Start the normal UI app; the
     //ViewController runs node on a background thread (bs-smoke.js + the
     //N-API addon gate, staged in the app bundle by the CI workflow) and

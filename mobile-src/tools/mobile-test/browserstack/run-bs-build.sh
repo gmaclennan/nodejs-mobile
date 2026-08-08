@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Upload an app + test suite to BrowserStack App Automate, trigger a build on
 # one or more real devices, and poll it to a verdict. Framework-agnostic
-# driver for the Tier-3 smoke — used with framework=espresso (Android) and
+# driver for the real-device smoke — used with framework=espresso (Android) and
 # framework=xcuitest (iOS).
 #
 # Usage:
