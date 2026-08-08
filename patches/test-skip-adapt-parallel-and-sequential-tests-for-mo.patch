@@ -1,8 +1,7 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Gregor MacLennan <gmaclennan@awana.digital>
 Date: Tue, 28 Jul 2026 19:20:33 +0000
-Subject: [PATCH 16/19] test: skip/adapt parallel and sequential tests for
- mobile
+Subject: [PATCH] test: skip/adapt parallel and sequential tests for mobile
 MIME-Version: 1.0
 Content-Type: text/plain; charset=UTF-8
 Content-Transfer-Encoding: 8bit
@@ -17,7 +16,7 @@ series itself.
 Co-authored-by: Jaime Bernardo <jaime@janeasystems.com>
 Co-authored-by: Andre Staltz <andre@staltz.com>
 ---
- test/parallel/parallel.status                 | 1366 ++++++++++++++++-
+ test/parallel/parallel.status                 | 1365 +++++++++++++++++
  test/parallel/test-dgram-bind-fd.js           |    2 +-
  test/parallel/test-dgram-membership.js        |   10 +-
  .../parallel/test-dgram-socket-buffer-size.js |    2 +-
@@ -52,21 +51,13 @@ Co-authored-by: Andre Staltz <andre@staltz.com>
  test/sequential/sequential.status             |  129 ++
  test/sequential/test-async-wrap-getasyncid.js |   15 +-
  test/sequential/test-fs-watch.js              |    4 +
- 35 files changed, 1675 insertions(+), 47 deletions(-)
+ 35 files changed, 1675 insertions(+), 46 deletions(-)
 
 diff --git a/test/parallel/parallel.status b/test/parallel/parallel.status
-index 5c7fe47927..8975481548 100644
+index 5c7fe47927..728367a45d 100644
 --- a/test/parallel/parallel.status
 +++ b/test/parallel/parallel.status
-@@ -130,7 +130,6 @@ test-net-write-after-end-nt: SKIP
- test-tls-env-extra-ca: SKIP
- # https://github.com/nodejs/node/pull/34209
- test-dgram-error-message-address: SKIP
--# https://github.com/nodejs/node/issues/36929
- test-crypto-secure-heap: SKIP
- # https://github.com/nodejs/node/issues/39683
- test-dgram-connect: PASS, FLAKY
-@@ -156,6 +155,1371 @@ test-tls-set-default-ca-certificates-append-fetch: SKIP
+@@ -156,6 +156,1371 @@ test-tls-set-default-ca-certificates-append-fetch: SKIP
  test-tls-set-default-ca-certificates-reset-fetch: SKIP
  test-inspector-invalid-protocol: SKIP
  

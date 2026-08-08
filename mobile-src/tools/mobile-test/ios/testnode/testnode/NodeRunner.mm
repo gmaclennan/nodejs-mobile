@@ -171,7 +171,7 @@ static void NodeRunnerAtExitHook(void) {
         //
         //Unconditional: the hook require()s nothing until the process is already
         //exiting, so the only thing a test can observe is one extra listener on
-        //process('exit'). Predicting which tests need it is not possible anyway —
+        //process.on('exit'). Predicting which tests need it is not possible anyway —
         //common.skip() reaches process.exit(0) from any test, at runtime.
         {
             NSString* hook = [docs stringByAppendingPathComponent:@"exit-verdict-hook.js"];

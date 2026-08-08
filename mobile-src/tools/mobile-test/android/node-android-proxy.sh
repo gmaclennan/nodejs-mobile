@@ -35,7 +35,6 @@ TEST_PATH="$( cd "$( dirname "$0" )" && cd .. && cd .. && cd test && pwd )"
 # (a `*` in a --test-name-pattern would be expanded against the cwd).
 ARGS="$*"
 
-
 # Per-launch token: the RESULT marker is tagged with it, so a marker emitted by
 # an aborting test or a spawned grandchild can't be mis-attributed to a
 # neighbouring test (the contiguous false-FAIL block seen on CI). [a-f0-9] only,
@@ -81,15 +80,10 @@ verdict=""
 # verdict direction is FAIL either way — this buys wall-clock and a triage
 # signal, never a score.
 #
-# Poll fast. `am start -W` returns in well under 100 ms and the median test runs
-# in about the same, so a 1-second tick used to set the floor for the whole
-# harness: a trivial test cost ~1.5 s end to end, nearly all of it waiting for
-# the next poll. At 10 Hz the same test costs a fraction of that, which is worth
-# roughly an hour across a full-suite run.
-#
-# The liveness probe stays at ~1 Hz. It is a second adb round trip and only
-# buys triage detail (crash vs hang), so there is no reason to pay for it ten
-# times a second.
+# The verdict poll runs at 10 Hz: the median test finishes in ~100 ms, so a
+# 1-second tick would dominate the per-test cost across a full-suite run. The
+# liveness probe stays at ~1 Hz — it is a second adb round trip and only buys
+# triage detail (crash vs hang).
 POLL_HZ=10
 waited=0
 ticks=0

@@ -52,7 +52,6 @@ int main(int argc, char * argv[]) {
             i+=2;
         }
 
-
         //--substitute-dir indicates a path prefix that should be replaced with the test path in Documents.
         if(argc>=i+2 && strcmp(argv[i],"--substitute-dir")==0) {
             file_replace_prefix=[[NSString alloc] initWithCString:argv[i+1] encoding:NSUTF8StringEncoding];

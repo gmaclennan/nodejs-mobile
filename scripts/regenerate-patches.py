@@ -14,8 +14,13 @@ line per owned file):
     patch in files.map first if it is upstream-coupled (e.g. a new file in
     deps/ that belongs with a patch concern)
   - a changed upstream file owned by nothing -> error; add a files.map line
-    (to an existing patch or a new NNNN-name.patch entry in series+files.map
+    (to an existing patch or a new name.patch entry in series+files.map
     with a "Subject: ..." template) and re-run
+
+Patch files are unnumbered (name.patch, not NNNN-name.patch); patches/series
+alone records the apply order. Numbering was dropped because it turned every
+insertion or retirement into a rename of the whole series plus a rewrite of
+every [PATCH n/m] subject line, churning files whose content hadn't changed.
 
 Patch headers (author, date, subject, body) are preserved from the existing
 .patch files, and core.abbrev is pinned, so an unchanged patch regenerates
@@ -189,7 +194,7 @@ def main():
                          'patches/series and patches/files.map, then re-run.')
         # Export the new series.
         for f in os.listdir(PATCHES):
-            if re.match(r'\d{4}-.*\.patch$', f):
+            if f.endswith('.patch'):
                 os.unlink(os.path.join(PATCHES, f))
         # core.abbrev is pinned because git's default auto-abbreviation scales
         # with the object count, so the "index <old>..<new>" lines would come
@@ -198,7 +203,9 @@ def main():
         # tree. Pinning keeps an unchanged patch byte-identical anywhere.
         # --no-renames: a rename diff would emit `diff --git a/X b/Y`, whose
         # b-path the files.map rewrite below never captures.
-        sh('git', '-c', 'core.abbrev=10', 'format-patch', '--no-renames',
+        # -N: plain "[PATCH]" subjects — a "[PATCH n/m]" counter rewrites every
+        # patch whenever one is added or retired.
+        sh('git', '-c', 'core.abbrev=10', 'format-patch', '--no-renames', '-N',
            '--output-directory', PATCHES, '--zero-commit', '--no-signature',
            f'{base_sha}..HEAD', cwd=wt)
     finally:
@@ -206,9 +213,22 @@ def main():
                        capture_output=True)
         shutil.rmtree(wt, ignore_errors=True)
 
+    # Strip format-patch's NNNN- filename prefixes: series alone records the
+    # apply order, and a numbered name renumbers the whole directory whenever
+    # a patch is inserted or retired. The numeric prefix is only read here, to
+    # recover the emission order before it is discarded.
+    emitted = []
+    for f in sorted(f for f in os.listdir(PATCHES) if re.match(r'\d{4}-.*\.patch$', f)):
+        bare = re.sub(r'^\d{4}-', '', f)
+        dst = os.path.join(PATCHES, bare)
+        if os.path.exists(dst):
+            sys.exit(f'error: two patches collapse to the same filename {bare} — '
+                     'give them distinct subjects')
+        os.rename(os.path.join(PATCHES, f), dst)
+        emitted.append(bare)
+
     # Rewrite series + files.map from what was actually emitted (names can
     # change when subjects change).
-    emitted = sorted(f for f in os.listdir(PATCHES) if re.match(r'\d{4}-.*\.patch$', f))
     with open(os.path.join(PATCHES, 'series'), 'w') as f:
         f.write('\n'.join(emitted) + '\n')
     with open(os.path.join(PATCHES, 'files.map'), 'w') as f:

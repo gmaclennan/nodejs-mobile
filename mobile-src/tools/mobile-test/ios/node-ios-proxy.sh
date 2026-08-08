@@ -68,11 +68,10 @@ LOG="$(mktemp)"
 RUN_TOKEN="$(/usr/bin/uuidgen | tr 'A-F' 'a-f' | tr -d '-')"
 [ -n "$RUN_TOKEN" ] || { echo "::error::node-ios-proxy: uuidgen produced no run token" >&2; exit 1; }
 
-
 # main.m consumes --run-token into the environment (NodeRunner builds the
 # verdict path from it, then unsets it so a spawned child can't inherit it) and
 # applies --substitute-dir to rewrite host test paths to the Documents copy.
-# main.m parses them in this order: --run-token, --exit-hook, --substitute-dir.
+# main.m parses --run-token first, then --substitute-dir.
 # --console makes devicectl relay the app's output and block until it exits, so
 # the verdict file is complete by the time the copy below runs.
 # shellcheck disable=SC2086 # is a whitespace-free literal or empty
@@ -132,7 +131,8 @@ esac
 rm -f "$LOG"
 rm -rf "$DL_DIR"
 
-# On-device verdict files are left in place on purpose: deleting each one costs
-# another device round-trip per test, the token makes a stale file unreadable,
-# and prepare-ios-tests.sh reinstalls the app — wiping its container — anyway.
+# On-device verdict and stdout files are left in place on purpose: deleting
+# them costs another device round-trip per test, the token makes a stale file
+# unreadable, and prepare-ios-tests.sh reinstalls the app — wiping its
+# container — anyway.
 exit "$RESULT"

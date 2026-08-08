@@ -1,8 +1,7 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Gregor MacLennan <gmaclennan@awana.digital>
 Date: Tue, 28 Jul 2026 19:20:27 +0000
-Subject: [PATCH 06/19] src: mobile platform guards in node.cc /
- node_internals.h
+Subject: [PATCH] src: mobile platform guards in node.cc / node_internals.h
 
 TARGET_OS_IPHONE / __ANDROID__ guards in node.cc and node_internals.h
 for process-level facilities mobile OSes forbid or lack (tty tcsetattr
