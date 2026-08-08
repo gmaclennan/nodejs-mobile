@@ -1,7 +1,7 @@
 # Tier 2b: the whole non-skipped test/parallel + test/sequential suite on device, sharded.
 #
 # Tier 2a (emulator-tests / simulator-tests, driven from build.yml) runs a
-# curated ~195-test allow-list on every PR: fast and deterministic, but by
+# curated 208-test allow-list on every PR: fast and deterministic, but by
 # construction it only covers what someone thought to add. About 95% of the
 # runnable suite has never run on a device, and a test upstream adds tomorrow
 # joins that group silently. This job is the other half: everything
