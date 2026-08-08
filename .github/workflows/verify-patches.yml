@@ -39,7 +39,7 @@ jobs:
           series = [l.strip() for l in open('patches/series')
                     if l.strip() and not l.startswith('#')]
           on_disk = sorted(f for f in os.listdir('patches')
-                           if re.match(r'\d{4}-.*\.patch$', f))
+                           if f.endswith('.patch'))
           if sorted(series) != on_disk:
               fail.append(f'series/on-disk mismatch: only-in-series='
                           f'{sorted(set(series) - set(on_disk))} '
@@ -88,12 +88,8 @@ jobs:
       # the materialized tree so an upstream bump can't silently shrink it.
       # tools/test.py ignores a path that matches nothing, so a deleted or
       # renamed upstream test would otherwise vanish from the gate while every
-      # job stays green.
-      #
-      # process.exit() used to be banned here because libc exit() beat the
-      # verdict write. The app now preloads an exit-verdict hook on every
-      # launch, so an exiting test records its real code and the ban would only
-      # exclude the self-skipping tests it exists to score.
+      # job stays green. (process.exit() is fine here: the app preloads an
+      # exit-verdict hook that records the real code — docs/TESTING.md.)
       - name: Lint the curated Tier-2 list
         run: |
           set -euo pipefail
@@ -113,19 +109,19 @@ jobs:
           [ "$count" -ge 100 ] || { echo "::error::curated list implausibly small ($count)"; fail=1; }
           [ "$fail" -eq 0 ]
 
-      # Patch 0018 removes ALL upstream workflows so no ref carrying the
-      # materialized tree (a release tag, a branch cut from one) can run
-      # upstream CI here. Zero files — not an allowlist of inert ones —
+      # The upstream-CI-removal patch deletes ALL upstream workflows so no ref
+      # carrying the materialized tree (a release tag, a branch cut from one)
+      # can run upstream CI here. Zero files — not an allowlist of inert ones —
       # because an inert workflow's triggers can change on an upstream bump,
       # and a filename check would accept the file while it went live. The
-      # removal is by enumeration inside 0018, so an upstream bump that ADDS
-      # a workflow reappears here as a loud failure; the fix is always to
+      # removal is by enumeration inside the patch, so an upstream bump that
+      # ADDS a workflow reappears here as a loud failure; the fix is always to
       # extend the patch.
       - name: Assert the materialized tree has no workflow files
         run: |
           set -euo pipefail
           if [ -d out/.github/workflows ] && [ -n "$(ls -A out/.github/workflows)" ]; then
-            echo "::error::workflow files in the materialized tree (extend patch 0018):"
+            echo "::error::workflow files in the materialized tree (extend ci-remove-upstream-only-workflows-and-config.patch):"
             ls out/.github/workflows
             exit 1
           fi

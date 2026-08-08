@@ -31,7 +31,6 @@ CONTAINER="$(xcrun simctl get_app_container "$UDID" "$BUNDLE" data 2>/dev/null |
 DOCS="$CONTAINER/Documents"
 LOG="$(mktemp)"
 
-
 RESULT=1
 verdict=""
 for attempt in $(seq 1 "$LAUNCH_ATTEMPTS"); do
@@ -63,10 +62,9 @@ for attempt in $(seq 1 "$LAUNCH_ATTEMPTS"); do
     --run-token "$RUN_TOKEN" --substitute-dir "$TEST_BASE" "$@" >| "$LOG" 2>&1
   APP_PID="$(sed -nE 's/^.*: ([0-9]+)$/\1/p' "$LOG" | tail -1)"
 
-  # Poll at 10 Hz, not 1 Hz. The verdict file is local (the simulator's data
-  # container is a directory on this filesystem), so a probe is a stat and costs
-  # nothing; a 1-second tick just added up to a second of dead time to every
-  # single test. TIMEOUT stays in seconds.
+  # Poll at 10 Hz: the verdict file is on this filesystem, so a probe is a
+  # cheap stat, and the median test is far shorter than a 1-second tick.
+  # TIMEOUT stays in seconds.
   verdict=""
   gone=""
   for _ in $(seq 1 $((TIMEOUT * 10))); do

@@ -3,10 +3,8 @@
 # the names that failed, as a GitHub job summary when there is one and on stdout
 # either way.
 #
-# A Tier-2b shard log is thousands of progress lines with the interesting part
-# scattered through it. Reading a failure out of the raw log means finding the
-# `=== release <name> ===` banners by eye, which is exactly the friction that
-# stops people looking at an advisory job at all.
+# Pulls the totals and `=== release <name> ===` failure banners out of a shard
+# log that's otherwise thousands of progress lines.
 #
 # Never fails: this reports on a run, it does not judge it. The caller decides
 # whether a failure count is allowed to fail the build.
@@ -22,7 +20,8 @@ fi
 
 # test.py writes progress with \r; split those so grep sees whole lines.
 NORM="$(mktemp)"
-trap 'rm -f "$NORM"' EXIT
+SUMMARY="$(mktemp)"
+trap 'rm -f "$NORM" "$SUMMARY"' EXIT
 tr '\r' '\n' < "$LOG" > "$NORM"
 
 # Last progress line carries the totals: [mm:ss|%NNN|+ pass|- fail]
@@ -35,18 +34,18 @@ FAILED="$(grep -aoE '^=== release [a-z0-9._-]+ ===$' "$NORM" \
           | sed 's/^=== release //; s/ ===$//' | sort -u)"
 NFAILED="$(printf '%s' "$FAILED" | grep -c . || true)"
 
-# The proxies distinguish these, and they mean different things: a crash is a
-# bug, a hang is usually a test waiting on something the platform never
-# delivers. Worth separating in the summary rather than lumping as "failed".
+# Android proxy distinguishes hang vs crash; the iOS proxy can't tell them
+# apart, so its failures land in NOVERD instead of NHANG/NCRASH.
 NHANG="$(grep -ac 'hung (no verdict' "$NORM" || true)"
 NCRASH="$(grep -ac 'crashed (process gone' "$NORM" || true)"
+NOVERD="$(grep -ac 'no verdict file after' "$NORM" || true)"
 
 {
   echo "### Tier 2b — ${LABEL}"
   echo
-  echo "| passed | failed | no verdict: hung | no verdict: crashed |"
-  echo "|---:|---:|---:|---:|"
-  echo "| ${PASS} | ${FAIL} | ${NHANG} | ${NCRASH} |"
+  echo "| passed | failed | no verdict: hung | no verdict: crashed | no verdict: other |"
+  echo "|---:|---:|---:|---:|---:|"
+  echo "| ${PASS} | ${FAIL} | ${NHANG} | ${NCRASH} | ${NOVERD} |"
   if [ "${NFAILED}" -gt 0 ]; then
     echo
     echo "<details><summary>${NFAILED} failing test(s)</summary>"
@@ -55,8 +54,14 @@ NCRASH="$(grep -ac 'crashed (process gone' "$NORM" || true)"
     echo
     echo '</details>'
   fi
-} | tee -a "${GITHUB_STEP_SUMMARY:-/dev/stdout}" > /dev/null
+} > "$SUMMARY"
 
-echo "${LABEL}: ${PASS} passed, ${FAIL} failed (${NHANG} hung, ${NCRASH} crashed)"
+if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
+  cat "$SUMMARY" >> "$GITHUB_STEP_SUMMARY"
+else
+  cat "$SUMMARY"
+fi
+
+echo "${LABEL}: ${PASS} passed, ${FAIL} failed (${NHANG} hung, ${NCRASH} crashed, ${NOVERD} no-verdict)"
 [ "${NFAILED}" -gt 0 ] && printf '%s\n' "$FAILED" | sed 's/^/  FAIL /'
 exit 0
