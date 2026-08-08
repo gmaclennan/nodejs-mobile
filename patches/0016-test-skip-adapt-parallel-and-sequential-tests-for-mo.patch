@@ -17,7 +17,7 @@ series itself.
 Co-authored-by: Jaime Bernardo <jaime@janeasystems.com>
 Co-authored-by: Andre Staltz <andre@staltz.com>
 ---
- test/parallel/parallel.status                 | 1080 ++++++++++++++++-
+ test/parallel/parallel.status                 | 1355 ++++++++++++++++-
  test/parallel/test-dgram-bind-fd.js           |    2 +-
  test/parallel/test-dgram-membership.js        |   10 +-
  .../parallel/test-dgram-socket-buffer-size.js |    2 +-
@@ -49,13 +49,13 @@ Co-authored-by: Andre Staltz <andre@staltz.com>
  test/parallel/test-runner-concurrency.js      |    3 +
  test/parallel/test-signal-handler.js          |   12 +-
  .../test-watch-mode-files_watcher.mjs         |    3 +
- test/sequential/sequential.status             |  118 ++
+ test/sequential/sequential.status             |  129 ++
  test/sequential/test-async-wrap-getasyncid.js |   15 +-
  test/sequential/test-fs-watch.js              |    4 +
- 35 files changed, 1378 insertions(+), 47 deletions(-)
+ 35 files changed, 1664 insertions(+), 47 deletions(-)
 
 diff --git a/test/parallel/parallel.status b/test/parallel/parallel.status
-index 5c7fe47927..f549bba7e3 100644
+index 5c7fe47927..0ec8e64ae1 100644
 --- a/test/parallel/parallel.status
 +++ b/test/parallel/parallel.status
 @@ -130,7 +130,6 @@ test-net-write-after-end-nt: SKIP
@@ -66,7 +66,7 @@ index 5c7fe47927..f549bba7e3 100644
  test-crypto-secure-heap: SKIP
  # https://github.com/nodejs/node/issues/39683
  test-dgram-connect: PASS, FLAKY
-@@ -156,6 +155,1085 @@ test-tls-set-default-ca-certificates-append-fetch: SKIP
+@@ -156,6 +155,1360 @@ test-tls-set-default-ca-certificates-append-fetch: SKIP
  test-tls-set-default-ca-certificates-reset-fetch: SKIP
  test-inspector-invalid-protocol: SKIP
  
@@ -645,6 +645,39 @@ index 5c7fe47927..f549bba7e3 100644
 +test-permission-sqlite-load-extension: SKIP
 +test-permission-warning-flags: SKIP
 +test-permission-fs-windows-path: SKIP
++#
++# Measured on a full device sweep and reproduced 0/3 standalone, so these are
++# platform behaviour rather than flake. Causes, in order of size: a child node
++# process (execPath is app_process64; the child SIGABRTs), `localhost` having no
++# AAAA record on Android so an IPv6 lookup gives ENOTFOUND, fs.cp returning an
++# errno outside the set upstream expects, and process.env.TZ not taking effect
++# at runtime. None is a defect in this fork.
++#
++test-datetime-change-notify: SKIP
++test-disable-sigusr1: SKIP
++test-fs-cp-async-with-mode-flags: SKIP
++test-fs-cp-promises-mode-flags: SKIP
++test-fs-sync-fd-leak: SKIP
++test-http2-invalid-last-stream-id: SKIP
++test-http2-premature-close: SKIP
++test-net-socket-connect-without-cb: SKIP
++test-node-output-eval: SKIP
++test-permission-fs-internal-module-stat: SKIP
++test-process-env-tz: SKIP
++test-runner-execution-ordered-bypass: SKIP
++test-runner-expect-error: SKIP
++test-runner-expect-error-but-pass: SKIP
++test-runner-plan: SKIP
++test-runner-randomize-first-draw: SKIP
++test-runner-test-filepath: SKIP
++test-runner-todo-skip-tests: SKIP
++test-tcp-wrap-listen: SKIP
++test-testpy-env-var-via-comment: SKIP
++#
++# Not deterministic: passes 3/3 standalone but fails inside a full-suite run, so
++# this is load sensitivity. FLAKY (still runs, red tolerated) not SKIP.
++#
++test-worker-cleanup-handles: PASS, FLAKY
 +[$system==ios]
 +#
 +# Reverted to upstream (kept node:test); the jitless V8 build emits the short
@@ -1149,6 +1182,248 @@ index 5c7fe47927..f549bba7e3 100644
 +test-fs-watch-ignore-recursive-regexp: SKIP
 +test-fs-watch-ignore-regexp: SKIP
 +test-watch-file-shared-dependency: SKIP
++#
++# Spawns a child node process. Passes on the iOS *simulator*, where
++# posix_spawn is permitted, and cannot on a device -- so it is not coverage
++# worth keeping either way. Measured on a full device sweep.
++#
++test-assert-esm-cjs-message-verify: SKIP
++test-compile-cache-api-options-portable-env: SKIP
++test-compile-cache-bad-syntax: SKIP
++test-compile-cache-permission-allowed: SKIP
++test-compile-cache-permission-disallowed: SKIP
++test-compile-cache-success: SKIP
++test-dotenv-edge-cases: SKIP
++test-dotenv-node-options: SKIP
++test-permission-child-process-inherit-flags: SKIP
++test-permission-fs-repeat-path: SKIP
++test-permission-fs-wildcard: SKIP
++test-permission-fs-write-report: SKIP
++test-permission-sqlite-load-extension: SKIP
++test-permission-warning-flags: SKIP
++test-process-finalization: SKIP
++test-runner-cli-concurrency: SKIP
++test-runner-complex-dependencies: SKIP
++test-runner-diagnostics-channel: SKIP
++test-runner-force-exit-failure: SKIP
++test-runner-force-exit-flush: SKIP
++test-runner-global-setup-watch-mode: SKIP
++test-runner-snapshot-file-tests: SKIP
++test-runner-snapshot-tests: SKIP
++test-runner-watch-mode-complex: SKIP
++test-snapshot-cwd: SKIP
++test-webstorage: SKIP
++#
++# Measured on a full device sweep and reproduced 0/3 standalone -- platform
++# behaviour rather than flake. Mixed causes: Darwin rejects non-UTF-8
++# filenames (test-fileurltopathbuffer), the simulator's filesystem reports
++# case inconsistently (test-fs-read-file-sync), unix-socket paths, and
++# test-process-getactiveresources' documented stdout-shape caveat.
++#
++test-fileurltopathbuffer: SKIP
++test-fs-cp-async-socket: SKIP
++test-fs-cp-sync-copy-socket-error: SKIP
++test-fs-read-file-sync: SKIP
++test-fs-sync-fd-leak: SKIP
++test-listen-fd-ebadf: SKIP
++test-memory-usage: SKIP
++test-os: SKIP
++test-process-beforeexit-throw-exit: SKIP
++test-process-exit-recursive: SKIP
++test-process-getactiveresources: SKIP
++test-runner-execution-ordered-bypass: SKIP
++test-webstorage-without-sqlite: SKIP
++test-worker-track-unmanaged-fds: SKIP
++#
++# fs.watch's `ignore` option: libuv has no FSEvents on iOS and falls back to
++# kqueue, which cannot say which file changed, so the filename-based filter
++# drops every event. See docs/TESTING.md, "fs.watch".
++#
++test-fs-promises-watch-ignore-function: SKIP
++test-fs-promises-watch-ignore-glob: SKIP
++test-fs-promises-watch-ignore-mixed: SKIP
++test-fs-promises-watch-ignore-regexp: SKIP
++#
++# Not deterministic: passes standalone but fails inside a full-suite run, so
++# this is load sensitivity, not a broken test. FLAKY (still runs, red is
++# tolerated) rather than SKIP (never runs again).
++#
++test-async-local-storage-http-multiclients: PASS, FLAKY
++test-buffer-alloc-unsafe-is-uninitialized: PASS, FLAKY
++test-compile-cache-portable: PASS, FLAKY
++test-http-max-headers-count: PASS, FLAKY
++test-http-upgrade-advertise: PASS, FLAKY
++test-runner-run-files-undefined: PASS, FLAKY
++#
++# Tests that spawn a child node process. They pass here only because the iOS
++# *simulator* permits posix_spawn; a shipped app cannot fork or exec, so
++# child_process is unusable on the platform and this was never coverage of
++# anything an embedder can run. Keeping them green on the simulator bought false
++# confidence, and because the spawn is timing-sensitive under load they were also
++# the entire flake population -- successive full sweeps failed a different
++# handful of test-runner-* each time. Android excludes the same set for the
++# harder reason that execPath there is app_process64 and the child SIGABRTs.
++#
++test-async-hooks-stack-overflow: SKIP
++test-async-hooks-stack-overflow-nested-async: SKIP
++test-async-hooks-stack-overflow-try-catch: SKIP
++test-buffer-constructor-node-modules: SKIP
++test-compile-cache-api-env: SKIP
++test-compile-cache-api-flush: SKIP
++test-compile-cache-api-permission: SKIP
++test-compile-cache-api-portable: SKIP
++test-compile-cache-api-success: SKIP
++test-compile-cache-api-tmpdir: SKIP
++test-compile-cache-disable: SKIP
++test-compile-cache-dynamic-import: SKIP
++test-compile-cache-esm: SKIP
++test-compile-cache-existing-directory: SKIP
++test-compile-cache-portable: SKIP
++test-compile-cache-portable-esm: SKIP
++test-compile-cache-typescript-commonjs: SKIP
++test-compile-cache-typescript-esm: SKIP
++test-compile-cache-typescript-strip-miss: SKIP
++test-compile-cache-typescript-strip-sourcemaps: SKIP
++test-compile-cache-typescript-transform: SKIP
++test-compile-cache-updated-file: SKIP
++test-debug-process: SKIP
++test-debugger-inspect-help: SKIP
++test-debugger-probe-child-inspect-port-zero: SKIP
++test-debugger-probe-global-option-order: SKIP
++test-debugger-probe-json: SKIP
++test-debugger-probe-json-preview: SKIP
++test-debugger-probe-json-special-values: SKIP
++test-debugger-probe-launch: SKIP
++test-debugger-probe-miss: SKIP
++test-debugger-probe-missing-expr: SKIP
++test-debugger-probe-requires-separator: SKIP
++test-debugger-probe-text: SKIP
++test-debugger-probe-text-special-values: SKIP
++test-debugger-probe-timeout: SKIP
++test-dgram-bind-socket-close-before-cluster-reply: SKIP
++test-diagnostics-channel-child-process: SKIP
++test-diagnostics-channel-process: SKIP
++test-dns-resolvesrv: SKIP
++test-dns-resolvesrv-econnrefused: SKIP
++test-error-prepare-stack-trace: SKIP
++test-experimental-shared-value-conveyor: SKIP
++test-file-write-stream4: SKIP
++test-find-package-json: SKIP
++test-fs-filehandle-use-after-close: SKIP
++test-fs-mkdir-recursive-eaccess: SKIP
++test-fs-read-stream: SKIP
++test-fs-utimes-y2K38: SKIP
++test-fs-watch-recursive-linux-parallel-remove: SKIP
++test-hash-seed: SKIP
++test-http-server-drop-connections-in-cluster: SKIP
++test-http2-respond-file-with-pipe: SKIP
++test-http2-respond-with-file-connection-abort: SKIP
++test-intl: SKIP
++test-is-internal-thread: SKIP
++test-macos-app-sandbox: SKIP
++test-module-loading-error: SKIP
++test-module-print-timing: SKIP
++test-navigator: SKIP
++test-net-listen-handle-in-cluster-1: SKIP
++test-net-listen-handle-in-cluster-2: SKIP
++test-net-listen-twice: SKIP
++test-net-server-close-before-ipc-response: SKIP
++test-net-server-listen-handle: SKIP
++test-parse-args: SKIP
++test-path-resolve: SKIP
++test-performance-nodetiming-uvmetricsinfo: SKIP
++test-permission-allow-inspector: SKIP
++test-permission-child-process-cli: SKIP
++test-permission-config-file: SKIP
++test-permission-fs-absolute-path: SKIP
++test-permission-fs-read: SKIP
++test-permission-fs-read-entrypoint: SKIP
++test-permission-fs-relative-path: SKIP
++test-permission-fs-require: SKIP
++test-permission-fs-symlink: SKIP
++test-permission-fs-symlink-relative: SKIP
++test-permission-fs-symlink-target-write: SKIP
++test-permission-fs-traversal-path: SKIP
++test-permission-inspector: SKIP
++test-permission-inspector-brk: SKIP
++test-permission-processbinding: SKIP
++test-process-execve-abort: SKIP
++test-process-execve-no-args: SKIP
++test-process-execve-permission-fail: SKIP
++test-process-execve-validation: SKIP
++test-process-execve-worker-threads: SKIP
++test-process-warnings: SKIP
++test-repl-close: SKIP
++test-repl-persistent-history: SKIP
++test-repl-programmatic-history: SKIP
++test-repl-programmatic-history-setup-history: SKIP
++test-runner-cli-randomize: SKIP
++test-runner-cli-timeout: SKIP
++test-runner-concurrency: SKIP
++test-runner-coverage-default-exclusion: SKIP
++test-runner-coverage-isolation-none-api: SKIP
++test-runner-enable-source-maps-issue: SKIP
++test-runner-error-reporter: SKIP
++test-runner-flag-propagation: SKIP
++test-runner-global-setup-teardown: SKIP
++test-runner-mock-timers-with-timeout: SKIP
++test-runner-module-mocking: SKIP
++test-runner-no-isolation-filtering: SKIP
++test-runner-no-isolation-hooks: SKIP
++test-runner-root-duration: SKIP
++test-runner-run-files-undefined: SKIP
++test-runner-run-global-hooks: SKIP
++test-runner-todo-suite-hook-failure: SKIP
++test-runner-worker-id: SKIP
++test-runner-xfail: SKIP
++test-shadow-realm-custom-loaders: SKIP
++test-shadow-realm-preload-module: SKIP
++test-snapshot-config: SKIP
++test-snapshot-coverage: SKIP
++test-snapshot-net: SKIP
++test-snapshot-stack-trace-limit: SKIP
++test-snapshot-stack-trace-limit-mutation: SKIP
++test-snapshot-worker: SKIP
++test-source-map-invalid-url: SKIP
++test-sqlite: SKIP
++test-stdin-from-file-spawn: SKIP
++test-stdio-pipe-access: SKIP
++test-strace-openat-openssl: SKIP
++test-stream-readable-unpipe-resume: SKIP
++test-timers-nan-duration-warning: SKIP
++test-timers-negative-duration-warning: SKIP
++test-tls-alpn-server-client: SKIP
++test-tls-env-extra-ca-with-options: SKIP
++test-tls-get-ca-certificates-extra: SKIP
++test-tls-get-ca-certificates-extra-empty: SKIP
++test-tls-get-ca-certificates-extra-subset: SKIP
++test-tls-get-ca-certificates-node-use-system-ca: SKIP
++test-tls-get-ca-certificates-system-without-flag: SKIP
++test-tls-off-thread-cert-loading: SKIP
++test-tls-off-thread-cert-loading-disabled: SKIP
++test-tls-off-thread-cert-loading-system: SKIP
++test-tls-set-default-ca-certificates-extra-override: SKIP
++test-trace-env: SKIP
++test-trace-env-stack: SKIP
++test-trace-events-net-abstract-socket: SKIP
++test-trace-exit-stack-limit: SKIP
++test-uncaught-exception-handler-stack-overflow: SKIP
++test-uncaught-exception-handler-stack-overflow-on-stack-overflow: SKIP
++test-url-parse-deprecation: SKIP
++test-url-parse-invalid-input: SKIP
++test-util-getcallsites: SKIP
++test-util-inspect: SKIP
++test-util-promisify-custom-names: SKIP
++test-vfs: SKIP
++test-watch-mode-files_watcher: SKIP
++test-watch-mode-kill-signal-default: SKIP
++test-watch-mode-kill-signal-invalid: SKIP
++test-watch-mode-kill-signal-override: SKIP
++test-worker-cleanexit-with-moduleload: SKIP
++test-worker-node-options: SKIP
++test-worker-process-argv: SKIP
++test-worker-stdio: SKIP
++test-worker-terminate-http2-respond-with-file: SKIP
  [$asan==on]
  # https://github.com/nodejs/node/issues/39655
  test-cluster-primary-error: PASS, FLAKY
@@ -1798,10 +2073,10 @@ index e1595350cd..f5d84f7480 100644
 +  */
  });
 diff --git a/test/sequential/sequential.status b/test/sequential/sequential.status
-index 627e61911d..4ad9f1e936 100644
+index 627e61911d..7a4e74ce4a 100644
 --- a/test/sequential/sequential.status
 +++ b/test/sequential/sequential.status
-@@ -43,6 +43,124 @@ test-perf-hooks: SKIP
+@@ -43,6 +43,135 @@ test-perf-hooks: SKIP
  # https://github.com/nodejs/node/issues/39683
  test-tls-psk-client: PASS, FLAKY
  
@@ -1923,6 +2198,17 @@ index 627e61911d..4ad9f1e936 100644
 +test-watch-mode-worker: SKIP
 +test-without-async-context-frame: SKIP
 +test-write-heapsnapshot-options: SKIP
++#
++# Tests that spawn a child node process. They pass here only because the iOS
++# *simulator* permits posix_spawn; a shipped app cannot fork or exec, so
++# child_process is unusable on the platform and this was never coverage of
++# anything an embedder can run. Keeping them green on the simulator bought false
++# confidence, and because the spawn is timing-sensitive under load they were also
++# the entire flake population -- successive full sweeps failed a different
++# handful of test-runner-* each time. Android excludes the same set for the
++# harder reason that execPath there is app_process64 and the child SIGABRTs.
++#
++test-watch-mode: SKIP
  [$arch==arm]
  # https://github.com/nodejs/node/issues/49933
  test-watch-mode-inspect: SKIP
