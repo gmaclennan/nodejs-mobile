@@ -19,11 +19,11 @@ Co-authored-by: Andre Staltz <andre@staltz.com>
 Co-authored-by: Julia Samól <j.samol@papers.ch>
 Co-authored-by: João Matos <joao@tritao.eu>
 ---
- common.gypi | 128 +++++++++++++++++++++++++++++++++++++++++++++++++---
- 1 file changed, 121 insertions(+), 7 deletions(-)
+ common.gypi | 125 +++++++++++++++++++++++++++++++++++++++++++++++++---
+ 1 file changed, 118 insertions(+), 7 deletions(-)
 
 diff --git a/common.gypi b/common.gypi
-index c9ff09b4dc..16c0a3079f 100644
+index c9ff09b4dc..da300d3cdc 100644
 --- a/common.gypi
 +++ b/common.gypi
 @@ -110,7 +110,7 @@
@@ -35,7 +35,7 @@ index c9ff09b4dc..16c0a3079f 100644
          'obj_dir%': '<(PRODUCT_DIR)/obj.target',
          'v8_base': '<(PRODUCT_DIR)/libv8_snapshot.a',
        }],
-@@ -221,6 +221,26 @@
+@@ -221,6 +221,23 @@
                }],
              ],
            }],
@@ -51,18 +51,15 @@ index c9ff09b4dc..16c0a3079f 100644
 +            # host (GNU ld); Android is built on Linux (a macOS host can't link
 +            # the cross-build — see that same BUILDING.md). _toolset isn't
 +            # available in load-time conditions, so it can't be scoped out here.
-+            # --gc-sections: split sections and drop unreferenced ones so the
-+            # static libs we link don't drag in dead code. Per-function codegen
-+            # is unchanged — the linker just discards sections nothing
-+            # references — so it applies to both flavors (it was lite-only
-+            # while the mechanism was validated; the device suite gates full).
++            # --gc-sections (both flavors): split sections and drop
++            # unreferenced ones; per-function codegen is unchanged.
 +            'cflags': [ '-ffunction-sections', '-fdata-sections' ],
 +            'ldflags': [ '-Wl,--build-id=sha1', '-Wl,--gc-sections' ],
 +          }],
            ['OS=="solaris"', {
              # pull in V8's postmortem metadata
              'ldflags': [ '-Wl,-z,allextract' ]
-@@ -229,7 +249,7 @@
+@@ -229,7 +246,7 @@
              # increase performance, number from experimentation
              'cflags': [ '-qINLINE=::150:100000' ]
            }],
@@ -71,7 +68,7 @@ index c9ff09b4dc..16c0a3079f 100644
              # -fno-omit-frame-pointer is necessary for the --perf_basic_prof
              # flag to work correctly. perf(1) gets confused about JS stack
              # frames otherwise, even with --call-graph dwarf.
-@@ -448,7 +468,7 @@
+@@ -448,7 +465,7 @@
        [ 'target_arch=="arm64"', {
          'msvs_configuration_platform': 'arm64',
        }],
@@ -80,7 +77,7 @@ index c9ff09b4dc..16c0a3079f 100644
          'cflags+': [
            '-fno-omit-frame-pointer',
            '-fsanitize=address',
-@@ -476,7 +496,7 @@
+@@ -476,7 +493,7 @@
            }],
          ],
        }],
@@ -89,7 +86,7 @@ index c9ff09b4dc..16c0a3079f 100644
          'cflags+': [
            '-fno-omit-frame-pointer',
            '-fsanitize=undefined',
-@@ -485,7 +505,7 @@
+@@ -485,7 +502,7 @@
          'cflags!': [ '-fno-omit-frame-pointer' ],
          'ldflags': [ '-fsanitize=undefined' ],
        }],
@@ -98,7 +95,7 @@ index c9ff09b4dc..16c0a3079f 100644
          'xcode_settings': {
            'OTHER_CFLAGS+': [
              '-fno-omit-frame-pointer',
-@@ -593,11 +613,13 @@
+@@ -593,11 +610,13 @@
            }],
            ['_toolset=="host"', {
              'conditions': [
@@ -114,7 +111,7 @@ index c9ff09b4dc..16c0a3079f 100644
                  'cflags': [ '-m64' ],
                  'ldflags': [ '-m64' ],
                }],
-@@ -757,6 +779,98 @@
+@@ -757,6 +776,98 @@
            }],
          ],
        }],

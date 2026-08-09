@@ -141,10 +141,8 @@ patch-stack surface):
 | `--with-intl=none` (no ICU) | for consumers that use no `Intl.*` — verify against your own dependency tree (a dependency may reference `Intl` from a code path you never call) |
 | **iOS only:** `--v8-lite-mode` | drops the compiled JIT + V8 WASM engine, both **dead on iOS** (it runs jitless; WebAssembly is served by the bundled polywasm polyfill — see [FAQ](./FAQ.md#does-fetch-work-what-about-webassembly)). This is the big lever. |
 
-Dead-code stripping (`-ffunction-sections`/`-fdata-sections` +
-`--gc-sections`) applies to **both** Android flavors: it never changes a
-function's codegen — the linker just discards sections nothing references —
-so it costs no functionality.
+Dead-code stripping (`--gc-sections`) applies to **both** Android flavors: the
+linker only discards unreferenced sections, so it costs no functionality.
 
 Measured shipping sizes (arm64, after symbol strip):
 
