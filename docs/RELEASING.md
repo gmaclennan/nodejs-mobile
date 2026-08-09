@@ -50,6 +50,30 @@ push retries automatically (the version is still untagged — the trigger is
 self-healing). For a full rehearsal without tagging/publishing, push a
 commit whose subject starts with `release-dryrun:`.
 
+## A release run builds cold
+
+Budget **3–4 hours** for the build matrix on a release, against well under an
+hour for a typical warm push. A release run compiles with no shared compiler
+cache at all: no sccache, no R2 credentials in the job, and no restore of the
+prebuilt `libnode` from the Actions cache. That is deliberate, and it is the
+one measure that takes cache poisoning out of the supply chain rather than
+merely making it harder — the bytes that ship are compiled in the run that
+ships them. [BUILDING.md](./BUILDING.md#the-ci-compiler-cache) has the model
+and the wiring.
+
+Two consequences worth knowing before you start one:
+
+- A `release-dryrun:` rehearsal builds cold too. It has to, or it isn't
+  rehearsing the release. Expect it to take as long as the real thing.
+- Re-running a failed release gate re-runs the cold build. Prefer fixing on
+  `recipe` and letting the next push retry (which is the self-healing path
+  anyway) over "Re-run all jobs" on a run whose build matrix already
+  succeeded.
+
+This is not new cost in practice: the version bump changes `HEAD:src`, which
+already invalidated the `libnode` cache key on every release. It is now
+structural rather than incidental.
+
 ## Versioning and tags
 
 - `process.version` stays upstream's (`v24.18.0`) so every tool that parses
