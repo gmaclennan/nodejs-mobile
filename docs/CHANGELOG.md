@@ -39,7 +39,7 @@
 <a id="24.18.0-1"></a>
 ## 2026-08-08, Version 24.18.0-1 (Current)
 
-- _TODO: summarize changes before merging._
+Test release for latest fixes
 
 <a id="24.18.0-0"></a>
 ## 2026-07-28, Version 24.18.0-0
