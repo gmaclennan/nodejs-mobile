@@ -19,27 +19,14 @@ Co-authored-by: Andre Staltz <andre@staltz.com>
 Co-authored-by: Julia Samól <j.samol@papers.ch>
 Co-authored-by: João Matos <joao@tritao.eu>
 ---
- common.gypi | 138 +++++++++++++++++++++++++++++++++++++++++++++++++---
- 1 file changed, 131 insertions(+), 7 deletions(-)
+ common.gypi | 128 +++++++++++++++++++++++++++++++++++++++++++++++++---
+ 1 file changed, 121 insertions(+), 7 deletions(-)
 
 diff --git a/common.gypi b/common.gypi
-index c9ff09b4dc..44515cc277 100644
+index c9ff09b4dc..16c0a3079f 100644
 --- a/common.gypi
 +++ b/common.gypi
-@@ -18,6 +18,12 @@
-     'node_shared%': 'false',
-     'node_enable_experimentals%': 'false',
-     'force_dynamic_crt%': 0,
-+
-+    # nodejs-mobile: set to 1 by android_configure.py for the size-reduced
-+    # "lite" flavor (see "The lite variant" in docs/BUILDING.md on the patches
-+    # branch). Enables dead-code stripping; the "full" flavor (default 0) is
-+    # left byte-for-byte unchanged.
-+    'node_mobile_lite%': 0,
-     'node_use_v8_platform%': 'true',
-     'node_use_bundled_v8%': 'true',
-     'node_module_version%': '',
-@@ -110,7 +116,7 @@
+@@ -110,7 +110,7 @@
          'obj_dir%': '<(PRODUCT_DIR)/obj.target',
          'v8_base': '<(PRODUCT_DIR)/obj.target/tools/v8_gypfiles/libv8_snapshot.a',
        }],
@@ -48,7 +35,7 @@ index c9ff09b4dc..44515cc277 100644
          'obj_dir%': '<(PRODUCT_DIR)/obj.target',
          'v8_base': '<(PRODUCT_DIR)/libv8_snapshot.a',
        }],
-@@ -221,6 +227,30 @@
+@@ -221,6 +221,26 @@
                }],
              ],
            }],
@@ -64,22 +51,18 @@ index c9ff09b4dc..44515cc277 100644
 +            # host (GNU ld); Android is built on Linux (a macOS host can't link
 +            # the cross-build — see that same BUILDING.md). _toolset isn't
 +            # available in load-time conditions, so it can't be scoped out here.
-+            'ldflags': [ '-Wl,--build-id=sha1' ],
-+            'conditions': [
-+              ['node_mobile_lite==1', {
-+                # Lite flavor only: split sections and drop unreferenced ones so
-+                # the static libs we still link don't drag in dead code. Kept off
-+                # the full flavor to leave its codegen (and green test gate)
-+                # exactly as shipped.
-+                'cflags': [ '-ffunction-sections', '-fdata-sections' ],
-+                'ldflags': [ '-Wl,--gc-sections' ],
-+              }],
-+            ],
++            # --gc-sections: split sections and drop unreferenced ones so the
++            # static libs we link don't drag in dead code. Per-function codegen
++            # is unchanged — the linker just discards sections nothing
++            # references — so it applies to both flavors (it was lite-only
++            # while the mechanism was validated; the device suite gates full).
++            'cflags': [ '-ffunction-sections', '-fdata-sections' ],
++            'ldflags': [ '-Wl,--build-id=sha1', '-Wl,--gc-sections' ],
 +          }],
            ['OS=="solaris"', {
              # pull in V8's postmortem metadata
              'ldflags': [ '-Wl,-z,allextract' ]
-@@ -229,7 +259,7 @@
+@@ -229,7 +249,7 @@
              # increase performance, number from experimentation
              'cflags': [ '-qINLINE=::150:100000' ]
            }],
@@ -88,7 +71,7 @@ index c9ff09b4dc..44515cc277 100644
              # -fno-omit-frame-pointer is necessary for the --perf_basic_prof
              # flag to work correctly. perf(1) gets confused about JS stack
              # frames otherwise, even with --call-graph dwarf.
-@@ -448,7 +478,7 @@
+@@ -448,7 +468,7 @@
        [ 'target_arch=="arm64"', {
          'msvs_configuration_platform': 'arm64',
        }],
@@ -97,7 +80,7 @@ index c9ff09b4dc..44515cc277 100644
          'cflags+': [
            '-fno-omit-frame-pointer',
            '-fsanitize=address',
-@@ -476,7 +506,7 @@
+@@ -476,7 +496,7 @@
            }],
          ],
        }],
@@ -106,7 +89,7 @@ index c9ff09b4dc..44515cc277 100644
          'cflags+': [
            '-fno-omit-frame-pointer',
            '-fsanitize=undefined',
-@@ -485,7 +515,7 @@
+@@ -485,7 +505,7 @@
          'cflags!': [ '-fno-omit-frame-pointer' ],
          'ldflags': [ '-fsanitize=undefined' ],
        }],
@@ -115,7 +98,7 @@ index c9ff09b4dc..44515cc277 100644
          'xcode_settings': {
            'OTHER_CFLAGS+': [
              '-fno-omit-frame-pointer',
-@@ -593,11 +623,13 @@
+@@ -593,11 +613,13 @@
            }],
            ['_toolset=="host"', {
              'conditions': [
@@ -131,7 +114,7 @@ index c9ff09b4dc..44515cc277 100644
                  'cflags': [ '-m64' ],
                  'ldflags': [ '-m64' ],
                }],
-@@ -757,6 +789,98 @@
+@@ -757,6 +779,98 @@
            }],
          ],
        }],

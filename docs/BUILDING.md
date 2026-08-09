@@ -139,13 +139,18 @@ patch-stack surface):
 | `--without-inspector` | not used in production |
 | `--without-sqlite` | for consumers using the `better-sqlite3` addon, not `node:sqlite` |
 | `--with-intl=none` (no ICU) | for consumers that use no `Intl.*` — verify against your own dependency tree (a dependency may reference `Intl` from a code path you never call) |
-| `-ffunction-sections`/`--gc-sections` | dead-code strip; no behavior change |
 | **iOS only:** `--v8-lite-mode` | drops the compiled JIT + V8 WASM engine, both **dead on iOS** (it runs jitless; WebAssembly is served by the bundled polywasm polyfill — see [FAQ](./FAQ.md#does-fetch-work-what-about-webassembly)). This is the big lever. |
+
+Dead-code stripping (`-ffunction-sections`/`-fdata-sections` +
+`--gc-sections`) applies to **both** Android flavors: it never changes a
+function's codegen — the linker just discards sections nothing references —
+so it costs no functionality.
 
 Measured shipping sizes (arm64, after symbol strip):
 
 - **iOS:** ~63 MB (full) → **~44.5 MB (lite)**, a ~29% cut (mostly `--v8-lite-mode`).
-- **Android:** smaller via the feature drops + gc-sections, but no
+- **Android:** ~77 MB (full) → ~46 MB (lite) before gc-sections was extended
+  to full; the feature drops account for roughly half that gap. No
   `--v8-lite-mode` (Android keeps the JIT and V8's native WASM for undici).
 
 `build-id` (`-Wl,--build-id=sha1`) is emitted on the Android `libnode.so` in

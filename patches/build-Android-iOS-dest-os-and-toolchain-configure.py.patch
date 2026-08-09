@@ -23,12 +23,12 @@ Co-authored-by: Andre Staltz <andre@staltz.com>
 Co-authored-by: Julia Samól <j.samol@papers.ch>
 Co-authored-by: Vincent Breitmoser <look@my.amazin.horse>
 ---
- android_configure.py | 59 +++++++++++++++++++++++++++++++++-----------
+ android_configure.py | 58 ++++++++++++++++++++++++++++++++------------
  configure.py         |  8 ++++++
- 2 files changed, 52 insertions(+), 15 deletions(-)
+ 2 files changed, 51 insertions(+), 15 deletions(-)
 
 diff --git a/android_configure.py b/android_configure.py
-index 5cea0393f4..a4ee541a0f 100644
+index 5cea0393f4..ec76c900ca 100644
 --- a/android_configure.py
 +++ b/android_configure.py
 @@ -1,25 +1,14 @@
@@ -68,7 +68,7 @@ index 5cea0393f4..a4ee541a0f 100644
      toolchain_path = android_ndk_path + "/toolchains/llvm/prebuilt/darwin-x86_64"
  
  elif platform.system() == "Linux":
-@@ -65,13 +54,53 @@ elif platform.system() == "Linux":
+@@ -65,13 +54,52 @@ elif platform.system() == "Linux":
  os.environ['PATH'] += os.pathsep + toolchain_path + "/bin"
  os.environ['CC'] = toolchain_path + "/bin/" + TOOLCHAIN_PREFIX + android_sdk_version + "-" +  "clang"
  os.environ['CXX'] = toolchain_path + "/bin/" + TOOLCHAIN_PREFIX + android_sdk_version + "-" + "clang++"
@@ -103,7 +103,8 @@ index 5cea0393f4..a4ee541a0f 100644
 +#                    docs/BUILDING.md on the recipe branch).
 +# Set via env NODEJS_MOBILE_FLAVOR=lite. Android lite keeps the JIT and V8's
 +# native WASM engine (undici uses them); it only drops features that
-+# size-constrained consumers don't need, and turns on dead-code stripping.
++# size-constrained consumers don't need. Dead-code stripping applies to both
++# flavors (common.gypi).
 +flavor = os.environ.get("NODEJS_MOBILE_FLAVOR", "full").strip().lower()
 +if flavor not in ("full", "lite"):
 +    print("\033[91mError: \033[0m" + "NODEJS_MOBILE_FLAVOR must be 'full' or 'lite'")
@@ -115,8 +116,6 @@ index 5cea0393f4..a4ee541a0f 100644
 +if flavor == "lite":
 +    intl = "none"
 +    extra_flags = " --without-amaro --without-inspector --without-sqlite"
-+    # gc-sections (lite only, so the full binary's codegen is untouched).
-+    GYP_DEFINES += " node_mobile_lite=1"
 +
  os.environ['GYP_DEFINES'] = GYP_DEFINES
  
