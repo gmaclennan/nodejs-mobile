@@ -99,6 +99,17 @@ CI escalates with the event:
 See [TESTING.md](./TESTING.md#what-ci-runs) for the job-by-job table and why
 the curated device tests are advisory rather than required.
 
+These gates are enforced by repository rulesets, not convention: `recipe`
+accepts changes only by pull request with `verify`, `patch-stack-configure`
+and the aggregate `ci-required` green (never the per-job matrix names, which
+change whenever the matrix does), and force pushes and branch deletion are
+blocked. Release tags (`v*`, `nodejs-mobile-*`) cannot be moved or deleted,
+and the `release` environment the publish job runs in deploys only from
+`recipe`. Repository admins can bypass the rulesets; bypasses are logged,
+and the intent is that they never become routine (see the note in
+`.github/CODEOWNERS`). For reporting vulnerabilities, see
+[SECURITY.md](./SECURITY.md).
+
 A clean `git am` is not proof of correctness — when a patch touches C++ or
 the build system, let the cross-compile matrix finish before assuming an
 upgrade is sound. Nothing before it compiles a line of target code.
