@@ -759,16 +759,15 @@ jobs:
   # Merge gate for the release notes: the first docs/CHANGELOG.md section must
   # be the one publish will ship — this version, TODO stub filled in.
   #
-  # This runs on PRs (and feeds ci-required) because publish is the wrong place
-  # to *discover* the answer: by then the release PR is merged and closed, the
-  # only fix is another push to recipe, and a maintainer who thought they had
-  # shipped is looking at a red release run instead. On a release PR the gate
-  # is exactly the "fill in the CHANGELOG entry" checklist box, enforced.
+  # It runs on PRs (and feeds ci-required) so a release PR can't merge with
+  # placeholder notes. Checking this only in publish meant the failure landed
+  # after the release PR was merged and closed, where the only fix is another
+  # push to recipe.
   #
-  # Running on every PR rather than sniffing for release ones is deliberate:
-  # the invariant holds for ordinary PRs too (they inherit the released
-  # version and its written-up section), a required check that skips itself
-  # reports nothing and blocks the PR forever, and a release PR is only
+  # It runs on every PR rather than only on release ones because the invariant
+  # holds for ordinary PRs too (they inherit the released version and its
+  # written-up section), because a required check that skips itself reports
+  # nothing and blocks the PR forever, and because a release PR is only
   # recognizable by convention anyway. Cheap: checkout, no materialize.
   release-notes:
     runs-on: ubuntu-24.04
@@ -779,8 +778,8 @@ jobs:
       - uses: actions/checkout@v7
         with:
           fetch-depth: 1
-      # Same script publish runs — the gate and the publisher must not be able
-      # to disagree, or publish fails on notes the PR was allowed to merge.
+      # The same script publish runs, so the two can't disagree: a stricter
+      # publish would fail on notes this check let through.
       - name: Check the release notes for the version of record
         run: scripts/release-notes.py
 
@@ -990,11 +989,11 @@ jobs:
       # The docs live only on this branch, and materialize replaces the
       # workspace with the materialized tree — so lift the release notes out
       # before that happens.
-      # Backstop, not the gate: the release-notes job already blocked the
-      # release PR on this (see its comment), and by here the PR is merged, so
-      # a failure costs a red release run. It stays because publish must never
-      # ship a TODO stub if the check was somehow bypassed — an admin merge, a
-      # direct push to recipe, branch protection not yet configured.
+      # A backstop; the release-notes job is where this blocks a release (see
+      # its comment). By here the PR is merged, so a failure costs a red
+      # release run — but publish still must not ship a TODO stub when that
+      # check was bypassed: an admin merge, a direct push to recipe, branch
+      # protection not yet configured.
       # Advisory on a dry run (a release-dryrun: push legitimately predates
       # the CHANGELOG stub), which is why the notes are written either way.
       - name: Extract release notes from the CHANGELOG

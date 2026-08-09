@@ -8,10 +8,8 @@ the cut-release TODO stub filled in. That invariant holds for every commit on
 section — so it is checkable on a pull request, long before the merge push
 tries to publish anything.
 
-One implementation, two callers (build.yml `release-notes` and `publish`): if
-the merge gate and the publish step disagreed, publish would fail on something
-the PR was allowed to merge with, which is exactly the failure this exists to
-prevent.
+Both callers use it (build.yml `release-notes` and `publish`) so the two can't
+disagree: a stricter publish would fail on notes the PR was allowed to merge.
 
 Usage:
   scripts/release-notes.py                       # check, print the notes
