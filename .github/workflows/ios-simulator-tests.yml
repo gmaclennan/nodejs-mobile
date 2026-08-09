@@ -1,20 +1,18 @@
 name: iOS Simulator Tests
 
 # Runs the curated device-test subset of the Node.js JS suite (docs/TESTING.md)
-# inside the testnode harness on a booted iOS simulator, via simctl. This gives
-# signal that the framework executes JS correctly on-device-like, beyond the
-# compile-only coverage of build-mobile.yml.
+# inside the testnode harness on a booted iOS simulator, via simctl — runtime
+# signal beyond the compile-only coverage of build.yml.
 #
-# Uses simctl (not ios-deploy, which is physical-device only). simctl launch
-# doesn't return the app's exit code, so the app writes the test's real exit code
-# to a per-launch verdict file in its sandbox that the proxy reads. A simulator
-# run reuses the framework build.yml already produced and runs the subset
-# serially (~20-30 min of macos runner time).
+# simctl launch doesn't return the app's exit code, so the app writes the
+# test's real exit code to a per-launch verdict file in its sandbox that the
+# proxy reads (docs/TESTING.md, "How a test PASSes"). Reuses the framework
+# build.yml already produced and runs the subset serially (~20-30 min of
+# macos runner time).
 #
 # Called from build.yml on every event that produces artifacts — PR, push and
-# release alike. It is advisory on PRs (not part of ci-required) because
-# simulator lifecycles flake; it is blocking on the release chain, where
-# publish needs: it.
+# release alike. Advisory on PRs (not part of ci-required) because simulator
+# lifecycles flake; blocking on the release chain, where publish needs: it.
 on:
   # Called from build.yml; build_run_id points at the calling run so the
   # artifact fetch targets it directly.
@@ -40,18 +38,18 @@ permissions:
 
 jobs:
   ios-simulator-tests:
-    # Both flavors run the SAME curated list (true full-parity, no exclusions):
-    # verified the whole list passes on a local lite build despite iOS lite dropping the
+    # Both flavors run the SAME curated list, no exclusions: the whole list
+    # verified passing on a local lite build despite iOS lite dropping the
     # WebAssembly + Intl globals (--v8-lite-mode + intl=none) — the ICU tests
-    # self-skip via common.hasIntl and the WebAssembly-named test only inspects
-    # a string fixture. Each flavor fetches its own framework from the same
-    # matrix Build run (which produces both).
+    # self-skip via common.hasIntl and the WebAssembly-named test only
+    # inspects a string fixture. Each flavor fetches its own framework from
+    # the same Build run (which produces both).
     strategy:
       fail-fast: false
       matrix:
         flavor: ${{ fromJSON(inputs.flavors || '["full","lite"]') }}
 
-    # macos-26 is Apple Silicon with current Xcode, matching build-mobile.yml.
+    # macos-26 is Apple Silicon with current Xcode, matching build.yml.
     runs-on: macos-26
     timeout-minutes: 90
     env:
@@ -64,14 +62,12 @@ jobs:
           fetch-depth: 1
       - uses: ./.github/actions/materialize
 
-      # Reuse the framework build-mobile.yml already produced for this commit
-      # instead of rebuilding (a from-scratch build is 1.5-3h and overruns the job
-      # timeout). build-mobile deletes the per-arch node-ios-* artifacts after
-      # combining, so pull the surviving combined artifact (nodejs-mobile-ios: the
-      # device+simulator NodeMobile.xcframework) and use it directly at the path
-      # the testnode project references. Requires a successful Build for this SHA.
-      # The matrix Build produces both flavors in one run, so fetch this
-      # flavor's combined artifact (nodejs-mobile-ios[-lite]).
+      # Reuse the framework build.yml already produced for this commit instead
+      # of rebuilding (a from-scratch build is 1.5-3h and overruns the job
+      # timeout). Build deletes the per-arch node-ios-* artifacts after
+      # combining, so pull this flavor's combined artifact
+      # (nodejs-mobile-ios[-lite]: the device+simulator NodeMobile.xcframework)
+      # and stage it at the path the testnode project references.
       - name: Fetch NodeMobile.xcframework from the Build run
         uses: ./.github/actions/fetch-build-artifact
         with:

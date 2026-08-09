@@ -10,11 +10,11 @@ runs:
   using: composite
   steps:
     # A release run materializes in ~15 jobs, each cloning nodejs/node from
-    # GitHub — the longest gate chain's biggest network-flake surface. Cache
-    # one shallow clone per base tag and let prepare.sh clone from it locally.
-    # The integrity story is unchanged: prepare.sh still verifies the tree
-    # hash, and verify-patches.yml still reconstructs from a fresh GitHub
-    # clone on every push, so a poisoned cache cannot pass unnoticed.
+    # GitHub — the gate chain's biggest network-flake surface. Cache one
+    # shallow clone per base tag and let prepare.sh clone from it locally.
+    # Integrity is unchanged: prepare.sh still verifies the tree hash, and
+    # verify-patches.yml still reconstructs from a fresh GitHub clone on
+    # every push, so a poisoned cache cannot pass unnoticed.
     - name: Read upstream base
       id: base
       shell: bash
