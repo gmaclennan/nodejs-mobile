@@ -119,7 +119,7 @@ jobs:
 
           - [x] version of record bumped (revision computed from existing tags)
           - [x] \`expected-tree.txt\` re-anchored via \`prepare.sh\`
-          - [ ] CHANGELOG entry filled in
+          - [ ] CHANGELOG entry filled in (the \`release-notes\` check fails while the \`_TODO_\` stub is there)
           - [ ] review + merge = release sign-off
 
-          Merging makes the version-of-record untagged-at-HEAD, so the merge push runs the **full gate chain** (build matrix, boot smokes, curated and full device suites, real devices) and, if everything is green, tags \`v${V}\` and publishes the prerelease. PR checks do not run on this bot-pushed branch; nothing publishes unverified (all gates re-run on the merge push)."
+          Merging makes the version-of-record untagged-at-HEAD, so the merge push runs the **full gate chain** (build matrix, boot smokes, curated and full device suites, real devices) and, if everything is green, tags \`v${V}\` and publishes the prerelease. PR checks do not run on this bot-pushed branch — your CHANGELOG commit is what starts them, and it is also what clears the \`release-notes\` check. Nothing publishes unverified either way (all gates re-run on the merge push)."

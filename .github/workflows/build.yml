@@ -756,6 +756,33 @@ jobs:
           ./tools/mobile-test/coverage-manifest.py --summary
           ./tools/mobile-test/coverage-manifest.py --summary --suite sequential
 
+  # Merge gate for the release notes: the first docs/CHANGELOG.md section must
+  # be the one publish will ship — this version, TODO stub filled in.
+  #
+  # It runs on PRs (and feeds ci-required) so a release PR can't merge with
+  # placeholder notes. Checking this only in publish meant the failure landed
+  # after the release PR was merged and closed, where the only fix is another
+  # push to recipe.
+  #
+  # It runs on every PR rather than only on release ones because the invariant
+  # holds for ordinary PRs too (they inherit the released version and its
+  # written-up section), because a required check that skips itself reports
+  # nothing and blocks the PR forever, and because a release PR is only
+  # recognizable by convention anyway. Cheap: checkout, no materialize.
+  release-notes:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 1
+      # The same script publish runs, so the two can't disagree: a stricter
+      # publish would fail on notes this check let through.
+      - name: Check the release notes for the version of record
+        run: scripts/release-notes.py
+
   # The single required status check for this workflow. Branch protection
   # should require `ci-required` rather than the individual jobs: the build
   # matrix produces check names like "build-android (full, ubuntu-24.04,
@@ -776,6 +803,7 @@ jobs:
       - smoke-android
       - smoke-ios
       - smoke-host
+      - release-notes
     runs-on: ubuntu-24.04
     steps:
       - name: Assert every required job succeeded
@@ -961,23 +989,19 @@ jobs:
       # The docs live only on this branch, and materialize replaces the
       # workspace with the materialized tree — so lift the release notes out
       # before that happens.
+      # A backstop; the release-notes job is where this blocks a release (see
+      # its comment). By here the PR is merged, so a failure costs a red
+      # release run — but publish still must not ship a TODO stub when that
+      # check was bypassed: an admin merge, a direct push to recipe, branch
+      # protection not yet configured.
+      # Advisory on a dry run (a release-dryrun: push legitimately predates
+      # the CHANGELOG stub), which is why the notes are written either way.
       - name: Extract release notes from the CHANGELOG
         run: |
-          awk '/^## /{c++} c==1{print} c==2{exit}' docs/CHANGELOG.md \
-            > "$RUNNER_TEMP/release-notes.md"
-          wc -l < "$RUNNER_TEMP/release-notes.md"
-          # The first CHANGELOG section must actually be this release's, and
-          # the cut-release TODO stub must have been filled in — otherwise the
-          # published notes are wrong/placeholder text. Advisory on a dry run
-          # (a release-dryrun: push legitimately predates the CHANGELOG stub).
-          bad=""
-          head -1 "$RUNNER_TEMP/release-notes.md" | grep -qF "Version ${V}" \
-            || bad="first CHANGELOG section is not for ${V}"
-          grep -q 'TODO' "$RUNNER_TEMP/release-notes.md" \
-            && bad="release notes still contain the cut-release TODO stub — fill in docs/CHANGELOG.md"
-          if [ -n "$bad" ]; then
-            if [ "$DRY" = "1" ]; then echo "::warning::$bad"; else echo "::error::$bad"; exit 1; fi
-          fi
+          adv=""
+          if [ "$DRY" = "1" ]; then adv="--advisory"; fi
+          scripts/release-notes.py --version "$V" \
+            --out "$RUNNER_TEMP/release-notes.md" $adv
 
       - uses: ./.github/actions/materialize
 

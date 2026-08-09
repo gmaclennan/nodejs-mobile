@@ -62,6 +62,7 @@ it through `tools/test.py`.
 | `verify-patches.yml` → `verify` | ubuntu | PR · push `recipe` | the patch series + `mobile-src/` reconstruct the recorded tree byte-for-byte from a fresh upstream clone |
 | `verify-patches.yml` → `patch-stack-configure` | ubuntu | PR · push `recipe` | every patch passes `./android-configure` individually (~1 min/patch) |
 | `verify-patches.yml` → `tree-diff` | ubuntu | PR | *not a gate* — publishes the diff between the base and head **materialized trees** as a job summary + artifact, so review isn't a diff-of-a-diff |
+| `build.yml` → `release-notes` | ubuntu | PR · push `recipe` | the first `docs/CHANGELOG.md` section is the one `publish` will ship — this version of record, cut-release `_TODO_` stub filled in. Gates `ci-required`, so a release PR cannot merge on placeholder notes (`scripts/release-notes.py` runs it locally) |
 | `build.yml` → `smoke-host` | ubuntu | PR · push `recipe` | C++ patches compile; `node -e` runs; `test-mobile-fetch` passes on that build run `--jitless` (see below); `test-mobile-system-ca` finds a non-empty system trust store; the curated list passes on the host build (plus the full `parallel` suite, advisory). Gates `ci-required` and `publish` |
 | `build.yml` → `build-*` / `combine-*` | ubuntu / macos | PR · push `recipe` | the cross-compile actually succeeds — the only check that compiles target code |
 | `build.yml` → `smoke-{android,ios}` (+ the NAPI symbol assert in `combine-android`) | ubuntu+KVM / macos | PR · push `recipe` | **boot smoke**: the exact shipping artifact boots and runs JS; NAPI symbols in `.dynsym` |
@@ -90,7 +91,8 @@ the merge run anyway. Android runs both flavors everywhere (ubuntu+KVM is
 `build.yml` exposes a single aggregate check, **`ci-required`**, which is what
 branch protection should require — the matrix produces check names that change
 whenever the matrix does, so a hand-maintained required list silently stops
-enforcing. It covers the builds, the combines and the boot smokes.
+enforcing. It covers the builds, the combines, the boot smokes and the
+release-notes check.
 
 **The curated device tests run on PRs but are deliberately not required.**
 Emulator and simulator lifecycles (AVD boot, `simctl` races, adb disconnects)
