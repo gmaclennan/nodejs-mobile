@@ -111,7 +111,12 @@ simulator (`iphonesimulator`) — and combines them. The script configures gyp t
 build Node.js and its dependencies as static libraries with V8 set to run
 jitless (Apple's no-JIT rule), staging the libs through
 `tools/ios-framework/bin/` into the `tools/ios-framework/NodeMobile.xcodeproj`
-project. Pass `arm64` or `arm64-simulator` to build only one slice during
+project. Because iOS can never JIT, the compiled optimizer tiers are removed
+outright in **both** flavors: `v8_enable_turbofan=0` swaps V8's compiler for
+upstream's `turbofan-disabled.cc` stub (mksnapshot keeps the real backend to
+generate builtins), `--v8-disable-maglev` drops the mid-tier, and the
+snapshot-generator (`libv8_initializers`) and gtest libraries — dead weight the
+`-all_load` framework link used to force in — are excluded from the link. Pass `arm64` or `arm64-simulator` to build only one slice during
 development. (x86_64 / Intel-simulator support was dropped for v24: Intel Macs
 are EOL and Apple Silicon runs the arm64 simulator natively.)
 
@@ -146,9 +151,11 @@ linker only discards unreferenced sections, so it costs no functionality.
 
 Measured shipping sizes (arm64, after symbol strip):
 
-- **iOS:** ~63 MB (full) → **~44.5 MB (lite)**, a ~29% cut (mostly `--v8-lite-mode`).
-- **Android:** ~77 MB (full) → ~46 MB (lite) before gc-sections was extended
-  to full; the feature drops account for roughly half that gap. No
+- **iOS:** the dead-code removal above cut the lite device slice
+  **54.5 → 33.8 MB** (−38%); full shrinks by the same ~20 MB since every cut
+  is flavor-neutral (its size is measured by the release CI).
+- **Android:** **61.5 MB (full)** / **45.6 MB (lite)** with gc-sections on
+  both flavors; no
   `--v8-lite-mode` (Android keeps the JIT and V8's native WASM for undici).
 
 `build-id` (`-Wl,--build-id=sha1`) is emitted on the Android `libnode.so` in
