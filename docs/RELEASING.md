@@ -15,6 +15,14 @@ Releasing is a button, a review, and (optionally) an approval:
    and `release-check` is guarded off `pull_request` so the release chain
    can never fire from the unmerged PR.)
 
+   Filling it in is enforced, not remembered: the `release-notes` job (in
+   `ci-required`) fails while the first CHANGELOG section is still the
+   `_TODO_` stub, or isn't the section for the version being released. Run
+   `scripts/release-notes.py` locally to see exactly what publish will
+   ship. Catching it on the PR is the point — the same assertion still
+   guards `publish`, but there the PR is already merged and closed, so the
+   only way out is another push to `recipe`.
+
    **Use squash or rebase, not a merge commit.** `release-check` reads
    `git log -1 --format=%s` to spot a `release-dryrun:` rehearsal, and a
    merge commit replaces that subject with `Merge pull request #N from …`,
