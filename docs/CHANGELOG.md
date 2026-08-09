@@ -40,7 +40,18 @@
 <a id="24.18.0-2"></a>
 ## 2026-08-09, Version 24.18.0-2 (Current)
 
-- _TODO: summarize changes before merging._
+Mobile-only update on Node.js 24.18.0; no upstream change.
+
+### Notable Changes
+
+* **iOS: framework size cut ~38%** (54.5 MB → 33.8 MB, lite flavor, arm64
+  device after `strip -x`). V8's TurboFan and Maglev compiler tiers, the
+  mksnapshot-only CSA builtin generators in `libv8_initializers`, and `gtest`
+  are dropped from both flavors — iOS always runs jitless, so none of it ran
+  at runtime.
+* **Android: dead-code stripping (`--gc-sections`) now applies to the full
+  flavor**, not just lite. Linker-level size reduction only; no functional
+  change.
 
 <a id="24.18.0-1"></a>
 ## 2026-08-09, Version 24.18.0-1
