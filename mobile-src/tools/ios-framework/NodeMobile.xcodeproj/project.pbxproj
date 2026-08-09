@@ -14,8 +14,6 @@
 		A36728E92E53580A004DF2FB /* libbrotli.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 33300EAF240437620019E302 /* libbrotli.a */; };
 		A36728EA2E53580A004DF2FB /* libcares.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 3376C9191EC3922F0007AD59 /* libcares.a */; };
 		A36728EB2E53580A004DF2FB /* libcrdtp.a in Frameworks */ = {isa = PBXBuildFile; fileRef = A36728BB2E530EF7004DF2FB /* libcrdtp.a */; };
-		A36728EC2E53580A004DF2FB /* libgtest_main.a in Frameworks */ = {isa = PBXBuildFile; fileRef = A36728C42E530EF7004DF2FB /* libgtest_main.a */; };
-		A36728ED2E53580A004DF2FB /* libgtest.a in Frameworks */ = {isa = PBXBuildFile; fileRef = A36728BE2E530EF7004DF2FB /* libgtest.a */; };
 		A36728EE2E53580A004DF2FB /* libhighway.a in Frameworks */ = {isa = PBXBuildFile; fileRef = A36728BD2E530EF7004DF2FB /* libhighway.a */; };
 		A36728EF2E53580A004DF2FB /* libhistogram.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 33300EAB240437620019E302 /* libhistogram.a */; };
 		A36728F02E53580A004DF2FB /* libllhttp.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 33300EAC240437620019E302 /* libllhttp.a */; };
@@ -35,8 +33,6 @@
 		A36728F92E53580A004DF2FB /* libuvwasi.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 33300EB0240437620019E302 /* libuvwasi.a */; };
 		A36728FA2E53580A004DF2FB /* libv8_base_without_compiler.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 33300EB3240437620019E302 /* libv8_base_without_compiler.a */; };
 		A36728FB2E53580A004DF2FB /* libv8_compiler.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 33300EC0240437AB0019E302 /* libv8_compiler.a */; };
-		A36728FC2E53580A004DF2FB /* libv8_initializers_slow.a in Frameworks */ = {isa = PBXBuildFile; fileRef = A36728C22E530EF7004DF2FB /* libv8_initializers_slow.a */; };
-		A36728FD2E53580A004DF2FB /* libv8_initializers.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 33300EAD240437620019E302 /* libv8_initializers.a */; };
 		A36728FE2E53580A004DF2FB /* libv8_libbase.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 33300EB1240437620019E302 /* libv8_libbase.a */; };
 		A36728FF2E53580A004DF2FB /* libv8_libplatform.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 33300EAE240437620019E302 /* libv8_libplatform.a */; };
 		A36729002E53580A004DF2FB /* libv8_snapshot.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 33300EC1240437AB0019E302 /* libv8_snapshot.a */; };
@@ -53,7 +49,6 @@
 		331917C21EC4702A00F93D52 /* CoreFoundation.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = CoreFoundation.framework; path = System/Library/Frameworks/CoreFoundation.framework; sourceTree = SDKROOT; };
 		33300EAB240437620019E302 /* libhistogram.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libhistogram.a; path = bin/libhistogram.a; sourceTree = "<group>"; };
 		33300EAC240437620019E302 /* libllhttp.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libllhttp.a; path = bin/libllhttp.a; sourceTree = "<group>"; };
-		33300EAD240437620019E302 /* libv8_initializers.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libv8_initializers.a; path = bin/libv8_initializers.a; sourceTree = "<group>"; };
 		33300EAE240437620019E302 /* libv8_libplatform.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libv8_libplatform.a; path = bin/libv8_libplatform.a; sourceTree = "<group>"; };
 		33300EAF240437620019E302 /* libbrotli.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libbrotli.a; path = bin/libbrotli.a; sourceTree = "<group>"; };
 		33300EB0240437620019E302 /* libuvwasi.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libuvwasi.a; path = bin/libuvwasi.a; sourceTree = "<group>"; };
@@ -77,13 +72,10 @@
 		A36728BB2E530EF7004DF2FB /* libcrdtp.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libcrdtp.a; path = bin/libcrdtp.a; sourceTree = "<group>"; };
 		A36728BC2E530EF7004DF2FB /* libzstd.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libzstd.a; path = bin/libzstd.a; sourceTree = "<group>"; };
 		A36728BD2E530EF7004DF2FB /* libhighway.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libhighway.a; path = bin/libhighway.a; sourceTree = "<group>"; };
-		A36728BE2E530EF7004DF2FB /* libgtest.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libgtest.a; path = bin/libgtest.a; sourceTree = "<group>"; };
 		A36728BF2E530EF7004DF2FB /* libabseil.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libabseil.a; path = bin/libabseil.a; sourceTree = "<group>"; };
 		A36728C02E530EF7004DF2FB /* libnbytes.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libnbytes.a; path = bin/libnbytes.a; sourceTree = "<group>"; };
 		A36728C12E530EF7004DF2FB /* libncrypto.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libncrypto.a; path = bin/libncrypto.a; sourceTree = "<group>"; };
-		A36728C22E530EF7004DF2FB /* libv8_initializers_slow.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libv8_initializers_slow.a; path = bin/libv8_initializers_slow.a; sourceTree = "<group>"; };
 		A36728C32E530EF7004DF2FB /* libzlib_data_chunk_simd.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libzlib_data_chunk_simd.a; path = bin/libzlib_data_chunk_simd.a; sourceTree = "<group>"; };
-		A36728C42E530EF7004DF2FB /* libgtest_main.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libgtest_main.a; path = bin/libgtest_main.a; sourceTree = "<group>"; };
 		A36728C62E5355E5004DF2FB /* Security.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Security.framework; path = Platforms/MacOSX.platform/Developer/SDKs/MacOSX15.5.sdk/System/Library/Frameworks/Security.framework; sourceTree = DEVELOPER_DIR; };
 		A3F2E7582E716AA30001C23B /* libsqlite.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libsqlite.a; path = bin/libsqlite.a; sourceTree = "<group>"; };
 		D9A761AE1F7C63A8006AFE86 /* NodeMobile.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = NodeMobile.framework; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -99,7 +91,6 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				A36728EC2E53580A004DF2FB /* libgtest_main.a in Frameworks */,
 				A36728F52E53580A004DF2FB /* libopenssl.a in Frameworks */,
 				A36728F32E53580A004DF2FB /* libnghttp2.a in Frameworks */,
 				A36729022E53580A004DF2FB /* libzlib_data_chunk_simd.a in Frameworks */,
@@ -108,7 +99,6 @@
 				A36728E82E53580A004DF2FB /* libada.a in Frameworks */,
 				A36728E92E53580A004DF2FB /* libbrotli.a in Frameworks */,
 				A36728FA2E53580A004DF2FB /* libv8_base_without_compiler.a in Frameworks */,
-				A36728FC2E53580A004DF2FB /* libv8_initializers_slow.a in Frameworks */,
 				A36728FE2E53580A004DF2FB /* libv8_libbase.a in Frameworks */,
 				A36728F42E53580A004DF2FB /* libnode.a in Frameworks */,
 				A36728FF2E53580A004DF2FB /* libv8_libplatform.a in Frameworks */,
@@ -119,7 +109,6 @@
 				A36728F72E53580A004DF2FB /* libsimdutf.a in Frameworks */,
 				A36728E72E53580A004DF2FB /* libabseil.a in Frameworks */,
 				A36728F92E53580A004DF2FB /* libuvwasi.a in Frameworks */,
-				A36728FD2E53580A004DF2FB /* libv8_initializers.a in Frameworks */,
 				A36729042E53580A004DF2FB /* libzstd.a in Frameworks */,
 				A36728EE2E53580A004DF2FB /* libhighway.a in Frameworks */,
 				A36728EF2E53580A004DF2FB /* libhistogram.a in Frameworks */,
@@ -130,7 +119,6 @@
 				DEADBEEF000000000000D006 /* libicudata.a in Frameworks */,
 				DEADBEEF000000000000D00A /* libicustubdata.a in Frameworks */,
 				A36729012E53580A004DF2FB /* libv8_zlib.a in Frameworks */,
-				A36728ED2E53580A004DF2FB /* libgtest.a in Frameworks */,
 				A36728C72E5355E6004DF2FB /* Security.framework in Frameworks */,
 				A36728EB2E53580A004DF2FB /* libcrdtp.a in Frameworks */,
 				A36728FB2E53580A004DF2FB /* libv8_compiler.a in Frameworks */,
@@ -167,8 +155,6 @@
 				A36728C62E5355E5004DF2FB /* Security.framework */,
 				A36728BF2E530EF7004DF2FB /* libabseil.a */,
 				A36728BB2E530EF7004DF2FB /* libcrdtp.a */,
-				A36728BE2E530EF7004DF2FB /* libgtest.a */,
-				A36728C42E530EF7004DF2FB /* libgtest_main.a */,
 				A36728BD2E530EF7004DF2FB /* libhighway.a */,
 				A36728C02E530EF7004DF2FB /* libnbytes.a */,
 				A36728C12E530EF7004DF2FB /* libncrypto.a */,
@@ -178,7 +164,6 @@
 				DEADBEEF000000000000D005 /* libicudata.a */,
 				DEADBEEF000000000000D007 /* libmerve.a */,
 				DEADBEEF000000000000D009 /* libicustubdata.a */,
-				A36728C22E530EF7004DF2FB /* libv8_initializers_slow.a */,
 				A36728C32E530EF7004DF2FB /* libzlib_data_chunk_simd.a */,
 				A36728BC2E530EF7004DF2FB /* libzstd.a */,
 				F6860EE02ACD491900070ED3 /* libada.a */,
@@ -194,7 +179,6 @@
 				33300EB0240437620019E302 /* libuvwasi.a */,
 				33300EB3240437620019E302 /* libv8_base_without_compiler.a */,
 				33300EC0240437AB0019E302 /* libv8_compiler.a */,
-				33300EAD240437620019E302 /* libv8_initializers.a */,
 				33300EB1240437620019E302 /* libv8_libbase.a */,
 				33300EAE240437620019E302 /* libv8_libplatform.a */,
 				33300EC1240437AB0019E302 /* libv8_snapshot.a */,
