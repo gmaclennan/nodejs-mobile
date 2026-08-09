@@ -37,9 +37,29 @@
 </table>
 
 <a id="24.18.0-1"></a>
-## 2026-08-08, Version 24.18.0-1 (Current)
+## 2026-08-09, Version 24.18.0-1 (Current)
 
-Test release for latest fixes
+Mobile-only update on Node.js 24.18.0; no upstream change.
+
+### Notable Changes
+
+* **Android: embedder-set environment variables now work.** An Android app
+  process inherits the zygote's auxiliary vector, which made upstream's
+  `SafeGetenv()` privilege heuristic treat every app as setuid-privileged and
+  silently ignore `TMPDIR`, `NODE_OPTIONS`, `NODE_EXTRA_CA_CERTS`,
+  `NODE_ICU_DATA`, `NODE_COMPILE_CACHE`, `OPENSSL_CONF` and `NODE_PATH`.
+  Embedded (`NODE_MOBILE`) builds now skip the heuristic; the uid/gid
+  comparisons stay live. `os.tmpdir()` now honours `TMPDIR` on Android, and
+  `NODE_OPTIONS` works without command-line access to the runtime.
+* **Docs:** new [`EMBEDDING.md`](./EMBEDDING.md) — the environment node
+  inherits on each platform, what an embedder should set before starting the
+  runtime, and where to write.
+* **Testing:** device coverage rebuilt. Tests that self-skip or call
+  `process.exit()` are scored correctly; the curated per-PR gate is
+  re-weighted to the mobile patch surface; the full non-skipped
+  `test/parallel` + `test/sequential` suite (~3,300 tests per platform) runs
+  nightly on an emulator and a simulator and gates releases; unix domain
+  sockets are exercised on iOS. See [`TESTING.md`](./TESTING.md).
 
 <a id="24.18.0-0"></a>
 ## 2026-07-28, Version 24.18.0-0
