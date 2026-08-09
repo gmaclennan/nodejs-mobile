@@ -1,0 +1,101 @@
+name: Release check
+description: >
+  Decide whether the checked-out recipe commit is on the publish path: the
+  version of record (mobile-src/src/node_mobile_version.h) is not yet tagged,
+  on a push to `recipe`. Content-derived and idempotent -- no magic commit
+  wording -- and a failed release run self-heals on the next push because the
+  version is still untagged.
+
+  Two consumers, deliberately not one job feeding the other. build.yml's
+  `release-check` job publishes these as job outputs and gates the publish
+  chain on them; the three compiling jobs run this action themselves, purely
+  to learn whether they must build cold (see `cold`). Making the build matrix
+  `needs:` the job instead would either put a whole runner boot on the front
+  of every PR's critical path, or -- because that job is deliberately skipped
+  off `push`-to-`recipe` -- skip the entire build matrix along with it.
+
+  Must run on the recipe checkout, BEFORE ./.github/actions/materialize
+  replaces the workspace: the version of record lives at mobile-src/, which
+  only exists on this branch.
+
+  Requires contents:read (tag probe).
+inputs:
+  token:
+    description: Token with contents:read on this repository, for the tag probe.
+    required: true
+outputs:
+  release:
+    description: '"true" when this push should tag and publish.'
+    value: ${{ steps.d.outputs.release }}
+  dryrun:
+    description: '"true" for a `release-dryrun:` rehearsal push.'
+    value: ${{ steps.d.outputs.dryrun }}
+  cold:
+    description: >
+      '"true" when this run is on the publish path (a real release OR a
+      rehearsal) and must therefore compile without any shared cache. A
+      rehearsal that built warm would not be rehearsing the release.'
+    value: ${{ steps.d.outputs.cold }}
+  version:
+    description: The version of record, X.Y.Z-R.
+    value: ${{ steps.d.outputs.version }}
+runs:
+  using: composite
+  steps:
+    - id: d
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.token }}
+      run: |
+        f=mobile-src/src/node_mobile_version.h
+        if [ ! -f "$f" ]; then
+          echo "::error::$f not found — the release-check action must run on the recipe checkout, before ./.github/actions/materialize"
+          exit 1
+        fi
+        MA=$(grep -oE 'NODE_MOBILE_MAJOR_VERSION [0-9]+' "$f" | awk '{print $2}')
+        MI=$(grep -oE 'NODE_MOBILE_MINOR_VERSION [0-9]+' "$f" | awk '{print $2}')
+        PA=$(grep -oE 'NODE_MOBILE_PATCH_VERSION [0-9]+' "$f" | awk '{print $2}')
+        RE=$(grep -oE 'NODE_MOBILE_REVISION [0-9]+' "$f" | awk '{print $2}')
+        V="${MA}.${MI}.${PA}-${RE}"
+
+        DR=false
+        REL=false
+        # ONLY on a push to recipe — the sole path by which a release is ever
+        # meant to happen (docs/RELEASING.md: the merge push is the release
+        # trigger). Both other events are live hazards, because the trigger is
+        # "version of record is not yet tagged" and that is true of any branch
+        # cut from a release PR before its tag exists:
+        #
+        #   - pull_request: Cut release opens a PR with the version already
+        #     bumped, and docs/RELEASING.md tells the maintainer to push a
+        #     CHANGELOG edit to it. That push would otherwise satisfy this
+        #     check on the PR branch.
+        #   - workflow_dispatch: Build is dispatchable against ANY ref.
+        #     Dispatching it on a feature branch to test something would
+        #     otherwise run real-device-smoke (real BrowserStack spend) and
+        #     publish (tag + GitHub release) from that branch.
+        if [ "$GITHUB_EVENT_NAME" = push ] && [ "$GITHUB_REF" = refs/heads/recipe ]; then
+          case "$(git log -1 --format=%s)" in release-dryrun:*) DR=true ;; esac
+          REL=true
+          # Both the current tag scheme (vX.Y.Z-R) and the legacy one
+          # (nodejs-mobile-X.Y.Z-R) count as released.
+          for t in "v${V}" "nodejs-mobile-${V}"; do
+            # Only a real 404 means "not tagged". A transient API failure must
+            # not be read as absence — that would start a release run for an
+            # already-released version.
+            if out=$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/tags/${t}" 2>&1); then
+              echo "tag ${t} exists"
+              REL=false
+            elif ! printf '%s' "$out" | grep -q 'HTTP 404'; then
+              echo "::error::tag probe for ${t} failed (not a 404): $out"
+              exit 1
+            fi
+          done
+          if [ "$DR" = true ]; then REL=false; fi
+        fi
+
+        COLD=false
+        if [ "$REL" = true ] || [ "$DR" = true ]; then COLD=true; fi
+
+        { echo "version=$V"; echo "release=$REL"; echo "dryrun=$DR"; echo "cold=$COLD"; } >> "$GITHUB_OUTPUT"
+        echo "version=$V release=$REL dryrun=$DR cold=$COLD"

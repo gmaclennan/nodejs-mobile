@@ -27,12 +27,44 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
+# Who may WRITE to the shared compiler cache, and who only reads it.
+#
+# sccache's cache is keyed by a hash of the preprocessed input and the
+# compiler, so a cache entry is a claim ("this input compiles to these
+# bytes") that the reader takes on trust — it never re-verifies. Anything
+# that can write to the bucket can therefore choose the object files a later
+# build links, which for the release run means choosing the bytes that ship.
+# Two independent measures, both here:
+#
+#   1. The publish path builds COLD. Every compiling job asks
+#      ./.github/actions/release-check whether this run is a release (or a
+#      `release-dryrun:` rehearsal) and, if so, compiles with no sccache at
+#      all and no R2 credentials in scope. A poisoned cache object then has no
+#      path to a shipped artifact — the worst it can do is waste CI time or
+#      corrupt a dev/test binary. See docs/BUILDING.md, "The CI compiler cache".
+#   2. Read and write are split by credential. `sccache-read` and
+#      `sccache-write` are GitHub Environments holding an R2 token each under
+#      the SAME secret names; a job picks one by event (below), and
+#      `sccache-write`'s deployment branch rule — enforced by GitHub, not by
+#      anything editable in this file — restricts it to `recipe`. Poisoning
+#      the cache therefore requires landing a commit on `recipe`, not merely
+#      opening a PR.
+#
+# READ_ONLY below is the belt to that braces: it stops sccache attempting
+# ~2500 doomed PUTs per job (and writing the S3 probe object at startup) when
+# the token would refuse them anyway. It is workflow-side and thus editable in
+# a PR, which is exactly why it is not the enforcement — the token is.
 env:
   # No SCCACHE_GHA_ENABLED here on purpose: the backend is Cloudflare R2, set
   # per Build step (see build-android). sccache picks a backend by precedence
   # and ghac outranks s3, so leaving the GHA flag set would silently keep
   # writing into the rate-limited Actions cache and look like it worked.
   SCCACHE_IDLE_TIMEOUT: '0'   # keep the sccache server alive through long builds
+  # Must be set before the sccache server starts, like the log vars below, so
+  # it belongs at workflow scope. An sccache too old to know this variable
+  # ignores it and falls back to failing writes, which the error log already
+  # covers — no regression either way.
+  SCCACHE_S3_RW_MODE: ${{ github.event_name == 'push' && github.ref == 'refs/heads/recipe' && 'READ_WRITE' || 'READ_ONLY' }}
   # Surface the reason a cache write failed. sccache reports write failures only
   # as a counter in --show-stats; the HTTP status behind them (429 vs 4xx vs
   # auth) lives in the server log, which otherwise goes nowhere. Both vars must
@@ -80,6 +112,14 @@ jobs:
           - { os: ubuntu-24.04, target_arch: x86_64 }
 
     runs-on: ${{ matrix.config.os }}
+    # Which R2 token this job gets. Both environments define
+    # R2_ACCESS_KEY_ID/R2_SECRET_ACCESS_KEY, so the Build step below refers to
+    # one pair of names and the environment decides whether they can write.
+    # Same-name-different-environment is the point: no expression in this file
+    # selects the write token, so no edit to this file can hand it to a PR.
+    # (A fork PR gets no secrets under either environment, as before.)
+    environment:
+      name: ${{ github.event_name == 'push' && github.ref == 'refs/heads/recipe' && 'sccache-write' || 'sccache-read' }}
     env:
       TARGET_ARCH: ${{ matrix.config.target_arch }}
       NODEJS_MOBILE_FLAVOR: ${{ matrix.flavor }}
@@ -95,9 +135,19 @@ jobs:
       - uses: actions/checkout@v7
         with:
           fetch-depth: 1
+      # Before materialize: the version of record lives at mobile-src/, which
+      # only exists on this branch. `cold` is consulted by every step below
+      # that could otherwise let an earlier run's bytes into this one.
+      - name: Release check
+        id: rel
+        uses: ./.github/actions/release-check
+        with:
+          token: ${{ github.token }}
+
       - uses: ./.github/actions/materialize
 
       - name: Run sccache-cache
+        if: steps.rel.outputs.cold != 'true'
         uses: mozilla-actions/sccache-action@fc920bf0ec8de6ee65d409111f7ec508035751ba # v0.0.11
 
       - name: Install build utils
@@ -127,14 +177,22 @@ jobs:
                  git hash-object node.gyp node.gypi common.gypi configure configure.py android-configure android_configure.py tools/android_build.sh tools/copy_libnode_headers.sh; \
                  printf '%s\n' "$ANDROID_LDFLAGS" "$ANDROID_TARGET_SDK_VERSION"; \
                } | git hash-object --stdin )
-          echo "key=$H" >> "$GITHUB_OUTPUT"
+          echo "key=libnode-android-${TARGET_ARCH}${FLAVOR_SUFFIX}-ndk${ANDROID_NDK_VERSION}-${H}" >> "$GITHUB_OUTPUT"
 
-      - name: Cache built libnode
+      # Restore and save are split (rather than one actions/cache) so a release
+      # run can skip the RESTORE and still perform the SAVE. Skipping the
+      # restore is what makes "the shipped binary was compiled in this run" a
+      # property of the workflow instead of a happy accident: today the version
+      # bump changes HEAD:src and so misses this key anyway, but nothing
+      # structural says it must. Keeping the save means the first PR after a
+      # release still finds a warm key instead of paying a cold build.
+      - name: Restore built libnode
         id: libnode-cache
-        uses: actions/cache@v6
+        if: steps.rel.outputs.cold != 'true'
+        uses: actions/cache/restore@v6
         with:
           path: out_android
-          key: libnode-android-${{ env.TARGET_ARCH }}${{ env.FLAVOR_SUFFIX }}-ndk${{ env.ANDROID_NDK_VERSION }}-${{ steps.ck.outputs.key }}
+          key: ${{ steps.ck.outputs.key }}
 
       - name: Build
         if: steps.libnode-cache.outputs.cache-hit != 'true'
@@ -142,8 +200,16 @@ jobs:
           MY_ANDROID_NDK_HOME: ${{ steps.setup-ndk.outputs.ndk-path }}
           LDFLAGS: ${{ env.ANDROID_LDFLAGS }}
           # Opt in to the sccache wrap in android_configure.py — it no longer
-          # activates just because sccache is on PATH.
-          NODEJS_MOBILE_SCCACHE: '1'
+          # activates just because sccache is on PATH. Empty (not '0') on the
+          # publish path: the patch tests the variable for truthiness with
+          # os.environ.get(), so '0' would still wrap the compiler.
+          #
+          # Every expression here is written `cold != 'true' && <value> || ''`
+          # rather than `cold == 'true' && '' || <value>`: GitHub's ternary
+          # idiom falls through to the `||` branch whenever the `&&` branch is
+          # falsey, and '' is falsey — so the natural-reading form would enable
+          # the cache on exactly the runs that must not have it.
+          NODEJS_MOBILE_SCCACHE: ${{ steps.rel.outputs.cold != 'true' && '1' || '' }}
           # sccache's R2 backend. Scoped to this step rather than workflow env so
           # the credentials are never in scope for the third-party actions the
           # other jobs run (setup-ndk, upload-artifact, the BrowserStack smoke).
@@ -151,14 +217,18 @@ jobs:
           # never starts the server, so the server is spawned lazily by the first
           # compile below and inherits these.
           #
-          # A fork PR gets no secrets. Leaving SCCACHE_BUCKET empty in that case
-          # makes sccache fall back to its local disk cache, instead of taking a
-          # 403 on every single object and pacing the build behind the retries.
-          SCCACHE_BUCKET: ${{ secrets.R2_ACCESS_KEY_ID != '' && vars.R2_BUCKET || '' }}
+          # A fork PR gets no secrets, and a release run is denied them here.
+          # Leaving SCCACHE_BUCKET empty in either case makes sccache fall back
+          # to its local disk cache, instead of taking a 403 on every single
+          # object and pacing the build behind the retries. Blanking the
+          # credentials as well as the opt-in above is belt and braces, and it
+          # is the auditable statement: a release build has no credential for
+          # the shared cache anywhere in its environment.
+          SCCACHE_BUCKET: ${{ steps.rel.outputs.cold != 'true' && secrets.R2_ACCESS_KEY_ID != '' && vars.R2_BUCKET || '' }}
           SCCACHE_REGION: auto
           SCCACHE_ENDPOINT: https://${{ secrets.R2_ACCOUNT_ID }}.r2.cloudflarestorage.com
-          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
-          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          AWS_ACCESS_KEY_ID: ${{ steps.rel.outputs.cold != 'true' && secrets.R2_ACCESS_KEY_ID || '' }}
+          AWS_SECRET_ACCESS_KEY: ${{ steps.rel.outputs.cold != 'true' && secrets.R2_SECRET_ACCESS_KEY || '' }}
         run: |
           ./tools/android_build.sh $MY_ANDROID_NDK_HOME $ANDROID_TARGET_SDK_VERSION $TARGET_ARCH
 
@@ -168,6 +238,18 @@ jobs:
       # them instead of re-running ./configure + an NDK install.
       - name: Stage NAPI/addon headers
         run: ./tools/copy_libnode_headers.sh android
+
+      # After the header staging, not right after Build, so the saved tree is
+      # byte-identical to what the combined actions/cache used to save from its
+      # post step. Guarded on the same condition as Build: nothing to save when
+      # the restore already hit, and a release run (restore skipped, so the
+      # output is empty) does save.
+      - name: Save built libnode
+        if: steps.libnode-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v6
+        with:
+          path: out_android
+          key: ${{ steps.ck.outputs.key }}
 
       # Why this build caches to R2 and not to the GitHub Actions cache.
       #
@@ -200,10 +282,14 @@ jobs:
       # sccache never evicts from S3, so bucket growth is bounded by an R2
       # lifecycle rule, not by anything in this workflow.
       - name: sccache stats
-        if: always()
+        # There is no server to ask on the publish path — sccache was never
+        # installed there.
+        if: always() && steps.rel.outputs.cold != 'true'
         run: |
           sccache --show-stats || true
-          # The counters above say how many writes failed; this says why.
+          # The counters above say how many writes failed; this says why. With
+          # SCCACHE_S3_RW_MODE=READ_ONLY on a PR, "Cache write errors" should be
+          # 0 and the misses simply stay misses.
           if [ -s /tmp/sccache-errors.log ]; then
             echo '--- sccache server log (unique messages) ---'
             sort /tmp/sccache-errors.log | uniq -c | sort -rn | head -40
@@ -227,6 +313,9 @@ jobs:
           - { os: macos-26, target_arch: arm64-simulator }
 
     runs-on: ${{ matrix.config.os }}
+    # See build-android.
+    environment:
+      name: ${{ github.event_name == 'push' && github.ref == 'refs/heads/recipe' && 'sccache-write' || 'sccache-read' }}
     env:
       TARGET_ARCH: ${{ matrix.config.target_arch }}
       NODEJS_MOBILE_FLAVOR: ${{ matrix.flavor }}
@@ -236,9 +325,18 @@ jobs:
       - uses: actions/checkout@v7
         with:
           fetch-depth: 1
+
+      # Before materialize — see build-android.
+      - name: Release check
+        id: rel
+        uses: ./.github/actions/release-check
+        with:
+          token: ${{ github.token }}
+
       - uses: ./.github/actions/materialize
 
       - name: Run sccache-cache
+        if: steps.rel.outputs.cold != 'true'
         uses: mozilla-actions/sccache-action@fc920bf0ec8de6ee65d409111f7ec508035751ba # v0.0.11
 
       # See build-android: key the built framework on the git tree of the build
@@ -252,14 +350,17 @@ jobs:
                  git hash-object node.gyp node.gypi common.gypi configure configure.py tools/ios_framework_prepare.sh tools/copy_libnode_headers.sh; \
                  xcodebuild -version; \
                } | git hash-object --stdin )
-          echo "key=$H" >> "$GITHUB_OUTPUT"
+          echo "key=libnode-ios-${TARGET_ARCH}${FLAVOR_SUFFIX}-v1-${H}" >> "$GITHUB_OUTPUT"
 
-      - name: Cache built libnode
+      # Restore/save split, and why a release skips the restore: see
+      # build-android.
+      - name: Restore built libnode
         id: libnode-cache
-        uses: actions/cache@v6
+        if: steps.rel.outputs.cold != 'true'
+        uses: actions/cache/restore@v6
         with:
           path: out_ios_${{ env.TARGET_ARCH }}
-          key: libnode-ios-${{ env.TARGET_ARCH }}${{ env.FLAVOR_SUFFIX }}-v1-${{ steps.ck.outputs.key }}
+          key: ${{ steps.ck.outputs.key }}
 
       # This job has run sccache-action since it was written, but nothing ever
       # wrapped the compiler with it: the fork's sccache wiring lives in
@@ -290,38 +391,53 @@ jobs:
       - name: Build
         if: steps.libnode-cache.outputs.cache-hit != 'true'
         env:
-          # Same R2 backend, same reasoning, as build-android's Build step.
-          SCCACHE_BUCKET: ${{ secrets.R2_ACCESS_KEY_ID != '' && vars.R2_BUCKET || '' }}
+          # Same R2 backend, same reasoning — including the `!= 'true' && x ||
+          # ''` shape — as build-android's Build step.
+          COLD: ${{ steps.rel.outputs.cold }}
+          SCCACHE_BUCKET: ${{ steps.rel.outputs.cold != 'true' && secrets.R2_ACCESS_KEY_ID != '' && vars.R2_BUCKET || '' }}
           SCCACHE_REGION: auto
           SCCACHE_ENDPOINT: https://${{ secrets.R2_ACCOUNT_ID }}.r2.cloudflarestorage.com
-          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
-          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          AWS_ACCESS_KEY_ID: ${{ steps.rel.outputs.cold != 'true' && secrets.R2_ACCESS_KEY_ID || '' }}
+          AWS_SECRET_ACCESS_KEY: ${{ steps.rel.outputs.cold != 'true' && secrets.R2_SECRET_ACCESS_KEY || '' }}
         run: |
-          mkdir -p "$RUNNER_TEMP/sccache-wrappers"
-          printf '#!/bin/sh\nexec sccache clang "$@"\n' \
-            > "$RUNNER_TEMP/sccache-wrappers/cc"
-          printf '#!/bin/sh\nexec sccache clang++ "$@"\n' \
-            > "$RUNNER_TEMP/sccache-wrappers/cxx"
-          chmod +x "$RUNNER_TEMP/sccache-wrappers/cc" \
-                   "$RUNNER_TEMP/sccache-wrappers/cxx"
-          export CC="$RUNNER_TEMP/sccache-wrappers/cc"
-          export CXX="$RUNNER_TEMP/sccache-wrappers/cxx"
-          # Separate from CC/CXX because this is a cross-compile: gyp builds
-          # mksnapshot and torque for the host, and those are a real slice of
-          # the build. Same wrappers — the host here is also macOS/clang.
-          export CC_host="$CC"
-          export CXX_host="$CXX"
+          # Leaving CC/CXX unset on the publish path is the whole mechanism
+          # here: unlike Android there is no opt-in flag to clear, because it
+          # is these two variables that put sccache in the compile path at all.
+          if [ "$COLD" != "true" ]; then
+            mkdir -p "$RUNNER_TEMP/sccache-wrappers"
+            printf '#!/bin/sh\nexec sccache clang "$@"\n' \
+              > "$RUNNER_TEMP/sccache-wrappers/cc"
+            printf '#!/bin/sh\nexec sccache clang++ "$@"\n' \
+              > "$RUNNER_TEMP/sccache-wrappers/cxx"
+            chmod +x "$RUNNER_TEMP/sccache-wrappers/cc" \
+                     "$RUNNER_TEMP/sccache-wrappers/cxx"
+            export CC="$RUNNER_TEMP/sccache-wrappers/cc"
+            export CXX="$RUNNER_TEMP/sccache-wrappers/cxx"
+            # Separate from CC/CXX because this is a cross-compile: gyp builds
+            # mksnapshot and torque for the host, and those are a real slice of
+            # the build. Same wrappers — the host here is also macOS/clang.
+            export CC_host="$CC"
+            export CXX_host="$CXX"
+          fi
 
           python3.12 -m venv .
           source bin/activate
           python3.12 -m pip install setuptools
           ./tools/ios_framework_prepare.sh $TARGET_ARCH
 
+      # See build-android's Save step.
+      - name: Save built libnode
+        if: steps.libnode-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v6
+        with:
+          path: out_ios_${{ env.TARGET_ARCH }}
+          key: ${{ steps.ck.outputs.key }}
+
       # These writes used to count against the same repo-wide 200/min upload
       # budget the Android matrix was already blowing through; on R2 they no
       # longer compete — see the note on build-android's sccache stats step.
       - name: sccache stats
-        if: always()
+        if: always() && steps.rel.outputs.cold != 'true'
         run: |
           sccache --show-stats || true
           if [ -s /tmp/sccache-errors.log ]; then
@@ -592,6 +708,11 @@ jobs:
   # owns that. Builds only the 'node' target with -j, so no cctest/addons.
   smoke-host:
     runs-on: ubuntu-24.04
+    # See build-android. This job ships nothing, but it gates publish: a
+    # poisoned host binary is a host binary that can be made to pass the tests
+    # standing between a release and the tag. Same rule, same reason.
+    environment:
+      name: ${{ github.event_name == 'push' && github.ref == 'refs/heads/recipe' && 'sccache-write' || 'sccache-read' }}
     # Measured at 82 min end to end with no compiler cache at all: ~75 of that
     # was V8, before a single test executed. sccache is wired below now, so a
     # warm run should be far shorter — but the cold number is what the timeout
@@ -604,9 +725,18 @@ jobs:
       - uses: actions/checkout@v7
         with:
           fetch-depth: 1
+
+      # Before materialize — see build-android.
+      - name: Release check
+        id: rel
+        uses: ./.github/actions/release-check
+        with:
+          token: ${{ github.token }}
+
       - uses: ./.github/actions/materialize
 
       - name: Run sccache-cache
+        if: steps.rel.outputs.cold != 'true'
         uses: mozilla-actions/sccache-action@fc920bf0ec8de6ee65d409111f7ec508035751ba # v0.0.11
 
       # The fork wraps the compiler in sccache from android_configure.py, but
@@ -624,17 +754,21 @@ jobs:
       # spawned during Configure and keeps whatever backend config it started
       # with. Setting it only on the build step would leave the server already
       # running with no backend and cache nothing.
+      #
+      # On the publish path CC/CXX drop back to the bare compilers — see
+      # build-ios's Build step, and the `!= 'true' && x || y` note on
+      # build-android's.
       - name: Configure
         env:
-          CC: sccache cc
-          CXX: sccache c++
-          CC_host: sccache cc
-          CXX_host: sccache c++
-          SCCACHE_BUCKET: ${{ secrets.R2_ACCESS_KEY_ID != '' && vars.R2_BUCKET || '' }}
+          CC: ${{ steps.rel.outputs.cold != 'true' && 'sccache cc' || 'cc' }}
+          CXX: ${{ steps.rel.outputs.cold != 'true' && 'sccache c++' || 'c++' }}
+          CC_host: ${{ steps.rel.outputs.cold != 'true' && 'sccache cc' || 'cc' }}
+          CXX_host: ${{ steps.rel.outputs.cold != 'true' && 'sccache c++' || 'c++' }}
+          SCCACHE_BUCKET: ${{ steps.rel.outputs.cold != 'true' && secrets.R2_ACCESS_KEY_ID != '' && vars.R2_BUCKET || '' }}
           SCCACHE_REGION: auto
           SCCACHE_ENDPOINT: https://${{ secrets.R2_ACCOUNT_ID }}.r2.cloudflarestorage.com
-          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
-          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          AWS_ACCESS_KEY_ID: ${{ steps.rel.outputs.cold != 'true' && secrets.R2_ACCESS_KEY_ID || '' }}
+          AWS_SECRET_ACCESS_KEY: ${{ steps.rel.outputs.cold != 'true' && secrets.R2_SECRET_ACCESS_KEY || '' }}
         run: |
           python3.12 -m venv .
           source bin/activate
@@ -643,21 +777,21 @@ jobs:
 
       - name: Build node target
         env:
-          CC: sccache cc
-          CXX: sccache c++
-          CC_host: sccache cc
-          CXX_host: sccache c++
-          SCCACHE_BUCKET: ${{ secrets.R2_ACCESS_KEY_ID != '' && vars.R2_BUCKET || '' }}
+          CC: ${{ steps.rel.outputs.cold != 'true' && 'sccache cc' || 'cc' }}
+          CXX: ${{ steps.rel.outputs.cold != 'true' && 'sccache c++' || 'c++' }}
+          CC_host: ${{ steps.rel.outputs.cold != 'true' && 'sccache cc' || 'cc' }}
+          CXX_host: ${{ steps.rel.outputs.cold != 'true' && 'sccache c++' || 'c++' }}
+          SCCACHE_BUCKET: ${{ steps.rel.outputs.cold != 'true' && secrets.R2_ACCESS_KEY_ID != '' && vars.R2_BUCKET || '' }}
           SCCACHE_REGION: auto
           SCCACHE_ENDPOINT: https://${{ secrets.R2_ACCOUNT_ID }}.r2.cloudflarestorage.com
-          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
-          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          AWS_ACCESS_KEY_ID: ${{ steps.rel.outputs.cold != 'true' && secrets.R2_ACCESS_KEY_ID || '' }}
+          AWS_SECRET_ACCESS_KEY: ${{ steps.rel.outputs.cold != 'true' && secrets.R2_SECRET_ACCESS_KEY || '' }}
         run: |
           source bin/activate
           make -j"$(nproc)" node
 
       - name: sccache stats
-        if: always()
+        if: always() && steps.rel.outputs.cold != 'true'
         run: |
           sccache --show-stats || true
           if [ -s /tmp/sccache-errors.log ]; then
@@ -786,30 +920,17 @@ jobs:
             [ "$r" = success ] || { echo "::error::a required job did not succeed ($r)"; exit 1; }
           done
 
-  # Decide whether this push is a release. A release happens whenever the
-  # version of record (mobile-src/src/node_mobile_version.h) is NOT yet
-  # tagged -- content-derived and idempotent: no magic commit wording, and a
-  # failed release run self-heals on the next push. Both the current tag
-  # scheme (vX.Y.Z-R) and the legacy one (nodejs-mobile-X.Y.Z-R) count as
-  # released. A commit subject starting 'release-dryrun:' forces the full
-  # gate chain with publish in dry mode regardless of tag state.
-  # ONLY on a push to recipe — the sole path by which a release is ever meant
-  # to happen (docs/RELEASING.md: the merge push is the release trigger, and a
-  # failed run self-heals on the *next push* because the version is still
-  # untagged). Both other events are live hazards, because the trigger is
-  # "version of record is not yet tagged" and that is true of any branch cut
-  # from a release PR before its tag exists:
+  # Decide whether this push is a release, and publish that decision as job
+  # outputs for the gate chain below. The decision itself — including the
+  # push-to-recipe-only guard, which matters enough to have its own essay —
+  # lives in ./.github/actions/release-check, because the compiling jobs above
+  # ask the same question for a different reason (build cold) and must not
+  # depend on this job to get an answer.
   #
-  #   - pull_request: Cut release opens a PR with the version already bumped,
-  #     and docs/RELEASING.md tells the maintainer to push a CHANGELOG edit to
-  #     it. That push would satisfy release-check on the PR branch.
-  #   - workflow_dispatch: Build is dispatchable against ANY ref. Dispatching
-  #     it on a feature branch to test something would otherwise run
-  #     real-device-smoke (real BrowserStack spend) and publish (tag + GitHub
-  #     release) from that branch.
-  #
-  # Skipping this job also skips real-device-smoke, full-suite and publish,
-  # which need: it.
+  # Keeping the job's own `if:` as well as the guard inside the action is
+  # deliberate: skipping this job also skips real-device-smoke, full-suite and
+  # publish, which need: it, so the gate chain never runs at all off a
+  # non-release event rather than running and evaluating to false.
   # Belt and braces: a deployment branch rule on the `release` Environment
   # restricting it to recipe would stop publish independently of this.
   release-check:
@@ -826,33 +947,9 @@ jobs:
         with:
           fetch-depth: 1
       - id: d
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          f=mobile-src/src/node_mobile_version.h
-          MA=$(grep -oE 'NODE_MOBILE_MAJOR_VERSION [0-9]+' "$f" | awk '{print $2}')
-          MI=$(grep -oE 'NODE_MOBILE_MINOR_VERSION [0-9]+' "$f" | awk '{print $2}')
-          PA=$(grep -oE 'NODE_MOBILE_PATCH_VERSION [0-9]+' "$f" | awk '{print $2}')
-          RE=$(grep -oE 'NODE_MOBILE_REVISION [0-9]+' "$f" | awk '{print $2}')
-          V="${MA}.${MI}.${PA}-${RE}"
-          DR=false
-          case "$(git log -1 --format=%s)" in release-dryrun:*) DR=true ;; esac
-          REL=true
-          for t in "v${V}" "nodejs-mobile-${V}"; do
-            # Only a real 404 means "not tagged". A transient API failure must
-            # not be read as absence — that would start a release run for an
-            # already-released version.
-            if out=$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/tags/${t}" 2>&1); then
-              echo "tag ${t} exists"
-              REL=false
-            elif ! printf '%s' "$out" | grep -q 'HTTP 404'; then
-              echo "::error::tag probe for ${t} failed (not a 404): $out"
-              exit 1
-            fi
-          done
-          [ "$DR" = "true" ] && REL=false
-          { echo "version=$V"; echo "release=$REL"; echo "dryrun=$DR"; } >> "$GITHUB_OUTPUT"
-          echo "version=$V release=$REL dryrun=$DR"
+        uses: ./.github/actions/release-check
+        with:
+          token: ${{ github.token }}
 
   # Real-device gate: on release branches, run the BrowserStack smoke
   # (boot + N-API addon dlopen on a physical Android arm64 + iPhone) as part

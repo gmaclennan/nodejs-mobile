@@ -154,3 +154,127 @@ crashes. The safeguard for `intl=none` is running your own application's test
 suite against the lite binary — it catches `Intl` breakage from future
 dependency changes.
 
+
+---
+
+## The CI compiler cache
+
+CI compiles Node from scratch in eleven jobs per run, so it keeps a shared
+compiler cache: [sccache](https://github.com/mozilla/sccache) against a
+Cloudflare R2 bucket, wired in `.github/workflows/build.yml`. R2 rather than
+the GitHub Actions cache because Actions' 200-uploads-per-minute-per-repo
+limit cannot serve this workload at any tuning — the long comment on
+`build-android`'s `sccache stats` step has the measurements.
+
+The thing to understand before touching any of it: **an sccache entry is a
+claim the reader never verifies.** The key is a hash of the preprocessed
+source and the compiler; the value is the object file that is supposed to
+result. Nothing re-derives it on the way out. Whoever can write to the bucket
+can therefore choose the object files a later build links — which, for the
+release run, means choosing the bytes that ship. Two measures follow from
+that, and they are independent on purpose.
+
+### 1. The publish path builds cold
+
+Every compiling job (`build-android`, `build-ios`, `smoke-host`) runs
+[`.github/actions/release-check`](../.github/actions/release-check/action.yml)
+before `materialize` and asks whether this run is a release — or a
+`release-dryrun:` rehearsal, which must build the same way to be a rehearsal
+at all. When it is:
+
+- sccache is never installed, and nothing wraps the compiler: Android's
+  `NODEJS_MOBILE_SCCACHE` opt-in is left empty, iOS never writes its
+  `CC`/`CXX` wrapper scripts, `smoke-host` uses the bare `cc`/`c++`.
+- the R2 credentials are blanked, so a release build has no credential for
+  the shared cache anywhere in its environment.
+- the `libnode` Actions cache is **restored** by no one — that step is
+  skipped, though the job still *saves*, so the first PR after a release
+  finds a warm key. (Today the version bump changes `HEAD:src` and misses
+  that key anyway. Skipping the restore is what makes it a property of the
+  workflow rather than a coincidence.)
+
+So a poisoned cache object has no path to a shipped artifact. The worst it
+can do is waste CI time or corrupt a dev/test binary. This is why the measure
+is worth its cost: it moves cache poisoning out of the supply chain entirely,
+rather than making it harder.
+
+The cost is a cold release: **~1.5–3 h** for the Android matrix, ~82 min for
+`smoke-host`, both parallel, a few times a year. See
+[RELEASING.md](./RELEASING.md#a-release-run-builds-cold).
+
+`smoke-host` is included even though it ships nothing. It gates `publish`, so
+a subverted host binary is a host binary that can be made to pass the tests
+standing between a release and the tag.
+
+### 2. Read and write are split by credential
+
+Only a push to `recipe` may write. This is enforced by which credential the
+job gets, not by any expression in the workflow file:
+
+| GitHub Environment | R2 token | Protection |
+|---|---|---|
+| `sccache-read` | Object Read only | none — this is the default for PRs and dispatches |
+| `sccache-write` | Object Read & Write | deployment branch rule: `recipe` only |
+
+Both hold the token under the **same secret names** (`R2_ACCESS_KEY_ID`,
+`R2_SECRET_ACCESS_KEY`), and each compiling job selects one by event:
+
+```yaml
+environment:
+  name: ${{ github.event_name == 'push' && github.ref == 'refs/heads/recipe' && 'sccache-write' || 'sccache-read' }}
+```
+
+Same names is the point. No expression in `build.yml` names the write token,
+so no edit to `build.yml` — which a PR can make, and which runs in that PR —
+can hand it to a PR run. Asking for `sccache-write` from any other branch is
+refused by GitHub before the job starts. Poisoning the cache therefore
+requires landing a commit on `recipe`.
+
+`SCCACHE_S3_RW_MODE` (workflow env) is set to `READ_ONLY` off `recipe` as
+well. That one *is* workflow-side and thus editable in a PR, which is exactly
+why it is not the enforcement — it exists so sccache doesn't attempt ~2500
+doomed `PUT`s per job, plus the probe object it writes at server start, when
+the token would refuse them anyway. An sccache too old to know the variable
+ignores it and falls back to failed writes, which `SCCACHE_ERROR_LOG` already
+reports; no regression either way.
+
+`R2_ACCOUNT_ID` (endpoint) and `vars.R2_BUCKET` stay at repository scope —
+neither is a capability.
+
+### Setting it up
+
+On the Cloudflare side, R2 → Manage API tokens, two tokens scoped to the
+bucket: one **Object Read only**, one **Object Read & Write**. On the GitHub
+side, Settings → Environments:
+
+1. `sccache-read` — no protection rules. Secrets: `R2_ACCESS_KEY_ID`,
+   `R2_SECRET_ACCESS_KEY` = the **read-only** token.
+2. `sccache-write` — **add the deployment branch rule for `recipe` before
+   adding the secrets.** Same two secret names = the **read-write** token.
+3. Delete `R2_ACCESS_KEY_ID` / `R2_SECRET_ACCESS_KEY` at repository scope, so
+   each token lives in exactly one place. (An environment secret shadows a
+   repository secret of the same name, so leaving them would not break
+   anything — it would just make the write token reachable from a PR again,
+   silently.)
+
+Both environments are auto-created on first reference if they don't exist, so
+a missing branch rule **fails open**: the workflow runs, and the write token
+simply isn't restricted. The rule is the whole mechanism; check it after any
+Settings change.
+
+### Gotchas
+
+- The conditionals are all written `cold != 'true' && <cache on> || <cache
+  off>`, never `cold == 'true' && <cache off> || <cache on>`. GitHub's ternary
+  idiom falls through to the `||` branch whenever the `&&` branch is falsey,
+  and `''` is falsey — so the natural-reading form silently enables the cache
+  on exactly the runs that must not have it.
+- Android's opt-in is tested with `os.environ.get()`, which is truthy for
+  `'0'`. Clear it to the empty string, not to `'0'`.
+- `release-check` must run **before** `./.github/actions/materialize`: it
+  reads `mobile-src/src/node_mobile_version.h`, and materialize replaces the
+  workspace with the generated tree.
+- The build jobs call the action directly rather than `needs:`-ing the
+  `release-check` *job*. That job is deliberately skipped off
+  push-to-`recipe`, and a job that needs a skipped job is skipped too — the
+  whole build matrix would vanish on PRs.

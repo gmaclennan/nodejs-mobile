@@ -88,3 +88,9 @@ catches. → [docs/UPGRADING.md](./docs/UPGRADING.md)
   a shipped copy of the tag.
 - **CI runs from this branch**, materializing per job. A workflow change is
   a `mobile-src`-free root-level edit and does not move the tree hash.
+- **Never put a shared cache back on the publish path.** The release run
+  compiles with no sccache and no R2 credentials, because an sccache entry is
+  a claim the reader never verifies. The conditionals guarding this are all
+  `cold != 'true' && <on> || <off>` — the inverted spelling reads better and
+  silently turns the cache back on for releases. →
+  [docs/BUILDING.md](./docs/BUILDING.md#the-ci-compiler-cache)
