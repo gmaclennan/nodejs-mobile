@@ -6,6 +6,7 @@
 </tr>
 <tr>
 <td>
+<a href="#24.18.0-2">24.18.0-2</a><br/>
 <a href="#24.18.0-1">24.18.0-1</a><br/>
 <a href="#24.18.0-0">24.18.0-0</a><br/>
 <a href="#24.15.0-0">24.15.0-0</a><br/>
@@ -36,8 +37,13 @@
 </tr>
 </table>
 
+<a id="24.18.0-2"></a>
+## 2026-08-09, Version 24.18.0-2 (Current)
+
+- _TODO: summarize changes before merging._
+
 <a id="24.18.0-1"></a>
-## 2026-08-09, Version 24.18.0-1 (Current)
+## 2026-08-09, Version 24.18.0-1
 
 Mobile-only update on Node.js 24.18.0; no upstream change.
 
