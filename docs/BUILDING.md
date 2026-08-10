@@ -282,9 +282,9 @@ and asserts:
 3. fails when sccache falls back to local disk, which is what a missing or unset
 secret looks like.
 
-It forces `SCCACHE_S3_RW_MODE=READ_WRITE` in both jobs, because the `READ_ONLY`
-that build.yml uses off `recipe` would refuse the write locally and prove
-nothing. 
+The write denial is tested with a direct `PUT` (curl, SigV4) asserting on the
+HTTP status — not via sccache, whose `READ_ONLY` mode refuses writes locally
+and whose error-log wording varies.
 
 Run it by hand (Actions → Cache credentials → Run workflow) right after
 changing a token or an environment. Dispatching it from a ref other than
