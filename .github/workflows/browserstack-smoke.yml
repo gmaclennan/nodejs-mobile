@@ -21,16 +21,29 @@ on:
         description: "BrowserStack iOS devices (CSV)"
         required: false
         default: "iPhone 15-17"
+      platform:
+        description: "Which platform legs to run"
+        required: false
+        default: both
+        type: choice
+        options: [both, android, ios]
   # Called from build.yml on release runs, making the real-device gate an
   # automatic, required part of a release (publish needs: it). build_run_id
   # points at the calling run so the artifact download does not depend on a
-  # separate completed Build run.
+  # separate completed Build run. build.yml calls once per platform (see the
+  # `platform` input) so each leg waits only on its own platform's artifacts
+  # and boot smoke.
   workflow_call:
     inputs:
       build_run_id:
         type: string
         required: false
         default: ""
+      platform:
+        description: Which platform legs to run (android | ios | both)
+        type: string
+        required: false
+        default: both
     secrets:
       BROWSERSTACK_USER:
         required: true
@@ -50,6 +63,9 @@ permissions:
 
 jobs:
   android-device-smoke:
+    # Exclusion (`!= 'ios'`) rather than `== 'android' || == 'both'` so an
+    # event with an empty inputs context runs everything.
+    if: inputs.platform != 'ios'
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     steps:
@@ -124,6 +140,8 @@ jobs:
             "$DEVICES" nodejs-mobile "sha-${{ github.sha }}"
 
   ios-device-smoke:
+    # Exclusion, not inclusion — see android-device-smoke.
+    if: inputs.platform != 'android'
     # macos-15 (Xcode 16.x), NOT macos-26: an XCUITest runner built by Xcode 26
     # references XCTest symbols (e.g. XCTCommandLineToolHelper) that don't
     # exist in the on-device XCTest of BrowserStack's iOS 15-18 fleet — dyld

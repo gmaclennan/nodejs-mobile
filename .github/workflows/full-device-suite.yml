@@ -12,6 +12,11 @@
 # retesting an identical commit buys nothing. Release calls and manual
 # dispatches always run.
 #
+# The `platform` input exists for the release gate: build.yml calls this
+# workflow once per platform so each leg waits only on its own platform's
+# artifacts — the iOS shards must not idle behind the (hours-longer) Android
+# build. The nightly and plain dispatches run both.
+#
 # -j 1 because the proxy relaunches the app per test; concurrency comes from
 # shards, not threads.
 
@@ -22,6 +27,13 @@ on:
     # 03:00 UTC. Off-peak for hosted macOS, which is the scarce runner here.
     - cron: '0 3 * * *'
   workflow_dispatch:
+    inputs:
+      platform:
+        description: Which platform legs to run
+        required: false
+        default: both
+        type: choice
+        options: [both, android, ios]
   workflow_call:
     inputs:
       build_run_id:
@@ -29,6 +41,11 @@ on:
         required: false
         type: string
         default: ''
+      platform:
+        description: Which platform legs to run (android | ios | both)
+        required: false
+        type: string
+        default: both
 
 permissions:
   contents: read
@@ -75,7 +92,9 @@ jobs:
 
   android:
     needs: precheck
-    if: needs.precheck.outputs.skip != 'true'
+    # Exclusion (`!= 'ios'`) rather than `== 'android' || == 'both'` so the
+    # empty inputs context of a schedule event means "run everything".
+    if: needs.precheck.outputs.skip != 'true' && inputs.platform != 'ios'
     strategy:
       fail-fast: false
       # Keep in step with the ,4 in --run below: a matrix of a different
@@ -152,7 +171,8 @@ jobs:
 
   ios:
     needs: precheck
-    if: needs.precheck.outputs.skip != 'true'
+    # Exclusion, not inclusion — see the android job.
+    if: needs.precheck.outputs.skip != 'true' && inputs.platform != 'android'
     strategy:
       fail-fast: false
       matrix:
