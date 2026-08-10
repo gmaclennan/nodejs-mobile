@@ -235,15 +235,6 @@ environment:
   deployment: false
 ```
 
-Environments are GitHub's *deployment* feature, and scoped secrets are a
-capability bolted onto it — so a job that names one is, by default, recorded
-as a deployment to it, which is how a PR ends up with nine "deployed to
-sccache-read" timeline entries (six Android jobs, two iOS, one host).
-[`deployment: false`](https://github.blog/changelog/2026-03-19-github-actions-late-march-2026-updates/)
-drops the record and keeps the secret scoping. Protection rules are still
-evaluated — only *custom* protection-rule apps are incompatible with the key,
-and a deployment branch rule is a built-in.
-
 Same names is the point. No expression in `build.yml` names the write token,
 so no edit to `build.yml` — which a PR can make, and which runs in that PR —
 can hand it to a PR run. Asking for `sccache-write` from any other branch is
@@ -282,50 +273,18 @@ a missing branch rule **fails open**: the workflow runs, and the write token
 simply isn't restricted. The rule is the whole mechanism; check it after any
 Settings change.
 
-### Checking it from a run — and what a run cannot tell you
-
-`sccache stats` reports enough to confirm most of it. A PR job that reads the
-shared bucket prints `Cache location  s3, name: <bucket>` (a job with no
-credentials would say local disk instead) and a hit rate; a release job prints
-nothing at all, because the step is skipped along with sccache itself.
-
-**What a green run does not prove is that the read-only token is read-only.**
-`SCCACHE_S3_RW_MODE=READ_ONLY` makes sccache refuse each write *locally*, so
-no `PUT` ever reaches Cloudflare and the token is never exercised. A PR whose
-credentials were secretly the read-write token would look exactly the same.
-The tell is in the server log this step dumps:
-
-- Write refused by the mode → `Cache write errors` equals the miss count, and
-  **no** corresponding entry in the log (the refusal never left the runner).
-- Write refused by the token → an opendal `write failed … 403` entry. That,
-  and only that, is evidence the credential itself is restricted.
-
-Likewise the write half is only exercised on a run that actually *misses*.
-Recipe pushes usually hit 100%, attempt no writes, and so say nothing about
-whether `sccache-write` works. If it is misconfigured the failure is silent
-and delayed — it surfaces the first time a `src/`-touching PR merges, and
-does not self-heal, because every later build re-misses and re-fails to write.
-
 ### The daily credential probe
 
-`.github/workflows/cache-credentials.yml` closes both gaps. It compiles one
-generated file per token and asserts the four things a build cannot:
-`sccache-read` reads R2 and is refused write **with a 403 from Cloudflare**;
-`sccache-write` writes and reads the object back. It forces
-`SCCACHE_S3_RW_MODE=READ_WRITE` in both jobs, because the `READ_ONLY` that
-build.yml uses off `recipe` would refuse the write locally and prove nothing.
-It also fails when sccache falls back to local disk, which is what a missing
-or unset secret looks like.
+`.github/workflows/cache-credentials.yml` compiles one generated file per token
+and asserts:
+1. `sccache-read` reads R2 and is refused write **with a 403 from Cloudflare**.
+2. `sccache-write` writes and reads the object back.
+3. fails when sccache falls back to local disk, which is what a missing or unset
+secret looks like.
 
-It is scheduled rather than part of every build for two reasons. A job holds
-exactly one Environment, so no single `build.yml` run can reach both tokens —
-a PR sees only `sccache-read`, a `recipe` push only `sccache-write`, and the
-half it cannot see is the half whose failure is silent. And every failure
-here is *drift* (a revoked token, an expired one, a read token quietly
-reissued with write) rather than breakage: none of it stops the build that
-hits it. Gating PRs on it would only mean an R2 outage — which the build
-itself tolerates by falling back to misses — turning every PR red for a
-reason unrelated to the PR.
+It forces `SCCACHE_S3_RW_MODE=READ_WRITE` in both jobs, because the `READ_ONLY`
+that build.yml uses off `recipe` would refuse the write locally and prove
+nothing. 
 
 Run it by hand (Actions → Cache credentials → Run workflow) right after
 changing a token or an environment. Dispatching it from a ref other than

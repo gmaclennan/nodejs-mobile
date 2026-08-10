@@ -102,12 +102,9 @@ jobs:
     # either environment.)
     environment:
       name: ${{ github.event_name == 'push' && github.ref == 'refs/heads/recipe' && 'sccache-write' || 'sccache-read' }}
-      # Environments are GitHub's *deployment* feature and scoped secrets are
-      # bolted onto it, so without this every compiling job files a deployment
-      # record — nine "deployed to sccache-read" entries per PR. Nothing is
-      # being deployed; the job wants only the credential. Protection rules
-      # are still evaluated, so sccache-write's branch rule keeps enforcing.
-      # (Only *custom* protection-rule apps are incompatible with this key.)
+      # Environments are GitHub's *deployment* feature, but it's our only way to
+      # get scoped secrets. Setting this to false avoids noise on each PR saying
+      # "deployed to sccache-read". Protection rules are still evaluated.
       deployment: false
     env:
       TARGET_ARCH: ${{ matrix.config.target_arch }}
@@ -683,15 +680,8 @@ jobs:
     environment:
       name: ${{ github.event_name == 'push' && github.ref == 'refs/heads/recipe' && 'sccache-write' || 'sccache-read' }}
       deployment: false
-    # The cold number is what this has to survive, because a release run is
-    # cold by construction — and the 82 min this was originally sized against
-    # was measured on an older, smaller tree. The v24.18.0-2 release
-    # (run 31339522834) took 176 min against the 180 here: a four-minute
-    # margin, i.e. the next release would very likely have failed on the
-    # timeout rather than on anything real. 300 restores the intent — real
-    # headroom over a cold build plus the suites, while still catching a
-    # genuine hang, which the 360-minute default never would. A warm run is
-    # ~20 min, so this only ever binds on the publish path.
+    # The last cold build (run 31339522834) took 176 min. 300 min leaves some
+    # headroom, balanced with not leaving too much time for a genuine hang. 
     timeout-minutes: 300
 
     steps:
