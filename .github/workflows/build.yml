@@ -96,6 +96,10 @@ jobs:
     # either environment.)
     environment:
       name: ${{ github.event_name == 'push' && github.ref == 'refs/heads/recipe' && 'sccache-write' || 'sccache-read' }}
+      # Environments are GitHub's *deployment* feature, but it's our only way to
+      # get scoped secrets. Setting this to false avoids noise on each PR saying
+      # "deployed to sccache-read". Protection rules are still evaluated.
+      deployment: false
     env:
       TARGET_ARCH: ${{ matrix.config.target_arch }}
       NODEJS_MOBILE_FLAVOR: ${{ matrix.flavor }}
@@ -232,9 +236,16 @@ jobs:
         if: always() && steps.rel.outputs.cold != 'true'
         run: |
           sccache --show-stats || true
-          # The counters above say how many writes failed; this says why. With
-          # SCCACHE_S3_RW_MODE=READ_ONLY on a PR, "Cache write errors" should be
-          # 0 and the misses simply stay misses.
+          # The counters above say how many writes failed; this says why —
+          # and the difference matters for reading a PR run. Under
+          # SCCACHE_S3_RW_MODE=READ_ONLY, sccache refuses each write locally
+          # and still counts it, so "Cache write errors" equals the miss count
+          # (observed: 5801 hits / 1 miss / 1 write error). Those refusals
+          # never reach Cloudflare and so leave NO entry below. An entry that
+          # says `write failed ... 403` is the other thing entirely: the
+          # request went out and the R2 token rejected it. Only that second
+          # form is evidence the read-only token is real — see
+          # docs/BUILDING.md, "The CI compiler cache".
           if [ -s /tmp/sccache-errors.log ]; then
             echo '--- sccache server log (unique messages) ---'
             sort /tmp/sccache-errors.log | uniq -c | sort -rn | head -40
@@ -260,6 +271,7 @@ jobs:
     # See build-android.
     environment:
       name: ${{ github.event_name == 'push' && github.ref == 'refs/heads/recipe' && 'sccache-write' || 'sccache-read' }}
+      deployment: false
     env:
       TARGET_ARCH: ${{ matrix.config.target_arch }}
       NODEJS_MOBILE_FLAVOR: ${{ matrix.flavor }}
@@ -641,11 +653,10 @@ jobs:
     # standing between a release and the tag. Same rule, same reason.
     environment:
       name: ${{ github.event_name == 'push' && github.ref == 'refs/heads/recipe' && 'sccache-write' || 'sccache-read' }}
-    # Measured at 82 min end to end with no compiler cache (~75 of it V8). A
-    # warm run is far shorter, but the cold number is what the timeout has to
-    # survive. 180 leaves headroom while still catching a genuine hang, which
-    # the 360-minute default never would.
-    timeout-minutes: 180
+      deployment: false
+    # The last cold build (run 31339522834) took 176 min. 300 min leaves some
+    # headroom, balanced with not leaving too much time for a genuine hang. 
+    timeout-minutes: 300
 
     steps:
       - uses: actions/checkout@v7

@@ -232,6 +232,7 @@ Both hold the token under the **same secret names** (`R2_ACCESS_KEY_ID`,
 ```yaml
 environment:
   name: ${{ github.event_name == 'push' && github.ref == 'refs/heads/recipe' && 'sccache-write' || 'sccache-read' }}
+  deployment: false
 ```
 
 Same names is the point. No expression in `build.yml` names the write token,
@@ -271,6 +272,26 @@ Both environments are auto-created on first reference if they don't exist, so
 a missing branch rule **fails open**: the workflow runs, and the write token
 simply isn't restricted. The rule is the whole mechanism; check it after any
 Settings change.
+
+### The daily credential probe
+
+`.github/workflows/cache-credentials.yml` compiles one generated file per token
+and asserts:
+1. `sccache-read` reads R2 and is refused write **with a 403 from Cloudflare**.
+2. `sccache-write` writes and reads the object back.
+3. fails when sccache falls back to local disk, which is what a missing or unset
+secret looks like.
+
+It forces `SCCACHE_S3_RW_MODE=READ_WRITE` in both jobs, because the `READ_ONLY`
+that build.yml uses off `recipe` would refuse the write locally and prove
+nothing. 
+
+Run it by hand (Actions → Cache credentials → Run workflow) right after
+changing a token or an environment. Dispatching it from a ref other than
+`recipe` is also the practical way to check the deployment branch rule:
+`probe-write` is then refused by GitHub before it starts, and that refusal is
+the rule working. A scheduled run cannot test that, because a schedule always
+runs on the default branch, where the rule passes.
 
 ### Gotchas
 
