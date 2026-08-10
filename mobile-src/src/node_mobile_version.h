@@ -7,8 +7,9 @@
 #define NODE_MOBILE_MINOR_VERSION 18
 #define NODE_MOBILE_PATCH_VERSION 0
 
-// Mobile rebuild revision of the same upstream Node version: the -X in the
-// nodejs-mobile-<upstream>-<rev> tag (e.g. 24.15.0-0). Bumped by prepare-release.
+// Mobile rebuild revision of the same upstream Node version: the -R in the
+// vX.Y.Z-R release tag. Computed and bumped by the Cut release workflow
+// (docs/RELEASING.md on the recipe branch).
 #define NODE_MOBILE_REVISION 2
 
 #define NODE_MOBILE_VERSION_IS_RELEASE NODE_VERSION_IS_RELEASE

@@ -5,8 +5,9 @@
 # lossy `simctl --console` stream), echoes node's stdout/stderr for test.py to
 # compare, and maps PASS->0 / FAIL or no-verdict->1.
 #
-# The physical-device proxy is node-ios-proxy.sh, which uses ios-deploy and gets
-# the real exit code back; `simctl launch` does not return it, hence the file.
+# The physical-device proxy is node-ios-proxy.sh (devicectl), which reads the
+# same verdict file; `simctl launch` does not return the app's exit code, hence
+# the file.
 set -uo pipefail
 
 : "${DEVICE_ID:?set DEVICE_ID to the target simulator UDID}"

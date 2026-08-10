@@ -14,8 +14,8 @@
 # previous ios-deploy proxy, retrievable from git history.
 #
 # The verdict is neither scraped from the console stream nor taken from an exit
-# code: same contract as the simulator and Android proxies. See TESTING.md on
-# the recipe branch.
+# code: same contract as the simulator and Android proxies. See docs/TESTING.md
+# on the recipe branch.
 #
 # Local-only — no CI job runs this; real-device coverage goes through
 # BrowserStack.
@@ -123,10 +123,9 @@ case "$verdict" in
      echo "::warning::node-ios-proxy: no verdict file for token ${RUN_TOKEN} (crash/timeout/launch failure; devicectl exited ${LAUNCH_STATUS}) for: $*" >&2 ;;
 esac
 
-# Echo the app's output for test.py's .out comparison, dropping devicectl's own
-# chrome: its status lines are HH:MM:SS-prefixed, plus three fixed phrases.
-# The verdict does not ride this stream.
-# node's own output, complete, from the file the app wrote.
+# Echo node's output for test.py's .out comparison — complete, from the file
+# the app itself wrote (see the redirect note above), not from devicectl's
+# console relay. The verdict does not ride this stream.
 [ -f "$DL_DIR/stdout.txt" ] && cat "$DL_DIR/stdout.txt"
 rm -f "$LOG"
 rm -rf "$DL_DIR"

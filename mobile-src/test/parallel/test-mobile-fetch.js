@@ -35,8 +35,9 @@ async function main() {
   // plain JavaScript. Report it, and assert it when the caller says which one
   // this run is supposed to exercise -- otherwise a build that stopped needing
   // the polyfill (or stopped installing it) would still pass this test and the
-  // gate would quietly stop covering the iOS path. host-smoke sets it both
-  // ways; the device runs leave it unset and just take whatever the binary has.
+  // gate would quietly stop covering the iOS path. The smoke-host CI job sets
+  // it both ways; the device runs leave it unset and just take whatever the
+  // binary has.
   const impl = /\[native code\]/.test(Function.prototype.toString.call(WebAssembly.Module)) ?
     'engine' : 'polyfill';
   console.log(`WebAssembly implementation: ${impl}`);

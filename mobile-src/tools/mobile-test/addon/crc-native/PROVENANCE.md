@@ -2,12 +2,11 @@
 
 A minimal, genuine **N-API** (node-api) native addon for the mobile
 native-addon release gate (see
-[TESTING.md](https://github.com/nodejs-mobile/nodejs-mobile/blob/patches/docs/TESTING.md)).
+[TESTING.md](https://github.com/nodejs-mobile/nodejs-mobile/blob/recipe/docs/TESTING.md)).
 Loading and calling it on a device proves the shipped libnode exports the
 `napi_*` symbol table and can `dlopen` + run a real addon end-to-end — the
-"B-1" concern that the cheaper symbol-grep smoke
-([mobile-napi-smoke.yml](../../../../.github/workflows/mobile-napi-smoke.yml))
-only approximates.
+"B-1" concern that the cheaper symbol-grep smoke (the "Assert NAPI symbols
+are exported" step in build.yml on the recipe branch) only approximates.
 
 ## Provenance
 
