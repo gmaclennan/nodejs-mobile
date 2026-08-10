@@ -859,10 +859,10 @@ jobs:
   # reason (build cold) and must not depend on this job to get an answer.
   #
   # The job's own `if:` duplicates the guard inside the action on purpose:
-  # skipping this job also skips real-device-smoke, full-suite and publish,
-  # which need: it, so the gate chain never runs at all off a non-release
-  # event. A deployment branch rule on the `release` Environment restricting
-  # it to recipe would stop publish independently of this.
+  # skipping this job also skips the real-device smokes, the full suites and
+  # publish, which need: it, so the gate chain never runs at all off a
+  # non-release event. A deployment branch rule on the `release` Environment
+  # restricting it to recipe would stop publish independently of this.
   release-check:
     if: github.event_name == 'push' && github.ref == 'refs/heads/recipe'
     runs-on: ubuntu-24.04
@@ -884,17 +884,24 @@ jobs:
   # Real-device gate: on release branches, run the BrowserStack smoke
   # (boot + N-API addon dlopen on a physical Android arm64 + iPhone) as part
   # of this Build run, using the artifacts the combine jobs just uploaded.
-  # publish needs: it, so a release cannot be tagged without real-device
-  # validation.
-  real-device-smoke:
+  # publish needs: both legs, so a release cannot be tagged without
+  # real-device validation.
+  #
+  # One call per platform, each gated only on its own platform's artifacts
+  # and boot smoke: the Android builds finish hours after the iOS ones
+  # (measured on release run 31339522834: iOS artifacts at ~2h, Android at
+  # ~3h05m), so a single call needing both platforms parked the iOS leg
+  # behind the Android build for nothing. The boot-smoke gate stays, per
+  # platform: BrowserStack device minutes are the one genuinely metered
+  # resource here, so don't spend them on a binary that has already failed
+  # to start on an emulator/simulator. What the split gives up is the
+  # cross-platform skip: one platform's legs now run even when the other
+  # platform's build has failed and the release cannot publish.
+  real-device-smoke-android:
     if: >-
       needs.release-check.outputs.release == 'true' ||
       needs.release-check.outputs.dryrun == 'true'
-    # Also needs the boot smokes: BrowserStack device minutes are the
-    # one genuinely metered resource here, so don't spend them on a binary that
-    # has already failed to start on an emulator.
-    needs:
-      [release-check, combine-android, combine-ios, smoke-android, smoke-ios]
+    needs: [release-check, combine-android, smoke-android]
     # The called workflow needs actions:read (artifact download); a called
     # workflow cannot elevate beyond the caller's permissions, so grant it
     # here (the workflow default is contents:read only).
@@ -905,6 +912,21 @@ jobs:
     secrets: inherit
     with:
       build_run_id: ${{ github.run_id }}
+      platform: android
+
+  real-device-smoke-ios:
+    if: >-
+      needs.release-check.outputs.release == 'true' ||
+      needs.release-check.outputs.dryrun == 'true'
+    needs: [release-check, combine-ios, smoke-ios]
+    permissions:
+      contents: read
+      actions: read
+    uses: ./.github/workflows/browserstack-smoke.yml
+    secrets: inherit
+    with:
+      build_run_id: ${{ github.run_id }}
+      platform: ios
 
   # Curated device tests: the curated JS subset on an Android emulator and an
   # iOS simulator, consuming the combine artifacts of this run. Runs on EVERY
@@ -936,18 +958,40 @@ jobs:
   # + sequential suite on emulator and simulator, called from the same workflow
   # the nightly runs. Release-only — it costs ~8 device-hours per run; the
   # nightly covers drift the rest of the time.
-  full-suite:
+  #
+  # One call per platform, gated only on that platform's artifacts and boot
+  # smoke — same reasoning as the real-device smokes above, and here it is the
+  # release's critical path: the iOS shards are the longest post-build jobs
+  # (~40 min), so running them inside the Android build's shadow instead of
+  # after it moves publish up by the difference between them and the Android
+  # shards (~20-25 min on run 31339522834). The boot smoke stays in needs: a
+  # binary that cannot print hello on an emulator should not get four
+  # device-hours of suite first.
+  full-suite-android:
     if: >-
       needs.release-check.outputs.release == 'true' ||
       needs.release-check.outputs.dryrun == 'true'
-    needs:
-      [release-check, combine-android, combine-ios, smoke-android, smoke-ios]
+    needs: [release-check, combine-android, smoke-android]
     permissions:
       contents: read
       actions: read
     uses: ./.github/workflows/full-device-suite.yml
     with:
       build_run_id: ${{ github.run_id }}
+      platform: android
+
+  full-suite-ios:
+    if: >-
+      needs.release-check.outputs.release == 'true' ||
+      needs.release-check.outputs.dryrun == 'true'
+    needs: [release-check, combine-ios, smoke-ios]
+    permissions:
+      contents: read
+      actions: read
+    uses: ./.github/workflows/full-device-suite.yml
+    with:
+      build_run_id: ${{ github.run_id }}
+      platform: ios
 
   # Publish: on a release commit, once every gate in this run is green, tag
   # the materialized tree and publish the GitHub prerelease with this run's
@@ -965,8 +1009,10 @@ jobs:
       - smoke-host
       - curated-tests-android
       - curated-tests-ios
-      - full-suite
-      - real-device-smoke
+      - full-suite-android
+      - full-suite-ios
+      - real-device-smoke-android
+      - real-device-smoke-ios
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     permissions:

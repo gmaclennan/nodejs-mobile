@@ -67,8 +67,8 @@ it through `tools/test.py`.
 | `build.yml` → `build-*` / `combine-*` | ubuntu / macos | PR · push `recipe` | the cross-compile actually succeeds — the only check that compiles target code |
 | `build.yml` → `smoke-{android,ios}` (+ the NAPI symbol assert in `combine-android`) | ubuntu+KVM / macos | PR · push `recipe` | **boot smoke**: the exact shipping artifact boots and runs JS; NAPI symbols in `.dynsym` |
 | `build.yml` → `curated-tests-android` / `curated-tests-ios` | ubuntu+KVM / macos | PR · push `recipe` · releases | **curated device tests**: the curated subset + crc-native addon load on an x86_64 emulator and arm64 simulator |
-| `full-device-suite.yml` (also `build.yml` → `full-suite` on releases) | ubuntu+KVM / macos | nightly 03:00 UTC · dispatch · releases | **full device suite**: the whole non-`.status`-skipped `test/parallel` + `test/sequential` suite on both platforms, 4 round-robin shards each (`test.py --run=n,4`). The curated gate covers what someone chose; this covers everything else, so a test upstream adds tomorrow is picked up without anyone noticing it exists |
-| `build.yml` → `real-device-smoke` | ubuntu / macos-15 + BrowserStack | releases (untagged version of record; required to publish) · dispatch | **real-device smoke**: boot + crc-native addon load on physical devices — Android arm64 (Pixel 9, 16 KB pages) via Espresso and iPhone via XCUITest. Needs `BROWSERSTACK_USER`/`BROWSERSTACK_PW` secrets. |
+| `full-device-suite.yml` (also `build.yml` → `full-suite-android` / `full-suite-ios` on releases) | ubuntu+KVM / macos | nightly 03:00 UTC · dispatch · releases | **full device suite**: the whole non-`.status`-skipped `test/parallel` + `test/sequential` suite on both platforms, 4 round-robin shards each (`test.py --run=n,4`). The curated gate covers what someone chose; this covers everything else, so a test upstream adds tomorrow is picked up without anyone noticing it exists |
+| `build.yml` → `real-device-smoke-android` / `real-device-smoke-ios` | ubuntu / macos-15 + BrowserStack | releases (untagged version of record; required to publish) · dispatch | **real-device smoke**: boot + crc-native addon load on physical devices — Android arm64 (Pixel 9, 16 KB pages) via Espresso and iPhone via XCUITest. Needs `BROWSERSTACK_USER`/`BROWSERSTACK_PW` secrets. |
 
 Every job first **materializes** the source tree from the recipe branch
 (`.github/actions/materialize` runs `scripts/prepare.sh` and verifies the
@@ -131,8 +131,10 @@ excluded.
 The full suite runs two ways: **nightly** (03:00 UTC, against the head
 commit's Build artifacts; skipped when that commit already has a green run,
 since retesting identical bytes buys nothing) and as a **release gate** —
-`build.yml` calls it as
-the `full-suite` job on release runs, and `publish` `needs:` it, so a release
+`build.yml` calls it as the `full-suite-android` and `full-suite-ios` jobs on
+release runs (one call per platform, so each platform's shards start as soon
+as its own artifacts pass the boot smoke instead of waiting for the slower
+platform's build), and `publish` `needs:` both, so a release
 cannot ship with a full-suite failure. It is release-only rather than
 per-PR because it costs about eight device-hours per run, which the PR loop
 cannot absorb; the nightly covers drift the rest of the time. Each shard
