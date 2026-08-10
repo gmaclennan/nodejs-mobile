@@ -275,23 +275,21 @@ Settings change.
 
 ### The daily credential probe
 
-`.github/workflows/cache-credentials.yml` compiles one generated file per token
-and asserts:
-1. `sccache-read` reads R2 and is refused write **with a 403 from Cloudflare**.
-2. `sccache-write` writes and reads the object back.
-3. fails when sccache falls back to local disk, which is what a missing or unset
-secret looks like.
-
-The write denial is tested with a direct `PUT` (curl, SigV4) asserting on the
-HTTP status — not via sccache, whose `READ_ONLY` mode refuses writes locally
-and whose error-log wording varies.
+`.github/workflows/cache-credentials.yml` checks both tokens daily with plain
+SigV4 requests against the bucket: GET of a never-written key (404 proves the
+request authenticated), then PUT and DELETE — expected to succeed for
+`sccache-write` (with a byte-identical read-back) and to be refused with 403
+for `sccache-read`. The two matrix legs run byte-identical code; only the
+expected statuses differ, so a denial cannot be an artifact of code the other
+leg doesn't run. sccache itself is not involved — the tokens are what is under
+test, and every build exercises the sccache integration anyway.
 
 Run it by hand (Actions → Cache credentials → Run workflow) right after
 changing a token or an environment. Dispatching it from a ref other than
-`recipe` is also the practical way to check the deployment branch rule:
-`probe-write` is then refused by GitHub before it starts, and that refusal is
-the rule working. A scheduled run cannot test that, because a schedule always
-runs on the default branch, where the rule passes.
+`recipe` is also the practical way to check the deployment branch rule: the
+`sccache-write` leg is then refused by GitHub before it starts, and that
+refusal is the rule working. A scheduled run cannot test that, because a
+schedule always runs on the default branch, where the rule passes.
 
 ### Gotchas
 
