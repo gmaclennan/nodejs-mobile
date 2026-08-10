@@ -683,11 +683,16 @@ jobs:
     environment:
       name: ${{ github.event_name == 'push' && github.ref == 'refs/heads/recipe' && 'sccache-write' || 'sccache-read' }}
       deployment: false
-    # Measured at 82 min end to end with no compiler cache (~75 of it V8). A
-    # warm run is far shorter, but the cold number is what the timeout has to
-    # survive. 180 leaves headroom while still catching a genuine hang, which
-    # the 360-minute default never would.
-    timeout-minutes: 180
+    # The cold number is what this has to survive, because a release run is
+    # cold by construction — and the 82 min this was originally sized against
+    # was measured on an older, smaller tree. The v24.18.0-2 release
+    # (run 31339522834) took 176 min against the 180 here: a four-minute
+    # margin, i.e. the next release would very likely have failed on the
+    # timeout rather than on anything real. 300 restores the intent — real
+    # headroom over a cold build plus the suites, while still catching a
+    # genuine hang, which the 360-minute default never would. A warm run is
+    # ~20 min, so this only ever binds on the publish path.
+    timeout-minutes: 300
 
     steps:
       - uses: actions/checkout@v7
