@@ -1,17 +1,14 @@
 name: Release check
 description: >
-  Decide whether the checked-out recipe commit is on the publish path: a push
-  to `recipe` whose version of record (mobile-src/src/node_mobile_version.h)
-  is not yet tagged. Content-derived and idempotent -- no magic commit
-  wording -- so a failed release run self-heals on the next push.
+  Decide whether the checked-out recipe commit should trigger publish: it checks
+  whether the version of record (mobile-src/src/node_mobile_version.h) is
+  already tagged, and whether this run is a rehearsal (`release-dryrun:` commit
+  message).
 
-  Two consumers, deliberately not one job feeding the other: build.yml's
-  `release-check` job publishes these as job outputs to gate the publish
-  chain; the three compiling jobs run this action themselves to learn whether
-  they must build cold (see `cold`). Making the build matrix `needs:` the job
-  instead would either put a runner boot on the front of every PR's critical
-  path, or -- because that job is skipped off `push`-to-`recipe` -- skip the
-  entire build matrix along with it.
+  This action is used by the build.yml `release-check` job, which gates the
+  publish chain, and by the three compiling jobs (android-build, ios-build, and
+  nodejs-mobile-build) to determine whether they must build cold (no shared
+  cache) or may build warm (shared cache).`
 
   Must run on the recipe checkout, BEFORE ./.github/actions/materialize
   replaces the workspace: mobile-src/ only exists on this branch.
@@ -59,17 +56,7 @@ runs:
         DR=false
         REL=false
         # ONLY on a push to recipe — the sole path a release may take
-        # (docs/RELEASING.md). The other events are live hazards, because
-        # "version of record is not yet tagged" is true of any branch cut
-        # from a release PR before its tag exists:
-        #
-        #   - pull_request: the release PR itself carries the bumped version,
-        #     and the maintainer's CHANGELOG push to it would otherwise
-        #     satisfy this check.
-        #   - workflow_dispatch: Build is dispatchable against ANY ref;
-        #     dispatching it on a feature branch would otherwise run
-        #     real-device-smoke (real BrowserStack spend) and publish
-        #     (tag + GitHub release) from that branch.
+        # (docs/RELEASING.md).
         if [ "$GITHUB_EVENT_NAME" = push ] && [ "$GITHUB_REF" = refs/heads/recipe ]; then
           case "$(git log -1 --format=%s)" in release-dryrun:*) DR=true ;; esac
           REL=true

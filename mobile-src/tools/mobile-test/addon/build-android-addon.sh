@@ -3,7 +3,7 @@
 # linking the prebuilt libnode.so (which exports napi_*). Built from source
 # against the candidate build's headers so the addon binds to THIS libnode, and
 # with the same 16 KB max-page-size as libnode.so so it loads on 16 KB-page
-# hardware (see build-mobile.yml; commit 8342d51947).
+# hardware (see ANDROID_LDFLAGS in build.yml on the recipe branch).
 #
 # Usage: build-android-addon.sh <ndk_path> <abi> <libnode_dir> <include_dir> <out.node>
 #   abi:         x86_64 | arm64-v8a | armeabi-v7a

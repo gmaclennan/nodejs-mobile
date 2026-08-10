@@ -29,4 +29,5 @@ assert.throws(() => crc32(123), 'expected a thrown error for a non-buffer argume
 
 console.log(`NAPI_ADDON_OK crc=0x${got.toString(16)} ${process.platform} ${process.arch}`);
 // No process.exit(): let the event loop drain so node_start returns 0 and the
-// testnode harness writes a clean PASS verdict (see TESTING.md).
+// testnode harness writes a clean PASS verdict (see docs/TESTING.md on the
+// recipe branch).

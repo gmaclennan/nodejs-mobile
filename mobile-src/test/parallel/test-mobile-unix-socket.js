@@ -11,12 +11,14 @@
 // feature: the same socket binds fine when the path is short.
 //
 // Upstream's own common.PIPE builds a path relative to process.cwd() for
-// exactly this reason, but a mobile embedder's cwd is `/`, so the relative form
-// is no shorter than the absolute one and every upstream UDS test fails on the
-// simulator. Those tests are skipped for iOS in test/parallel/parallel.status,
-// which left nothing gating UDS on iOS at all.
+// exactly this reason, and the upstream UDS tests pass on the simulator only
+// because the harness chdir()s the app to the on-device tree root, keeping
+// that relative path short (docs/TESTING.md on the recipe branch). That is a
+// harness behaviour, not a platform guarantee: an embedder's cwd is `/`
+// unless it sets one, and no upstream test gates UDS without the harness's
+// help.
 //
-// This is that gate. It chdir()s to the socket's directory and binds a short
+// This is the gate that does. It chdir()s to the socket's directory and binds a short
 // relative path, which is the portable way to use a unix socket on iOS and the
 // pattern an embedder should follow. A regression here means UDS stopped
 // working, rather than merely that a path got too long.

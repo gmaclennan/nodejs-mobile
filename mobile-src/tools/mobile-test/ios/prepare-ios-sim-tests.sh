@@ -6,7 +6,7 @@ set -euo pipefail
 # Simulator harness for the device test suites (docs/TESTING.md on the recipe branch).
 #
 # This is the simulator counterpart of prepare-ios-tests.sh, which targets a
-# physical device via ios-deploy (ios-deploy cannot drive a simulator).
+# physical device via devicectl.
 
 SCRIPT_DIR="$( cd "$( dirname "$0" )" && pwd )"
 REPO_ROOT="$( cd "$SCRIPT_DIR/../../.." && pwd )"
