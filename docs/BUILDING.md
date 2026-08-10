@@ -232,7 +232,17 @@ Both hold the token under the **same secret names** (`R2_ACCESS_KEY_ID`,
 ```yaml
 environment:
   name: ${{ github.event_name == 'push' && github.ref == 'refs/heads/recipe' && 'sccache-write' || 'sccache-read' }}
+  deployment: false
 ```
+
+Environments are GitHub's *deployment* feature, and scoped secrets are a
+capability bolted onto it — so a job that names one is, by default, recorded
+as a deployment to it, which is how a PR ends up with nine "deployed to
+sccache-read" timeline entries (six Android jobs, two iOS, one host).
+[`deployment: false`](https://github.blog/changelog/2026-03-19-github-actions-late-march-2026-updates/)
+drops the record and keeps the secret scoping. Protection rules are still
+evaluated — only *custom* protection-rule apps are incompatible with the key,
+and a deployment branch rule is a built-in.
 
 Same names is the point. No expression in `build.yml` names the write token,
 so no edit to `build.yml` — which a PR can make, and which runs in that PR —

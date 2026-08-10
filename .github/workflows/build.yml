@@ -102,6 +102,13 @@ jobs:
     # either environment.)
     environment:
       name: ${{ github.event_name == 'push' && github.ref == 'refs/heads/recipe' && 'sccache-write' || 'sccache-read' }}
+      # Environments are GitHub's *deployment* feature and scoped secrets are
+      # bolted onto it, so without this every compiling job files a deployment
+      # record — nine "deployed to sccache-read" entries per PR. Nothing is
+      # being deployed; the job wants only the credential. Protection rules
+      # are still evaluated, so sccache-write's branch rule keeps enforcing.
+      # (Only *custom* protection-rule apps are incompatible with this key.)
+      deployment: false
     env:
       TARGET_ARCH: ${{ matrix.config.target_arch }}
       NODEJS_MOBILE_FLAVOR: ${{ matrix.flavor }}
@@ -283,6 +290,7 @@ jobs:
     # See build-android.
     environment:
       name: ${{ github.event_name == 'push' && github.ref == 'refs/heads/recipe' && 'sccache-write' || 'sccache-read' }}
+      deployment: false
     env:
       TARGET_ARCH: ${{ matrix.config.target_arch }}
       NODEJS_MOBILE_FLAVOR: ${{ matrix.flavor }}
@@ -667,6 +675,7 @@ jobs:
     # standing between a release and the tag. Same rule, same reason.
     environment:
       name: ${{ github.event_name == 'push' && github.ref == 'refs/heads/recipe' && 'sccache-write' || 'sccache-read' }}
+      deployment: false
     # Measured at 82 min end to end with no compiler cache (~75 of it V8). A
     # warm run is far shorter, but the cold number is what the timeout has to
     # survive. 180 leaves headroom while still catching a genuine hang, which
