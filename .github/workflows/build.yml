@@ -1094,10 +1094,23 @@ jobs:
             printf '%s\n' "--- notes ---" "$NOTES" "" "$PROV"
           else
             BODY="$(printf '%s\n\n%s' "${NOTES:-Release ${V}. See https://github.com/${GITHUB_REPOSITORY}/blob/recipe/docs/CHANGELOG.md}" "$PROV")"
+            # Draft first, flip live once the assets are attached: with
+            # immutable releases enabled a release rejects asset uploads the
+            # moment it is published, and `gh release create` publishes
+            # before it uploads. Drafts stay mutable/deletable, so a leftover
+            # draft from a failed earlier attempt is dropped rather than
+            # colliding; the isDraft guard means this can never delete a
+            # published (immutable) release.
+            if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json isDraft -q .isDraft 2>/dev/null | grep -qx true; then
+              gh release delete "$TAG" --yes --repo "$GITHUB_REPOSITORY"
+              echo "Deleted leftover draft for $TAG"
+            fi
             gh release create "$TAG" out/*.zip \
               --repo "$GITHUB_REPOSITORY" \
               --title "nodejs-mobile ${V}" \
+              --draft \
               --prerelease \
               --notes "$BODY"
+            gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" --draft=false
             echo "Published prerelease $TAG"
           fi
