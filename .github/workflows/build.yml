@@ -1,16 +1,14 @@
 name: Build
 
 on:
-  # Both events, without double-running: the push trigger is scoped to
-  # `recipe` only, and PR head branches (claude/**, release/**, forks) don't
-  # match it — so a PR commit produces exactly one run, and the merge produces
-  # one more. Cross-compiling on the PR is the point: neither the host build
-  # nor the per-patch ./android-configure in verify-patches.yml compiles a line
-  # of target code, so a platform-guard regression (the `#if TARGET_OS_OSX`
-  # class of bug docs/UPGRADING.md warns about) is otherwise invisible until
-  # after merge. Most PRs pay very little for it — the libnode cache key below
-  # is derived from the build inputs only, so a docs/CI/test-infra PR reuses
-  # the binary the recipe build already produced.
+  # No double-running: the push trigger is scoped to `recipe` and PR head
+  # branches don't match it, so a PR commit produces one run and the merge one
+  # more. Cross-compiling on the PR matters: neither the host build nor
+  # verify-patches.yml's per-patch ./android-configure compiles target code,
+  # so a platform-guard regression (docs/UPGRADING.md) is otherwise invisible
+  # until after merge. Most PRs pay little for it — the libnode cache key
+  # below hashes only the build inputs, so a docs/CI/test-infra PR reuses the
+  # binary the recipe build already produced.
   #
   # `pull_request`, never `pull_request_target`: fork PRs must not get the
   # BrowserStack secrets or contents:write.
@@ -27,33 +25,25 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
-# Who may WRITE to the shared compiler cache, and who only reads it.
-#
-# sccache's cache is keyed by a hash of the preprocessed input and the
-# compiler, so a cache entry is a claim ("this input compiles to these
-# bytes") that the reader takes on trust — it never re-verifies. Anything
-# that can write to the bucket can therefore choose the object files a later
-# build links, which for the release run means choosing the bytes that ship.
-# Two independent measures, both here:
+# Shared compiler cache — security model in docs/BUILDING.md, "The CI
+# compiler cache". Summary: an sccache entry is never re-verified by the
+# reader, so bucket-write access chooses the object files a later build
+# links. Two independent measures:
 #
 #   1. The publish path builds COLD. Every compiling job asks
 #      ./.github/actions/release-check whether this run is a release (or a
-#      `release-dryrun:` rehearsal) and, if so, compiles with no sccache at
-#      all and no R2 credentials in scope. A poisoned cache object then has no
-#      path to a shipped artifact — the worst it can do is waste CI time or
-#      corrupt a dev/test binary. See docs/BUILDING.md, "The CI compiler cache".
+#      `release-dryrun:` rehearsal) and, if so, compiles with no sccache and
+#      no R2 credentials in scope — a poisoned cache object has no path to a
+#      shipped artifact.
 #   2. Read and write are split by credential. `sccache-read` and
 #      `sccache-write` are GitHub Environments holding an R2 token each under
 #      the SAME secret names; a job picks one by event (below), and
 #      `sccache-write`'s deployment branch rule — enforced by GitHub, not by
-#      anything editable in this file — restricts it to `recipe`. Poisoning
-#      the cache therefore requires landing a commit on `recipe`, not merely
-#      opening a PR.
+#      anything editable in this file — restricts it to `recipe`.
 #
-# READ_ONLY below is the belt to that braces: it stops sccache attempting
-# ~2500 doomed PUTs per job (and writing the S3 probe object at startup) when
-# the token would refuse them anyway. It is workflow-side and thus editable in
-# a PR, which is exactly why it is not the enforcement — the token is.
+# READ_ONLY below is not the enforcement (it is workflow-side and editable in
+# a PR — the token is the enforcement); it just stops sccache attempting
+# ~2500 doomed PUTs per job when the token would refuse them anyway.
 env:
   # No SCCACHE_GHA_ENABLED here on purpose: the backend is Cloudflare R2, set
   # per Build step (see build-android). sccache picks a backend by precedence
@@ -62,26 +52,22 @@ env:
   SCCACHE_IDLE_TIMEOUT: '0'   # keep the sccache server alive through long builds
   # Must be set before the sccache server starts, like the log vars below, so
   # it belongs at workflow scope. An sccache too old to know this variable
-  # ignores it and falls back to failing writes, which the error log already
-  # covers — no regression either way.
+  # ignores it and just fails the writes, which the error log covers.
   SCCACHE_S3_RW_MODE: ${{ github.event_name == 'push' && github.ref == 'refs/heads/recipe' && 'READ_WRITE' || 'READ_ONLY' }}
-  # Surface the reason a cache write failed. sccache reports write failures only
-  # as a counter in --show-stats; the HTTP status behind them (429 vs 4xx vs
-  # auth) lives in the server log, which otherwise goes nowhere. Both vars must
-  # be set before the server starts, and the server inherits the env of whatever
-  # first spawns it, so they belong at workflow scope rather than on a step.
-  # 'warn' is enough to log the error chain and keeps the file small.
+  # Surface why a cache write failed: --show-stats only counts failures; the
+  # HTTP status behind them lives in the server log. Both vars must be set
+  # before the server starts (it inherits the env of whatever first spawns
+  # it), so they belong at workflow scope rather than on a step.
   SCCACHE_LOG: warn
   SCCACHE_ERROR_LOG: /tmp/sccache-errors.log
   ANDROID_NDK_VERSION: r27d
   ANDROID_TARGET_SDK_VERSION: 24
-  # Flavor is a per-job matrix dimension ([full, lite]) so every Build produces
-  # BOTH the shipped full binary and the size-reduced lite binary, and the
-  # curated device gate covers both (see docs/BUILDING.md "The lite variant"). Each
-  # job derives NODEJS_MOBILE_FLAVOR + FLAVOR_SUFFIX from matrix.flavor (matrix
-  # isn't visible at workflow-env scope). FLAVOR_SUFFIX ('' for full, '-lite'
-  # for lite) keeps caches + the public combined artifacts distinct so the full
-  # path stays byte-for-byte unchanged.
+  # Flavor is a per-job matrix dimension ([full, lite]) so every Build
+  # produces both binaries and the curated device gate covers both (see
+  # docs/BUILDING.md "The lite variant"). Each job derives
+  # NODEJS_MOBILE_FLAVOR + FLAVOR_SUFFIX from matrix.flavor (matrix isn't
+  # visible at workflow-env scope); FLAVOR_SUFFIX ('' / '-lite') keeps caches
+  # and the combined artifacts distinct.
   # NOTE: the Android 16 KB-page LDFLAGS is set per-job on build-android only.
   # Setting it globally leaks -Wl,-z,max-page-size into the iOS link, which
   # Apple's ld rejects ("ld: unknown options: -z").
@@ -91,16 +77,14 @@ permissions:
 
 jobs:
   # Flavor matrices are inline expressions, not a helper job (a full VM boot
-  # to echo two constants earns nothing). Android is always both flavors:
-  # ubuntu+KVM runners are 1x-billed and plentiful. iOS drops to full-only on
-  # pull_request because hosted macOS concurrency is capped far below Linux on
-  # every plan — the full release chain wants 8 concurrent macOS jobs, so two
-  # PRs running the complete iOS matrix can saturate the pool and queue the
-  # release pipeline behind them. What lite-on-iOS uniquely catches is
-  # lite-specific configure/link breakage, and build-ios still catches that at
-  # compile time on the merge run; the curated lists are identical across
-  # flavors (see the note in ios-simulator-tests.yml), so the runtime signal
-  # from the lite leg is near-duplicate. Pushes and releases run both.
+  # to echo two constants earns nothing). Android always runs both flavors
+  # (ubuntu+KVM is 1x-billed and plentiful); iOS drops to full-only on
+  # pull_request because hosted macOS concurrency is capped far below Linux
+  # and two PRs running the complete iOS matrix could queue the release
+  # pipeline behind them. What the lite iOS leg uniquely catches —
+  # lite-specific configure/link breakage — is still caught at compile time
+  # on the merge run. Pushes and releases run both. See docs/TESTING.md,
+  # "Flavors, and what's required to merge".
   build-android:
     strategy:
       fail-fast: false
@@ -112,12 +96,10 @@ jobs:
           - { os: ubuntu-24.04, target_arch: x86_64 }
 
     runs-on: ${{ matrix.config.os }}
-    # Which R2 token this job gets. Both environments define
-    # R2_ACCESS_KEY_ID/R2_SECRET_ACCESS_KEY, so the Build step below refers to
-    # one pair of names and the environment decides whether they can write.
-    # Same-name-different-environment is the point: no expression in this file
-    # selects the write token, so no edit to this file can hand it to a PR.
-    # (A fork PR gets no secrets under either environment, as before.)
+    # Which R2 token this job gets. Both environments define the same secret
+    # names, so no expression in this file selects the write token and no edit
+    # to this file can hand it to a PR. (A fork PR gets no secrets under
+    # either environment.)
     environment:
       name: ${{ github.event_name == 'push' && github.ref == 'refs/heads/recipe' && 'sccache-write' || 'sccache-read' }}
     env:
@@ -125,10 +107,9 @@ jobs:
       NODEJS_MOBILE_FLAVOR: ${{ matrix.flavor }}
       FLAVOR_SUFFIX: ${{ matrix.flavor == 'lite' && '-lite' || '' }}
       # Job-level (not step-level on Build) so the cache key can hash it: a
-      # change to these flags must invalidate the cached libnode, or every
-      # later run — including a release — restores and ships a binary built
-      # with the old flags. Still never in workflow env: it would leak into
-      # the iOS link, which Apple's ld rejects ("ld: unknown options: -z").
+      # change to these flags must invalidate the cached libnode. Never in
+      # workflow env: it would leak into the iOS link, which Apple's ld
+      # rejects ("ld: unknown options: -z").
       ANDROID_LDFLAGS: '-Wl,-z,max-page-size=16384'
 
     steps:
@@ -179,13 +160,11 @@ jobs:
                } | git hash-object --stdin )
           echo "key=libnode-android-${TARGET_ARCH}${FLAVOR_SUFFIX}-ndk${ANDROID_NDK_VERSION}-${H}" >> "$GITHUB_OUTPUT"
 
-      # Restore and save are split (rather than one actions/cache) so a release
-      # run can skip the RESTORE and still perform the SAVE. Skipping the
-      # restore is what makes "the shipped binary was compiled in this run" a
-      # property of the workflow instead of a happy accident: today the version
-      # bump changes HEAD:src and so misses this key anyway, but nothing
-      # structural says it must. Keeping the save means the first PR after a
-      # release still finds a warm key instead of paying a cold build.
+      # Restore and save are split (rather than one actions/cache) so a
+      # release run can skip the RESTORE — making "the shipped binary was
+      # compiled in this run" a property of the workflow, not of the version
+      # bump happening to miss the key — while still performing the SAVE, so
+      # the first PR after a release finds a warm key.
       - name: Restore built libnode
         id: libnode-cache
         if: steps.rel.outputs.cold != 'true'
@@ -218,12 +197,11 @@ jobs:
           # compile below and inherits these.
           #
           # A fork PR gets no secrets, and a release run is denied them here.
-          # Leaving SCCACHE_BUCKET empty in either case makes sccache fall back
-          # to its local disk cache, instead of taking a 403 on every single
-          # object and pacing the build behind the retries. Blanking the
-          # credentials as well as the opt-in above is belt and braces, and it
-          # is the auditable statement: a release build has no credential for
-          # the shared cache anywhere in its environment.
+          # Leaving SCCACHE_BUCKET empty in either case makes sccache fall
+          # back to its local disk cache instead of taking a 403 on every
+          # object. Blanking the credentials as well as the opt-in above means
+          # a release build has no credential for the shared cache anywhere in
+          # its environment.
           SCCACHE_BUCKET: ${{ steps.rel.outputs.cold != 'true' && secrets.R2_ACCESS_KEY_ID != '' && vars.R2_BUCKET || '' }}
           SCCACHE_REGION: auto
           SCCACHE_ENDPOINT: https://${{ secrets.R2_ACCOUNT_ID }}.r2.cloudflarestorage.com
@@ -251,35 +229,24 @@ jobs:
           path: out_android
           key: ${{ steps.ck.outputs.key }}
 
-      # Why this build caches to R2 and not to the GitHub Actions cache.
-      #
-      # On ghac almost every write failed: measured on run 30950327884, the
-      # sampled Android jobs stored 299/2626, 294/2464 and 196/1905 objects —
-      # a steady ~11%, not a cliff — so a miss still cost the full ~25-30 min
-      # and the hit rate sat at 55-60% instead of climbing.
-      #
-      # It was never the 10 GB quota (an over-quota repo gets LRU eviction, not
-      # failed writes) and never the wiring (android_configure.py wraps CC/CXX
-      # correctly). It was GitHub's cache-upload rate limit, 200 new entries
-      # per minute per repository, added 2026-01-16:
+      # Why this build caches to R2 and not to the GitHub Actions cache: the
+      # ghac cache-upload rate limit (200 new entries/min/repo, added
+      # 2026-01-16,
       #   https://github.blog/changelog/2026-01-16-rate-limiting-for-actions-cache-entries/
-      # That limit covers uploads and explicitly exempts downloads, which is
-      # exactly the reads-work/writes-fail split the stats showed. sccache
-      # stores one cache entry per object and drops a 429 rather than honouring
-      # Retry-After, so each throttled write landed in "Cache write errors".
+      # — uploads only, downloads exempt) made most writes fail. Measured on
+      # run 30950327884: sampled Android jobs stored 299/2626, 294/2464 and
+      # 196/1905 objects (~11%), capping the hit rate at 55-60%. sccache
+      # stores one entry per object and drops a 429 rather than honouring
+      # Retry-After, and six concurrent Android jobs each missing ~2500
+      # objects over ~19 min is ~800 uploads/min against a 200/min budget —
+      # unservable at any tuning. (It was never the 10 GB quota: over-quota
+      # means LRU eviction, not failed writes.)
       #
-      # ghac cannot serve this workload at any tuning: six concurrent Android
-      # jobs each miss ~2500 objects over a ~19 min compile window, ~800
-      # uploads/min against a 200/min repo-wide budget. Even a correct
-      # Retry-After upstream would just pace ~15000 entries/run through ~3800.
-      #
-      # R2 has neither a request-rate limit nor the 10 GB cap, so objects are
-      # stored individually — one entry per object, as sccache intends. Do not
-      # "optimise" this into tarring SCCACHE_DIR into a single object: six jobs
-      # finishing minutes apart would each upload a whole-cache blob to one key
-      # and the last writer would silently discard the rest.
-      #
-      # sccache never evicts from S3, so bucket growth is bounded by an R2
+      # R2 has neither a request-rate limit nor the cap, so objects are stored
+      # individually as sccache intends. Do not "optimise" this into tarring
+      # SCCACHE_DIR into a single object: concurrent jobs would each upload a
+      # whole-cache blob to one key and the last writer would discard the
+      # rest. sccache never evicts from S3; bucket growth is bounded by an R2
       # lifecycle rule, not by anything in this workflow.
       - name: sccache stats
         # There is no server to ask on the publish path — sccache was never
@@ -362,32 +329,20 @@ jobs:
           path: out_ios_${{ env.TARGET_ARCH }}
           key: ${{ steps.ck.outputs.key }}
 
-      # This job has run sccache-action since it was written, but nothing ever
-      # wrapped the compiler with it: the fork's sccache wiring lives in
-      # android_configure.py only, and ios_framework_prepare.sh goes through
-      # plain ./configure (configure.py has no such wiring) and sets no
-      # CC/CXX of its own. So the server started and cached nothing. Set the
-      # wrapper here, the way node documents for ccache.
+      # The fork's sccache wiring lives in android_configure.py only;
+      # ios_framework_prepare.sh goes through plain ./configure (no such
+      # wiring) and sets no CC/CXX of its own — so set the wrapper here, the
+      # way node documents for ccache.
       #
       # gyp-next needs setuptools at build time and a bare venv doesn't bundle
       # it (distutils was removed from the stdlib); install it explicitly.
       #
-      # CC/CXX are set to *wrapper scripts*, not to "sccache clang", because
-      # ios_framework_prepare.sh has two consumers of them and they disagree.
-      # make word-splits the value, so "sccache clang" works there; xcodebuild,
-      # which the script runs afterwards to build the NodeMobile framework
-      # target, treats the whole value as one executable name and dies with
-      #
-      #   error: unable to spawn process 'sccache clang'
-      #     (No such file or directory) (in target 'NodeMobile')
-      #
-      # A one-line script is a real executable path, so both are satisfied.
-      # This never fired before: the value has been set since the sccache wiring
-      # landed, but every push since then changed only .github/, which leaves
-      # the libnode cache key untouched, so this whole step was skipped and
-      # xcodebuild ran against a restored out_ios_* with nothing left to
-      # compile. The first PR to touch lib/ or src/ misses the cache, actually
-      # builds, and hits it.
+      # CC/CXX are *wrapper scripts*, not "sccache clang", because the two
+      # consumers disagree: make word-splits the value, but xcodebuild (which
+      # the script runs afterwards to build the NodeMobile framework target)
+      # treats the whole value as one executable name and dies with
+      # "unable to spawn process 'sccache clang'". A one-line script is a real
+      # executable path, so both are satisfied.
       - name: Build
         if: steps.libnode-cache.outputs.cache-hit != 'true'
         env:
@@ -490,11 +445,11 @@ jobs:
           cp -R out_android/libnode/include/* artifacts/include
 
       # B-1 tripwire: the shipped libnode.so must export the NAPI symbols a
-      # dlopen'd addon resolves against. A step here (the artifacts are
-      # already on disk) rather than a standalone job — was a full runner
-      # boot for one nm|grep. The stronger real-addon dlopen+run check lives
-      # in android-emulator-tests.yml. Runs per flavor: lite changes the
-      # configure flags that decide what gets linked in, so "full exports
+      # dlopen'd addon resolves against. A step here rather than a standalone
+      # job: the artifacts are already on disk, and a separate job was a full
+      # runner boot for one nm|grep. The stronger real-addon dlopen+run check
+      # lives in android-emulator-tests.yml. Runs per flavor: lite changes
+      # the configure flags that decide what gets linked in, so "full exports
       # napi_*" is not evidence that lite does.
       - name: Assert NAPI symbols are exported
         run: |
@@ -700,12 +655,11 @@ jobs:
           xcrun simctl shutdown "${{ steps.sim.outputs.udid }}" || true
           xcrun simctl delete "${{ steps.sim.outputs.udid }}" || true
 
-  # Host build + JS test suite (folded in from the former host-smoke.yml so
-  # it can gate ci-required and publish via needs:, which a separate workflow
-  # cannot). Builds Node natively on the runner (no cross-compile) and runs
+  # Host build + JS test suite: builds Node natively on the runner and runs
   # the upstream JS tests against it — the PR boundary's fastest real signal.
-  # It does NOT prove anything mobile-specific; the rest of this workflow
-  # owns that. Builds only the 'node' target with -j, so no cctest/addons.
+  # It proves nothing mobile-specific; the rest of this workflow owns that.
+  # Builds only the 'node' target, so no cctest/addons. Lives in this
+  # workflow (not its own) so it can gate ci-required and publish via needs:.
   smoke-host:
     runs-on: ubuntu-24.04
     # See build-android. This job ships nothing, but it gates publish: a
@@ -713,12 +667,10 @@ jobs:
     # standing between a release and the tag. Same rule, same reason.
     environment:
       name: ${{ github.event_name == 'push' && github.ref == 'refs/heads/recipe' && 'sccache-write' || 'sccache-read' }}
-    # Measured at 82 min end to end with no compiler cache at all: ~75 of that
-    # was V8, before a single test executed. sccache is wired below now, so a
-    # warm run should be far shorter — but the cold number is what the timeout
-    # has to survive, and a cache miss still pays it. 180 leaves real headroom
-    # while still catching a genuine hang, which the 360-minute default never
-    # would.
+    # Measured at 82 min end to end with no compiler cache (~75 of it V8). A
+    # warm run is far shorter, but the cold number is what the timeout has to
+    # survive. 180 leaves headroom while still catching a genuine hang, which
+    # the 360-minute default never would.
     timeout-minutes: 180
 
     steps:
@@ -739,21 +691,17 @@ jobs:
         if: steps.rel.outputs.cold != 'true'
         uses: mozilla-actions/sccache-action@fc920bf0ec8de6ee65d409111f7ec508035751ba # v0.0.11
 
-      # The fork wraps the compiler in sccache from android_configure.py, but
-      # only there — configure.py carries no such wiring, so the host build
-      # compiled V8 cold on every single run: ~75 min before a test could
-      # start. Set the wrapper here instead, which node's configure honours
-      # the same way it honours CC="ccache gcc". CC_host/CXX_host matter
-      # because gyp builds host tools (mksnapshot, torque) with those.
+      # configure.py carries no sccache wiring (only android_configure.py
+      # does), so set the wrapper here — node's configure honours it the same
+      # way it honours CC="ccache gcc". CC_host/CXX_host matter because gyp
+      # builds host tools (mksnapshot, torque) with those.
       #
       # gyp-next needs setuptools at build time and a bare venv doesn't bundle
       # it (distutils was removed from the stdlib); install it explicitly.
       #
-      # The R2 backend has to be set here as well as on the build step, not just
-      # on the build: ./configure runs compiler checks, so the sccache server is
-      # spawned during Configure and keeps whatever backend config it started
-      # with. Setting it only on the build step would leave the server already
-      # running with no backend and cache nothing.
+      # The R2 backend must be set here, not just on the build step:
+      # ./configure runs compiler checks, so the sccache server is spawned
+      # during Configure and keeps whatever backend config it started with.
       #
       # On the publish path CC/CXX drop back to the bare compilers — see
       # build-ios's Build step, and the `!= 'true' && x || y` note on
@@ -803,17 +751,14 @@ jobs:
         run: |
           ./out/Release/node -e "console.log(process.versions); process.exit(0)"
 
-      # The iOS binary runs V8 jitless, and a jitless V8 exposes no
-      # WebAssembly -- which is why the library bundles the polywasm polyfill
-      # (deps/polywasm, installed by lib/internal/process/pre_execution.js):
-      # without it undici's llhttp can't load and fetch() is dead. Passing
-      # --jitless to the host build reproduces that engine exactly, so this
+      # The iOS binary runs V8 jitless, so its WebAssembly (which undici's
+      # llhttp needs for fetch()) comes from the bundled polywasm polyfill.
+      # --jitless on the host build reproduces that engine exactly, so this
       # gates the polyfill on every push instead of only on device runs.
-      # See docs/TESTING.md, "The fetch / WebAssembly gate".
       # NODEJS_MOBILE_EXPECT_WASM_IMPL makes the test assert which
-      # implementation it actually ran on, so this stays a real gate: if a
-      # future V8 kept WebAssembly under --jitless, or the install stopped
-      # firing, the step fails instead of quietly testing the wrong path.
+      # implementation it actually ran on, so the step fails instead of
+      # quietly testing the wrong path. See docs/TESTING.md, "The fetch /
+      # WebAssembly gate".
       - name: fetch/WebAssembly gate (jitless, polyfill path)
         env:
           NODEJS_MOBILE_EXPECT_WASM_IMPL: polyfill
@@ -826,38 +771,32 @@ jobs:
         run: |
           ./out/Release/node test/parallel/test-mobile-fetch.js
 
-      # --frozen-intrinsics is the one caller that inspects the polyfill's
-      # *shape* instead of just calling it: internal/freeze_intrinsics.js reads
-      # seven WebAssembly.*.prototype values as soon as the global exists, so a
-      # member polywasm doesn't implement doesn't break fetch() -- it stops the
-      # runtime from booting. That is how the missing LinkError/RuntimeError
-      # were found. Cheap to keep, and the only gate that covers it: the full
-      # parallel suite below is advisory, and mobile .status skips this test.
-      # See docs/TESTING.md, "The fetch / WebAssembly gate".
+      # --frozen-intrinsics inspects the polyfill's *shape* instead of just
+      # calling it: internal/freeze_intrinsics.js reads seven
+      # WebAssembly.*.prototype values as soon as the global exists, so a
+      # member polywasm doesn't implement stops the runtime from booting
+      # rather than breaking fetch(). Nothing else runs this test jitless
+      # (mobile .status skips it on devices). See docs/TESTING.md, "The fetch
+      # / WebAssembly gate".
       - name: frozen-intrinsics gate (jitless, polyfill path)
         run: |
           ./out/Release/node --jitless --frozen-intrinsics \
             test/parallel/test-freeze-intrinsics.js
 
-      # test-mobile-system-ca runs in the curated list below as well, but there
-      # it can only assert the reader's invariants: an iOS app is sandboxed
-      # away from the system keychain, so an empty store is legitimate on the
-      # device leg and the test cannot demand certificates unconditionally. A
-      # Linux build reading /etc/ssl has no such excuse, so this run says so —
-      # which is what turns "the trust store reader still returns something"
-      # into a check that fails when the crypto-trust patch's guard stops
-      # enclosing the right span. See docs/TESTING.md, "What covers which patch".
+      # The device legs can only assert the reader's invariants (an empty
+      # store is legitimate on a sandboxed iOS app); a Linux build reading
+      # /etc/ssl has no such excuse, so this run demands a non-empty store —
+      # which is what catches a crypto-trust patch whose guard stops enclosing
+      # the right span. See docs/TESTING.md, "What covers which patch".
       - name: system trust store gate
         env:
           NODEJS_MOBILE_EXPECT_SYSTEM_CA: nonempty
         run: |
           ./out/Release/node test/parallel/test-mobile-system-ca.js
 
-      # The same curated list the device workflows run, executed on the
-      # host build. Everything in it is an upstream test that passes on mobile,
-      # so it passes on a host build too unless a patch actually broke it —
-      # which makes this a zero-flake blocking check that catches lib/ and
-      # src/ regressions minutes into a PR instead of on a device.
+      # The same curated list the device workflows run, executed on the host
+      # build: a zero-flake blocking check that catches lib/ and src/
+      # regressions minutes into a PR instead of on a device.
       - name: Run the curated device-test list on the host build
         run: |
           source bin/activate
@@ -869,10 +808,8 @@ jobs:
           grep -vE '^[[:space:]]*#|^[[:space:]]*$' tools/mobile-test/curated-device-tests.txt \
             | xargs ./tools/test.py -j "$(nproc)" --flaky-tests=skip
 
-      # The full parallel suite is far broader than the curated list. Host runs
-      # are deterministic (no emulator lifecycle), so this is a blocking check:
-      # an always-green advisory step hides its failures behind an annotation
-      # nobody reads.
+      # Far broader than the curated list, and host runs are deterministic
+      # (no emulator lifecycle), so this is a blocking check.
       - name: Run the full parallel suite on the host build
         run: |
           source bin/activate
@@ -889,18 +826,13 @@ jobs:
           ./tools/mobile-test/coverage-manifest.py --summary --suite sequential
 
   # Merge gate for the release notes: the first docs/CHANGELOG.md section must
-  # be the one publish will ship — this version, TODO stub filled in.
-  #
-  # It runs on PRs (and feeds ci-required) so a release PR can't merge with
-  # placeholder notes. Checking this only in publish meant the failure landed
-  # after the release PR was merged and closed, where the only fix is another
-  # push to recipe.
-  #
-  # It runs on every PR rather than only on release ones because the invariant
-  # holds for ordinary PRs too (they inherit the released version and its
-  # written-up section), because a required check that skips itself reports
-  # nothing and blocks the PR forever, and because a release PR is only
-  # recognizable by convention anyway. Cheap: checkout, no materialize.
+  # be the one publish will ship — this version, TODO stub filled in. Runs on
+  # PRs (feeding ci-required) so a release PR can't merge with placeholder
+  # notes; checking this only in publish left the failure after the PR was
+  # merged, where the only fix is another push to recipe. Runs on every PR,
+  # not just release ones: the invariant holds for ordinary PRs too, and a
+  # required check that skips itself blocks the PR forever. Cheap: checkout,
+  # no materialize.
   release-notes:
     runs-on: ubuntu-24.04
     timeout-minutes: 5
@@ -948,17 +880,15 @@ jobs:
 
   # Decide whether this push is a release, and publish that decision as job
   # outputs for the gate chain below. The decision itself — including the
-  # push-to-recipe-only guard, which matters enough to have its own essay —
-  # lives in ./.github/actions/release-check, because the compiling jobs above
-  # ask the same question for a different reason (build cold) and must not
-  # depend on this job to get an answer.
+  # push-to-recipe-only guard — lives in ./.github/actions/release-check,
+  # because the compiling jobs above ask the same question for a different
+  # reason (build cold) and must not depend on this job to get an answer.
   #
-  # Keeping the job's own `if:` as well as the guard inside the action is
-  # deliberate: skipping this job also skips real-device-smoke, full-suite and
-  # publish, which need: it, so the gate chain never runs at all off a
-  # non-release event rather than running and evaluating to false.
-  # Belt and braces: a deployment branch rule on the `release` Environment
-  # restricting it to recipe would stop publish independently of this.
+  # The job's own `if:` duplicates the guard inside the action on purpose:
+  # skipping this job also skips real-device-smoke, full-suite and publish,
+  # which need: it, so the gate chain never runs at all off a non-release
+  # event. A deployment branch rule on the `release` Environment restricting
+  # it to recipe would stop publish independently of this.
   release-check:
     if: github.event_name == 'push' && github.ref == 'refs/heads/recipe'
     runs-on: ubuntu-24.04
@@ -1003,15 +933,13 @@ jobs:
 
   # Curated device tests: the curated JS subset on an Android emulator and an
   # iOS simulator, consuming the combine artifacts of this run. Runs on EVERY
-  # event that gets this far — PR, push, release — because it is the fast
-  # functional coverage of the mobile runtime, and gating it on releases meant
-  # a JS regression from an ordinary PR surfaced at tag time with a bisect
-  # surface of every commit since the last release.
+  # event that gets this far — gating it on releases meant a JS regression
+  # from an ordinary PR surfaced at tag time.
   #
-  # Deliberately NOT in ci-required. Emulator/simulator lifecycles (AVD boot,
-  # simctl races, adb disconnects) are the flakiest thing in this system, and a
-  # required check that flakes trains everyone to re-run or bypass — which
-  # costs more than the check is worth. Read it, don't merge through a red one.
+  # Deliberately NOT in ci-required: emulator/simulator lifecycles are the
+  # flakiest thing in this system, and a required check that flakes trains
+  # everyone to re-run or bypass. Read it, don't merge through a red one.
+  # See docs/TESTING.md, "Flavors, and what's required to merge".
   curated-tests-android:
     needs: combine-android
     permissions:

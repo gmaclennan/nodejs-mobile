@@ -6,7 +6,7 @@ name: BrowserStack device smoke
 # This is the release-promotion gate CI emulators/simulators cannot cover —
 # the device loader's dlopen path and 16 KB-page hardware.
 #
-# Reuses the libnode/xcframework a green Build (build-mobile.yml) already
+# Reuses the libnode/xcframework a green Build run (build.yml) already
 # produced for the target commit — nothing is compiled here except the tiny
 # testnode app, addon, and test bundles.
 #
@@ -22,10 +22,10 @@ on:
         description: 'BrowserStack iOS devices (CSV)'
         required: false
         default: 'iPhone 15-17'
-  # Called from build-mobile.yml on release branches, making the real-device
-  # gate an automatic, required part of a release Build run (publish-release
-  # refuses to tag without it). build_run_id points at the calling run so the
-  # artifact download does not depend on a separate completed Build run.
+  # Called from build.yml on release runs, making the real-device gate an
+  # automatic, required part of a release (publish needs: it). build_run_id
+  # points at the calling run so the artifact download does not depend on a
+  # separate completed Build run.
   workflow_call:
     inputs:
       build_run_id:
