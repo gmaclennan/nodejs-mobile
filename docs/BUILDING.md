@@ -275,23 +275,25 @@ Settings change.
 
 ### The daily credential probe
 
-`.github/workflows/cache-credentials.yml` compiles one generated file per token
-and asserts:
-1. `sccache-read` reads R2 and is refused write **with a 403 from Cloudflare**.
-2. `sccache-write` writes and reads the object back.
-3. fails when sccache falls back to local disk, which is what a missing or unset
-secret looks like.
-
-It forces `SCCACHE_S3_RW_MODE=READ_WRITE` in both jobs, because the `READ_ONLY`
-that build.yml uses off `recipe` would refuse the write locally and prove
-nothing. 
+`.github/workflows/cache-credentials.yml` checks both tokens daily with plain
+SigV4 requests against the bucket: GET of a never-written key (404 proves the
+request authenticated), then PUT and DELETE — expected to succeed for
+`sccache-write` (with a byte-identical read-back) and to be refused with 403
+for `sccache-read`. The two matrix legs run byte-identical code; only the
+expected statuses differ, so a denial cannot be an artifact of code the other
+leg doesn't run. sccache itself is not involved — the tokens are what is under
+test, and every build exercises the sccache integration anyway.
 
 Run it by hand (Actions → Cache credentials → Run workflow) right after
 changing a token or an environment. Dispatching it from a ref other than
-`recipe` is also the practical way to check the deployment branch rule:
-`probe-write` is then refused by GitHub before it starts, and that refusal is
-the rule working. A scheduled run cannot test that, because a schedule always
-runs on the default branch, where the rule passes.
+`recipe` also tests the deployment branch rule, and the `sccache-write` leg
+comes out red either way — what matters is the message. Refused by GitHub
+before any step ran (a protection-rules annotation): the rule works. Failed
+by its own ref guard: the leg actually ran, meaning **the rule is missing**
+and the write token is obtainable from arbitrary branches — the fail-open
+case described above, caught rather than reported as a healthy token. A
+scheduled run cannot test this; it always runs on the default branch, where
+the rule passes.
 
 ### Gotchas
 
