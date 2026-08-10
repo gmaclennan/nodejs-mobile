@@ -1,14 +1,8 @@
 name: Build
 
 on:
-  # No double-running: the push trigger is scoped to `recipe` and PR head
-  # branches don't match it, so a PR commit produces one run and the merge one
-  # more. Cross-compiling on the PR matters: neither the host build nor
-  # verify-patches.yml's per-patch ./android-configure compiles target code,
-  # so a platform-guard regression (docs/UPGRADING.md) is otherwise invisible
-  # until after merge. Most PRs pay little for it — the libnode cache key
-  # below hashes only the build inputs, so a docs/CI/test-infra PR reuses the
-  # binary the recipe build already produced.
+  # Don't run on pushes to PR branches to avoid double-running (push trigger and
+  # pull_request trigger).
   #
   # `pull_request`, never `pull_request_target`: fork PRs must not get the
   # BrowserStack secrets or contents:write.
@@ -49,7 +43,7 @@ env:
   # per Build step (see build-android). sccache picks a backend by precedence
   # and ghac outranks s3, so leaving the GHA flag set would silently keep
   # writing into the rate-limited Actions cache and look like it worked.
-  SCCACHE_IDLE_TIMEOUT: '0'   # keep the sccache server alive through long builds
+  SCCACHE_IDLE_TIMEOUT: "0" # keep the sccache server alive through long builds
   # Must be set before the sccache server starts, like the log vars below, so
   # it belongs at workflow scope. An sccache too old to know this variable
   # ignores it and just fails the writes, which the error log covers.
@@ -110,7 +104,7 @@ jobs:
       # change to these flags must invalidate the cached libnode. Never in
       # workflow env: it would leak into the iOS link, which Apple's ld
       # rejects ("ld: unknown options: -z").
-      ANDROID_LDFLAGS: '-Wl,-z,max-page-size=16384'
+      ANDROID_LDFLAGS: "-Wl,-z,max-page-size=16384"
 
     steps:
       - uses: actions/checkout@v7
@@ -178,16 +172,7 @@ jobs:
         env:
           MY_ANDROID_NDK_HOME: ${{ steps.setup-ndk.outputs.ndk-path }}
           LDFLAGS: ${{ env.ANDROID_LDFLAGS }}
-          # Opt in to the sccache wrap in android_configure.py — it no longer
-          # activates just because sccache is on PATH. Empty (not '0') on the
-          # publish path: the patch tests the variable for truthiness with
-          # os.environ.get(), so '0' would still wrap the compiler.
-          #
-          # Every expression here is written `cold != 'true' && <value> || ''`
-          # rather than `cold == 'true' && '' || <value>`: GitHub's ternary
-          # idiom falls through to the `||` branch whenever the `&&` branch is
-          # falsey, and '' is falsey — so the natural-reading form would enable
-          # the cache on exactly the runs that must not have it.
+          # Opt in to the sccache wrap in android_configure.py.
           NODEJS_MOBILE_SCCACHE: ${{ steps.rel.outputs.cold != 'true' && '1' || '' }}
           # sccache's R2 backend. Scoped to this step rather than workflow env so
           # the credentials are never in scope for the third-party actions the
@@ -229,25 +214,18 @@ jobs:
           path: out_android
           key: ${{ steps.ck.outputs.key }}
 
-      # Why this build caches to R2 and not to the GitHub Actions cache: the
-      # ghac cache-upload rate limit (200 new entries/min/repo, added
+      # This build caches to R2 and not to the GitHub Actions cache because of
+      # the ghac cache-upload rate limit (200 new entries/min/repo, added
       # 2026-01-16,
-      #   https://github.blog/changelog/2026-01-16-rate-limiting-for-actions-cache-entries/
-      # — uploads only, downloads exempt) made most writes fail. Measured on
-      # run 30950327884: sampled Android jobs stored 299/2626, 294/2464 and
-      # 196/1905 objects (~11%), capping the hit rate at 55-60%. sccache
-      # stores one entry per object and drops a 429 rather than honouring
-      # Retry-After, and six concurrent Android jobs each missing ~2500
-      # objects over ~19 min is ~800 uploads/min against a 200/min budget —
-      # unservable at any tuning. (It was never the 10 GB quota: over-quota
-      # means LRU eviction, not failed writes.)
-      #
-      # R2 has neither a request-rate limit nor the cap, so objects are stored
-      # individually as sccache intends. Do not "optimise" this into tarring
-      # SCCACHE_DIR into a single object: concurrent jobs would each upload a
-      # whole-cache blob to one key and the last writer would discard the
-      # rest. sccache never evicts from S3; bucket growth is bounded by an R2
-      # lifecycle rule, not by anything in this workflow.
+      # https://github.blog/changelog/2026-01-16-rate-limiting-for-actions-cache-entries/
+      # — uploads only, downloads exempt) made most writes fail. Measured on run
+      # 30950327884: sampled Android jobs stored 299/2626, 294/2464 and 196/1905
+      # objects (~11%), capping the hit rate at 55-60%. sccache stores one entry
+      # per object and drops a 429 rather than honouring Retry-After, and six
+      # concurrent Android jobs each missing ~2500 objects over ~19 min is ~800
+      # uploads/min against a 200/min budget — unservable at any tuning. (It was
+      # never the 10 GB quota: over-quota means LRU eviction, not failed
+      # writes.)
       - name: sccache stats
         # There is no server to ask on the publish path — sccache was never
         # installed there.
@@ -273,9 +251,8 @@ jobs:
       matrix:
         flavor: ${{ github.event_name == 'pull_request' && fromJSON('["full"]') || fromJSON('["full","lite"]') }}
         config:
-          # macos-26 is Apple Silicon with current Xcode (matches local dev).
           # x86_64 (Intel Mac) simulator support was dropped for v24 — Intel
-          # Macs are EOL and Apple Silicon runs the arm64 simulator natively.
+          # Macs are EOL.
           - { os: macos-26, target_arch: arm64 }
           - { os: macos-26, target_arch: arm64-simulator }
 
@@ -355,9 +332,9 @@ jobs:
           AWS_ACCESS_KEY_ID: ${{ steps.rel.outputs.cold != 'true' && secrets.R2_ACCESS_KEY_ID || '' }}
           AWS_SECRET_ACCESS_KEY: ${{ steps.rel.outputs.cold != 'true' && secrets.R2_SECRET_ACCESS_KEY || '' }}
         run: |
-          # Leaving CC/CXX unset on the publish path is the whole mechanism
-          # here: unlike Android there is no opt-in flag to clear, because it
-          # is these two variables that put sccache in the compile path at all.
+          # Leaving CC/CXX unset on the publish path: unlike Android there is no
+          # opt-in flag to clear, because it is these two variables that put
+          # sccache in the compile path.
           if [ "$COLD" != "true" ]; then
             mkdir -p "$RUNNER_TEMP/sccache-wrappers"
             printf '#!/bin/sh\nexec sccache clang "$@"\n' \
@@ -388,9 +365,6 @@ jobs:
           path: out_ios_${{ env.TARGET_ARCH }}
           key: ${{ steps.ck.outputs.key }}
 
-      # These writes used to count against the same repo-wide 200/min upload
-      # budget the Android matrix was already blowing through; on R2 they no
-      # longer compete — see the note on build-android's sccache stats step.
       - name: sccache stats
         if: always() && steps.rel.outputs.cold != 'true'
         run: |
@@ -444,13 +418,13 @@ jobs:
           done
           cp -R out_android/libnode/include/* artifacts/include
 
-      # B-1 tripwire: the shipped libnode.so must export the NAPI symbols a
-      # dlopen'd addon resolves against. A step here rather than a standalone
-      # job: the artifacts are already on disk, and a separate job was a full
-      # runner boot for one nm|grep. The stronger real-addon dlopen+run check
-      # lives in android-emulator-tests.yml. Runs per flavor: lite changes
-      # the configure flags that decide what gets linked in, so "full exports
-      # napi_*" is not evidence that lite does.
+      # The shipped libnode.so must export the NAPI symbols a dlopen'd addon
+      # resolves against. A step here rather than a standalone job: the
+      # artifacts are already on disk, and a separate job was a full runner boot
+      # for one nm|grep. The stronger real-addon dlopen+run check lives in
+      # android-emulator-tests.yml. Runs per flavor: lite changes the configure
+      # flags that decide what gets linked in, so "full exports napi_*" is not
+      # evidence that lite does.
       - name: Assert NAPI symbols are exported
         run: |
           # arm64-v8a is the Android ABI folder for arm64 (see android_build.sh).
@@ -540,10 +514,10 @@ jobs:
         with:
           name: node-ios-*-${{ matrix.flavor }}
 
-  # Boot smoke (docs/TESTING.md): boot an emulator, run a
-  # console.log via the freshly built libnode, assert it ran and exited cleanly.
-  # Consumes the nodejs-mobile-android artifact, so it smoke-tests the exact
-  # binary that would ship — no rebuild. ubuntu + KVM keeps it at 1x billing.
+  # Boot smoke (docs/TESTING.md): boot an emulator, run a console.log via the
+  # freshly built libnode, assert it ran and exited cleanly. Consumes the
+  # nodejs-mobile-android artifact, so it smoke-tests the exact binary that
+  # would ship — no rebuild. ubuntu + KVM keeps it at 1x billing.
   smoke-android:
     needs: [combine-android]
     strategy:
@@ -605,8 +579,8 @@ jobs:
             adb wait-for-device
             ./tools/mobile-test/smoke/run-android-smoke.sh "$PWD/node_smoke" "$PWD/artifacts/bin/x86_64/libnode.so" "$PWD/libc++_shared.so"
 
-  # Boot smoke for iOS: install the testnode app on a booted
-  # simulator and run a console.log via the freshly built NodeMobile.xcframework.
+  # Boot smoke for iOS: install the testnode app on a booted simulator and run a
+  # console.log via the freshly built NodeMobile.xcframework.
   smoke-ios:
     needs: [combine-ios]
     strategy:
@@ -919,7 +893,8 @@ jobs:
     # Also needs the boot smokes: BrowserStack device minutes are the
     # one genuinely metered resource here, so don't spend them on a binary that
     # has already failed to start on an emulator.
-    needs: [release-check, combine-android, combine-ios, smoke-android, smoke-ios]
+    needs:
+      [release-check, combine-android, combine-ios, smoke-android, smoke-ios]
     # The called workflow needs actions:read (artifact download); a called
     # workflow cannot elevate beyond the caller's permissions, so grant it
     # here (the workflow default is contents:read only).
@@ -936,10 +911,8 @@ jobs:
   # event that gets this far — gating it on releases meant a JS regression
   # from an ordinary PR surfaced at tag time.
   #
-  # Deliberately NOT in ci-required: emulator/simulator lifecycles are the
-  # flakiest thing in this system, and a required check that flakes trains
-  # everyone to re-run or bypass. Read it, don't merge through a red one.
-  # See docs/TESTING.md, "Flavors, and what's required to merge".
+  # Not in ci-required because emulator/simulator lifecycles have been flakey -
+  # here as advisory for PRs, and release blocks on these tests passing.
   curated-tests-android:
     needs: combine-android
     permissions:
@@ -959,16 +932,16 @@ jobs:
       build_run_id: ${{ github.run_id }}
       flavors: ${{ github.event_name == 'pull_request' && '["full"]' || '["full","lite"]' }}
 
-  # Full device suite as a release gate: the whole non-.status-skipped
-  # parallel + sequential suite on emulator and simulator, called from the
-  # same workflow the nightly runs. Release-only — it costs ~8 device-hours
-  # per run, which the PR loop cannot absorb; the nightly covers drift the
-  # rest of the time.
+  # Full device suite as a release gate: the whole non-.status-skipped parallel
+  # + sequential suite on emulator and simulator, called from the same workflow
+  # the nightly runs. Release-only — it costs ~8 device-hours per run; the
+  # nightly covers drift the rest of the time.
   full-suite:
     if: >-
       needs.release-check.outputs.release == 'true' ||
       needs.release-check.outputs.dryrun == 'true'
-    needs: [release-check, combine-android, combine-ios, smoke-android, smoke-ios]
+    needs:
+      [release-check, combine-android, combine-ios, smoke-android, smoke-ios]
     permissions:
       contents: read
       actions: read
@@ -997,9 +970,9 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     permissions:
-      contents: write   # tag push + release create
-      actions: read     # artifact download from this run
-    environment: release   # optional approval gate: add required reviewers in Settings
+      contents: write # tag push + release create
+      actions: read # artifact download from this run
+    environment: release # optional approval gate: add required reviewers in Settings
     env:
       DRY: ${{ needs.release-check.outputs.dryrun == 'true' && '1' || '0' }}
       V: ${{ needs.release-check.outputs.version }}
@@ -1011,14 +984,10 @@ jobs:
 
       # The docs live only on this branch, and materialize replaces the
       # workspace with the materialized tree — so lift the release notes out
-      # before that happens.
-      # A backstop; the release-notes job is where this blocks a release (see
-      # its comment). By here the PR is merged, so a failure costs a red
-      # release run — but publish still must not ship a TODO stub when that
-      # check was bypassed: an admin merge, a direct push to recipe, branch
-      # protection not yet configured.
-      # Advisory on a dry run (a release-dryrun: push legitimately predates
-      # the CHANGELOG stub), which is why the notes are written either way.
+      # before that happens. The release notes script will fail if the CHANGELOG
+      # stub is still present, but because that's a required PR check we
+      # shouldn't get here with a stub, except on dry-runs, where we mark this
+      # release notes check as `--advistory`.
       - name: Extract release notes from the CHANGELOG
         run: |
           adv=""

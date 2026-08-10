@@ -1,10 +1,9 @@
 name: BrowserStack device smoke
 
-# Real-device smoke (docs/TESTING.md) on BrowserStack App
-# Automate: boot the shipped binary and run the crc-native N-API addon gate on
-# a physical Android arm64 device (Espresso) and a physical iPhone (XCUITest).
-# This is the release-promotion gate CI emulators/simulators cannot cover —
-# the device loader's dlopen path and 16 KB-page hardware.
+# Real-device smoke (docs/TESTING.md) on BrowserStack App Automate: boot the
+# shipped binary and run the crc-native N-API addon gate on a physical Android
+# arm64 device (Espresso) and a physical iPhone (XCUITest). Checks the device
+# loader's dlopen path and 16 KB-page hardware.
 #
 # Reuses the libnode/xcframework a green Build run (build.yml) already
 # produced for the target commit — nothing is compiled here except the tiny
@@ -15,13 +14,13 @@ on:
   workflow_dispatch:
     inputs:
       android_devices:
-        description: 'BrowserStack Android devices (CSV)'
+        description: "BrowserStack Android devices (CSV)"
         required: false
-        default: 'Google Pixel 9-15.0'
+        default: "Google Pixel 9-15.0"
       ios_devices:
-        description: 'BrowserStack iOS devices (CSV)'
+        description: "BrowserStack iOS devices (CSV)"
         required: false
-        default: 'iPhone 15-17'
+        default: "iPhone 15-17"
   # Called from build.yml on release runs, making the real-device gate an
   # automatic, required part of a release (publish needs: it). build_run_id
   # points at the calling run so the artifact download does not depend on a
@@ -31,7 +30,7 @@ on:
       build_run_id:
         type: string
         required: false
-        default: ''
+        default: ""
     secrets:
       BROWSERSTACK_USER:
         required: true
@@ -42,12 +41,12 @@ env:
   ANDROID_NDK_VERSION: r27d
   TESTNODE_NDK_VERSION: 27.3.13750724
   TARGET_ABI: arm64-v8a
-  DEFAULT_ANDROID_DEVICES: 'Google Pixel 9-15.0'
-  DEFAULT_IOS_DEVICES: 'iPhone 15-17'
+  DEFAULT_ANDROID_DEVICES: "Google Pixel 9-15.0"
+  DEFAULT_IOS_DEVICES: "iPhone 15-17"
 
 permissions:
   contents: read
-  actions: read    # locate + download the Build run's artifacts
+  actions: read # locate + download the Build run's artifacts
 
 jobs:
   android-device-smoke:
@@ -76,7 +75,7 @@ jobs:
         uses: actions/setup-java@v5
         with:
           distribution: temurin
-          java-version: '17'
+          java-version: "17"
 
       - name: Setup Android NDK (addon)
         uses: nttld/setup-ndk@ed92fe6cadad69be94a966a7ee3271275e62f779 # v1.6.0
@@ -115,9 +114,6 @@ jobs:
         env:
           BROWSERSTACK_USER: ${{ secrets.BROWSERSTACK_USER }}
           BROWSERSTACK_PW: ${{ secrets.BROWSERSTACK_PW }}
-          # Via env, not inline interpolation: a quote in the dispatch input
-          # must not be able to break out into this shell (which holds the
-          # BrowserStack credentials).
           DEVICES_INPUT: ${{ inputs.android_devices }}
         run: |
           DEVICES="$DEVICES_INPUT"

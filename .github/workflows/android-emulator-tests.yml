@@ -21,7 +21,7 @@ on:
       build_run_id:
         type: string
         required: false
-        default: ''
+        default: ""
   workflow_dispatch:
 
 env:
@@ -45,10 +45,9 @@ jobs:
   android-emulator-tests:
     # Both flavors run the SAME curated list, no exclusions: it has no
     # sqlite/inspector/strip-types tests, the ICU tests self-skip via
-    # common.hasIntl, and the lone WebAssembly-named test only inspects a
-    # string fixture — the whole list verified passing on a local lite build.
-    # Each flavor fetches its own libnode from the same Build run (which
-    # produces both).
+    # common.hasIntl, and the lone WebAssembly-named test only inspects a string
+    # fixture. Each flavor fetches its own libnode from the same Build run
+    # (which produces both).
     strategy:
       fail-fast: false
       matrix:
@@ -78,12 +77,11 @@ jobs:
           ndk-version: ${{ env.ANDROID_NDK_VERSION }}
           add-to-path: false
 
-      # Reuse the libnode that build.yml already compiled for this commit
-      # rather than rebuilding (a from-scratch build is 1.5-3h and overruns
-      # the job timeout). Build deletes the per-arch node-android-* artifacts
+      # Reuse the libnode that build.yml already compiled for this commit rather
+      # than rebuilding. Build deletes the per-arch node-android-* artifacts
       # after combining, so pull this flavor's combined artifact
-      # (nodejs-mobile-android[-lite]: bin/<abi>/libnode.so + headers) and
-      # stage the ABI the emulator runs.
+      # (nodejs-mobile-android[-lite]: bin/<abi>/libnode.so + headers) and stage
+      # the ABI the emulator runs.
       - name: Fetch libnode (Android) from the Build run
         uses: ./.github/actions/fetch-build-artifact
         with:
@@ -103,7 +101,7 @@ jobs:
         uses: actions/setup-java@v5
         with:
           distribution: temurin
-          java-version: '17'
+          java-version: "17"
 
       - name: Install testnode app NDK
         run: |
