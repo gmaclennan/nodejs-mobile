@@ -92,9 +92,9 @@ jobs:
 
   android:
     needs: precheck
-    # `inputs.platform || 'both'`: on a schedule event the inputs context is
-    # empty, and empty must mean "run everything", not "run nothing".
-    if: needs.precheck.outputs.skip != 'true' && (inputs.platform || 'both') != 'ios'
+    # Exclusion (`!= 'ios'`) rather than `== 'android' || == 'both'` so the
+    # empty inputs context of a schedule event means "run everything".
+    if: needs.precheck.outputs.skip != 'true' && inputs.platform != 'ios'
     strategy:
       fail-fast: false
       # Keep in step with the ,4 in --run below: a matrix of a different
@@ -171,8 +171,8 @@ jobs:
 
   ios:
     needs: precheck
-    # See the android job for the `|| 'both'`.
-    if: needs.precheck.outputs.skip != 'true' && (inputs.platform || 'both') != 'android'
+    # Exclusion, not inclusion — see the android job.
+    if: needs.precheck.outputs.skip != 'true' && inputs.platform != 'android'
     strategy:
       fail-fast: false
       matrix:

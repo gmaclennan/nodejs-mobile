@@ -63,9 +63,9 @@ permissions:
 
 jobs:
   android-device-smoke:
-    # `|| 'both'` guards the empty-inputs case (an event with no platform
-    # input must run everything).
-    if: (inputs.platform || 'both') != 'ios'
+    # Exclusion (`!= 'ios'`) rather than `== 'android' || == 'both'` so an
+    # event with an empty inputs context runs everything.
+    if: inputs.platform != 'ios'
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     steps:
@@ -140,8 +140,8 @@ jobs:
             "$DEVICES" nodejs-mobile "sha-${{ github.sha }}"
 
   ios-device-smoke:
-    # See android-device-smoke for the `|| 'both'`.
-    if: (inputs.platform || 'both') != 'android'
+    # Exclusion, not inclusion — see android-device-smoke.
+    if: inputs.platform != 'android'
     # macos-15 (Xcode 16.x), NOT macos-26: an XCUITest runner built by Xcode 26
     # references XCTest symbols (e.g. XCTCommandLineToolHelper) that don't
     # exist in the on-device XCTest of BrowserStack's iOS 15-18 fleet — dyld
