@@ -304,9 +304,35 @@ Likewise the write half is only exercised on a run that actually *misses*.
 Recipe pushes usually hit 100%, attempt no writes, and so say nothing about
 whether `sccache-write` works. If it is misconfigured the failure is silent
 and delayed — it surfaces the first time a `src/`-touching PR merges, and
-does not self-heal, because every later build re-misses and re-fails to
-write. After changing either environment, confirm on the next `recipe` push
-that has a non-zero miss count that `Cache writes` is also non-zero.
+does not self-heal, because every later build re-misses and re-fails to write.
+
+### The daily credential probe
+
+`.github/workflows/cache-credentials.yml` closes both gaps. It compiles one
+generated file per token and asserts the four things a build cannot:
+`sccache-read` reads R2 and is refused write **with a 403 from Cloudflare**;
+`sccache-write` writes and reads the object back. It forces
+`SCCACHE_S3_RW_MODE=READ_WRITE` in both jobs, because the `READ_ONLY` that
+build.yml uses off `recipe` would refuse the write locally and prove nothing.
+It also fails when sccache falls back to local disk, which is what a missing
+or unset secret looks like.
+
+It is scheduled rather than part of every build for two reasons. A job holds
+exactly one Environment, so no single `build.yml` run can reach both tokens —
+a PR sees only `sccache-read`, a `recipe` push only `sccache-write`, and the
+half it cannot see is the half whose failure is silent. And every failure
+here is *drift* (a revoked token, an expired one, a read token quietly
+reissued with write) rather than breakage: none of it stops the build that
+hits it. Gating PRs on it would only mean an R2 outage — which the build
+itself tolerates by falling back to misses — turning every PR red for a
+reason unrelated to the PR.
+
+Run it by hand (Actions → Cache credentials → Run workflow) right after
+changing a token or an environment. Dispatching it from a ref other than
+`recipe` is also the practical way to check the deployment branch rule:
+`probe-write` is then refused by GitHub before it starts, and that refusal is
+the rule working. A scheduled run cannot test that, because a schedule always
+runs on the default branch, where the rule passes.
 
 ### Gotchas
 
