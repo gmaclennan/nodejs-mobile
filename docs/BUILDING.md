@@ -286,10 +286,14 @@ test, and every build exercises the sccache integration anyway.
 
 Run it by hand (Actions → Cache credentials → Run workflow) right after
 changing a token or an environment. Dispatching it from a ref other than
-`recipe` is also the practical way to check the deployment branch rule: the
-`sccache-write` leg is then refused by GitHub before it starts, and that
-refusal is the rule working. A scheduled run cannot test that, because a
-schedule always runs on the default branch, where the rule passes.
+`recipe` also tests the deployment branch rule, and the `sccache-write` leg
+comes out red either way — what matters is the message. Refused by GitHub
+before any step ran (a protection-rules annotation): the rule works. Failed
+by its own ref guard: the leg actually ran, meaning **the rule is missing**
+and the write token is obtainable from arbitrary branches — the fail-open
+case described above, caught rather than reported as a healthy token. A
+scheduled run cannot test this; it always runs on the default branch, where
+the rule passes.
 
 ### Gotchas
 
