@@ -112,6 +112,7 @@ parallel/test-module-builtin
 parallel/test-module-children
 parallel/test-module-circular-symlinks
 parallel/test-module-create-require-multibyte
+parallel/test-module-globalpaths-nodepath
 parallel/test-module-isBuiltin
 parallel/test-module-multi-extensions
 parallel/test-net-access-byteswritten
@@ -151,6 +152,7 @@ parallel/test-process-emitwarning
 parallel/test-process-env-delete
 parallel/test-process-env-ignore-getter-setter
 parallel/test-process-env-windows-error-reset
+parallel/test-process-initgroups
 parallel/test-querystring
 parallel/test-querystring-maxKeys-non-finite
 parallel/test-stream-add-abort-signal
