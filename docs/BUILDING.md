@@ -282,6 +282,32 @@ a missing branch rule **fails open**: the workflow runs, and the write token
 simply isn't restricted. The rule is the whole mechanism; check it after any
 Settings change.
 
+### Checking it from a run — and what a run cannot tell you
+
+`sccache stats` reports enough to confirm most of it. A PR job that reads the
+shared bucket prints `Cache location  s3, name: <bucket>` (a job with no
+credentials would say local disk instead) and a hit rate; a release job prints
+nothing at all, because the step is skipped along with sccache itself.
+
+**What a green run does not prove is that the read-only token is read-only.**
+`SCCACHE_S3_RW_MODE=READ_ONLY` makes sccache refuse each write *locally*, so
+no `PUT` ever reaches Cloudflare and the token is never exercised. A PR whose
+credentials were secretly the read-write token would look exactly the same.
+The tell is in the server log this step dumps:
+
+- Write refused by the mode → `Cache write errors` equals the miss count, and
+  **no** corresponding entry in the log (the refusal never left the runner).
+- Write refused by the token → an opendal `write failed … 403` entry. That,
+  and only that, is evidence the credential itself is restricted.
+
+Likewise the write half is only exercised on a run that actually *misses*.
+Recipe pushes usually hit 100%, attempt no writes, and so say nothing about
+whether `sccache-write` works. If it is misconfigured the failure is silent
+and delayed — it surfaces the first time a `src/`-touching PR merges, and
+does not self-heal, because every later build re-misses and re-fails to
+write. After changing either environment, confirm on the next `recipe` push
+that has a non-zero miss count that `Cache writes` is also non-zero.
+
 ### Gotchas
 
 - The conditionals are all written `cold != 'true' && <cache on> || <cache
