@@ -42,6 +42,18 @@ V8_LITE_MODE="--v8-lite-mode"
 # TurboFan, so it must go too (it defaults on for arm64).
 V8_NO_TURBOFAN_GYP_DEFINES="v8_enable_turbofan=0"
 V8_DISABLE_MAGLEV="--v8-disable-maglev"
+# V8 pointer compression: 4-byte tagged pointers instead of 8, the single
+# largest cut to JS heap usage available to us and the reason to want it on a
+# phone (its 4GB heap ceiling is orders of magnitude above any mobile heap).
+# Unconditional here because every slice this script builds is arm64 — V8
+# supports compression on 64-bit only. configure pairs it with
+# v8_enable_external_code_space=1, which keeps the Apple-silicon
+# MAP_JIT/pthread_jit_write_protect path V8 documents as unusable under
+# compression *without* external code space out of the picture.
+# Caveat for consumers: this changes V8's object layout, so an addon that
+# touches the V8 API directly must be built against these headers. Node-API
+# addons are unaffected.
+V8_POINTER_COMPRESSION="--experimental-enable-pointer-compression"
 LITE_FLAGS=""
 if [ "$FLAVOR" = "lite" ]; then
   INTL="none"
@@ -130,6 +142,7 @@ build_for_arm64_device() {
     --v8-options=--jitless \
     $V8_LITE_MODE \
     $V8_DISABLE_MAGLEV \
+    $V8_POINTER_COMPRESSION \
     --without-node-code-cache \
     --without-node-snapshot
   make -j$(getconf _NPROCESSORS_ONLN)
@@ -162,6 +175,7 @@ build_for_arm64_simulator() {
     --v8-options=--jitless \
     $V8_LITE_MODE \
     $V8_DISABLE_MAGLEV \
+    $V8_POINTER_COMPRESSION \
     --without-node-code-cache \
     --without-node-snapshot \
     --ios-simulator

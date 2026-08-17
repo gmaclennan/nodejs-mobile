@@ -13,7 +13,9 @@ host CC/CXX are pinned so gyp's host tools (mksnapshot, torque) build
 with a real host compiler during the cross-compile; the sccache wrap is
 opt-in via NODEJS_MOBILE_SCCACHE (set by CI) and must live here because
 this script overwrites CC/CXX with the NDK toolchain; the full/lite
-flavor switch stays in the wrapper for the same reason. Also removes
+flavor switch stays in the wrapper for the same reason, as does the
+V8 pointer-compression flag, which the wrapper passes for 64-bit
+targets only (V8 supports compression nowhere else). Also removes
 upstream's configure-time "patch -f android-patches/..." mechanism,
 which mutates the source tree during a build — see the v8-trap-handler
 patch for where that edit went.
@@ -23,12 +25,12 @@ Co-authored-by: Andre Staltz <andre@staltz.com>
 Co-authored-by: Julia Samól <j.samol@papers.ch>
 Co-authored-by: Vincent Breitmoser <look@my.amazin.horse>
 ---
- android_configure.py | 58 ++++++++++++++++++++++++++++++++------------
- configure.py         |  8 ++++++
- 2 files changed, 51 insertions(+), 15 deletions(-)
+ android_configure.py | 77 +++++++++++++++++++++++++++++++++++---------
+ configure.py         |  8 +++++
+ 2 files changed, 70 insertions(+), 15 deletions(-)
 
 diff --git a/android_configure.py b/android_configure.py
-index 5cea0393f4..ec76c900ca 100644
+index 5cea0393f4..aa40c872a4 100644
 --- a/android_configure.py
 +++ b/android_configure.py
 @@ -1,25 +1,14 @@
@@ -68,7 +70,7 @@ index 5cea0393f4..ec76c900ca 100644
      toolchain_path = android_ndk_path + "/toolchains/llvm/prebuilt/darwin-x86_64"
  
  elif platform.system() == "Linux":
-@@ -65,13 +54,52 @@ elif platform.system() == "Linux":
+@@ -65,13 +54,71 @@ elif platform.system() == "Linux":
  os.environ['PATH'] += os.pathsep + toolchain_path + "/bin"
  os.environ['CC'] = toolchain_path + "/bin/" + TOOLCHAIN_PREFIX + android_sdk_version + "-" +  "clang"
  os.environ['CXX'] = toolchain_path + "/bin/" + TOOLCHAIN_PREFIX + android_sdk_version + "-" + "clang++"
@@ -116,6 +118,25 @@ index 5cea0393f4..ec76c900ca 100644
 +if flavor == "lite":
 +    intl = "none"
 +    extra_flags = " --without-amaro --without-inspector --without-sqlite"
++
++# nodejs-mobile patch: V8 pointer compression — 4-byte tagged pointers instead
++# of 8, which is the single largest cut to JS heap usage available to us and
++# the reason to want it on a phone. The 4GB heap ceiling it imposes is orders
++# of magnitude above any mobile heap.
++#
++# 64-bit targets only, and gated here rather than passed unconditionally:
++# V8 static_asserts "Pointer compression can be enabled only for 64-bit
++# architectures" (deps/v8/src/common/globals.h), and while common.gypi
++# force-zeroes the gyp variables for 32-bit target_arch — so the armeabi-v7a
++# slice would still compile — configure.py would have already written
++# v8_enable_pointer_compression=1 into config.gypi, leaving that slice's
++# process.config claiming a compression its binary does not have.
++#
++# Caveat for consumers: this changes V8's object layout, so an addon that
++# touches the V8 API directly must be built against these headers. Node-API
++# addons are unaffected.
++if DEST_CPU in ("arm64", "x64"):
++    extra_flags += " --experimental-enable-pointer-compression"
 +
  os.environ['GYP_DEFINES'] = GYP_DEFINES
  

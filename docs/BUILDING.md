@@ -167,6 +167,40 @@ dependency changes.
 
 ---
 
+## V8 pointer compression
+
+Both targets configure with upstream's
+`--experimental-enable-pointer-compression`, which stores tagged pointers in
+V8's heap as 32-bit offsets from an isolate-root cage instead of full 64-bit
+words — the largest single reduction in JS heap usage available to us, and the
+one that matters most on a phone. `configure` turns it into
+`v8_enable_pointer_compression=1`, `v8_enable_external_code_space=1` and
+`v8_enable_31bit_smis_on_64bit_arch=1` (`V8_COMPRESS_POINTERS`,
+`V8_COMPRESS_POINTERS_IN_MULTIPLE_CAGES`, `V8_31BIT_SMIS_ON_64BIT_ARCH`); it
+holds `v8_enable_sandbox` at 0, as upstream does for every Node build.
+
+What it costs and where it applies:
+
+- **64-bit only.** V8 `static_assert`s that compression is 64-bit-only
+  (`deps/v8/src/common/globals.h`), so `android_configure.py` passes the flag
+  only for `arm64`/`x64` — the `armeabi-v7a` slice builds without it. The gate
+  is in the wrapper, not left to `common.gypi`'s 32-bit force-zeroing, because
+  that override happens after `configure` has already written
+  `v8_enable_pointer_compression: 1` into `config.gypi`: the slice would
+  compile fine but report a compression through `process.config` that its
+  binary does not have. iOS builds only arm64 slices, so
+  `ios_framework_prepare.sh` passes it unconditionally.
+- **The heap ceiling drops to 4GB** — orders of magnitude above any mobile
+  heap, so it is not a constraint here.
+- **It changes V8's object layout, i.e. the ABI.** Addons that use the V8 API
+  directly must be built against these headers; Node-API addons don't touch
+  V8's layout and are unaffected (the CI addon gate builds `crc-native` against
+  each build's own headers — see [TESTING.md](./TESTING.md#the-napi-addon-gate)).
+- Upstream still labels the flag experimental, and notes that compression
+  without the sandbox is a configuration V8 does not officially support.
+
+---
+
 ## The CI compiler cache
 
 CI compiles Node from scratch in eleven jobs per run, so it keeps a shared
