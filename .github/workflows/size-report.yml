@@ -1,0 +1,197 @@
+name: Size report
+
+# Measurement only — not a gate, and nothing else depends on it.
+#
+# Question: what does `node:sqlite` cost in the Android lite binary, measured
+# the way a consumer actually pays for it — the stripped `libnode.so` gradle
+# packages into an APK (AGP runs `llvm-strip --strip-unneeded`, and with
+# minSdk >= 23 stores the result uncompressed, so the stripped size IS the
+# APK contribution). The release assets ship the binary unstripped, so the
+# number in docs/BUILDING.md is not something `ls` on an artifact reproduces.
+#
+# Two legs, arm64 only, both configured `lite`; the second one drops
+# `--without-sqlite` from the flavor's configure line. The baseline leg reuses
+# build-android's cache key verbatim, so it restores the exact binary the
+# recipe ships rather than recompiling an approximation of it.
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches: [recipe]
+    paths:
+      - .github/workflows/size-report.yml
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+# This workflow never publishes anything, so it is always on the read side of
+# the sccache split (docs/BUILDING.md, "The CI compiler cache") — no
+# release-check, no conditional, no path to the write token.
+env:
+  SCCACHE_IDLE_TIMEOUT: "0"
+  SCCACHE_S3_RW_MODE: READ_ONLY
+  SCCACHE_LOG: warn
+  SCCACHE_ERROR_LOG: /tmp/sccache-errors.log
+  ANDROID_NDK_VERSION: r27d
+  ANDROID_TARGET_SDK_VERSION: 24
+
+permissions:
+  contents: read
+
+jobs:
+  measure:
+    strategy:
+      fail-fast: false
+      matrix:
+        variant: [lite, lite-sqlite]
+
+    runs-on: ubuntu-24.04
+    environment:
+      name: sccache-read
+      deployment: false
+    env:
+      TARGET_ARCH: arm64
+      ABI: arm64-v8a
+      NODEJS_MOBILE_FLAVOR: lite
+      # '-lite' is build-android's own suffix, so that leg hits its cache;
+      # '-lite-sqlite' is a key nothing else writes.
+      FLAVOR_SUFFIX: ${{ matrix.variant == 'lite' && '-lite' || '-lite-sqlite' }}
+      ANDROID_LDFLAGS: "-Wl,-z,max-page-size=16384"
+
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 1
+
+      - uses: ./.github/actions/materialize
+
+      - name: Run sccache-cache
+        uses: mozilla-actions/sccache-action@fc920bf0ec8de6ee65d409111f7ec508035751ba # v0.0.11
+
+      - name: Install build utils
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc-multilib g++-multilib
+
+      - name: Setup Android NDK
+        uses: nttld/setup-ndk@ed92fe6cadad69be94a966a7ee3271275e62f779 # v1.6.0
+        id: setup-ndk
+        with:
+          ndk-version: ${{ env.ANDROID_NDK_VERSION }}
+          add-to-path: false
+
+      # Byte-for-byte the formula in build.yml's build-android. Keep them in
+      # step: if this drifts, the baseline leg stops measuring the shipped
+      # binary and starts measuring a rebuild of it.
+      - name: Compute libnode cache key
+        id: ck
+        run: |
+          H=$( { git rev-parse "HEAD:src" "HEAD:deps" "HEAD:lib" "HEAD:tools/v8_gypfiles" "HEAD:tools/gyp" "HEAD:tools/icu"; \
+                 git hash-object node.gyp node.gypi common.gypi configure configure.py android-configure android_configure.py tools/android_build.sh tools/copy_libnode_headers.sh; \
+                 printf '%s\n' "$ANDROID_LDFLAGS" "$ANDROID_TARGET_SDK_VERSION"; \
+               } | git hash-object --stdin )
+          echo "key=libnode-android-${TARGET_ARCH}${FLAVOR_SUFFIX}-ndk${ANDROID_NDK_VERSION}-${H}" >> "$GITHUB_OUTPUT"
+
+      - name: Restore built libnode
+        id: libnode-cache
+        uses: actions/cache@v6
+        with:
+          path: out_android
+          key: ${{ steps.ck.outputs.key }}
+
+      # The whole experiment, in one substitution. It runs after the key step
+      # on purpose: the key must stay the one build-android would compute, and
+      # the FLAVOR_SUFFIX above is what keeps the two legs apart. `grep` first
+      # so a reworded configure line fails the job instead of silently
+      # measuring the same binary twice.
+      - name: Enable node:sqlite in the lite configure
+        if: matrix.variant == 'lite-sqlite' && steps.libnode-cache.outputs.cache-hit != 'true'
+        run: |
+          grep -q -- ' --without-sqlite' android_configure.py
+          sed -i 's/ --without-sqlite//' android_configure.py
+          grep -n 'extra_flags = ' android_configure.py
+
+      - name: Build
+        if: steps.libnode-cache.outputs.cache-hit != 'true'
+        env:
+          MY_ANDROID_NDK_HOME: ${{ steps.setup-ndk.outputs.ndk-path }}
+          LDFLAGS: ${{ env.ANDROID_LDFLAGS }}
+          NODEJS_MOBILE_SCCACHE: "1"
+          SCCACHE_BUCKET: ${{ secrets.R2_ACCESS_KEY_ID != '' && vars.R2_BUCKET || '' }}
+          SCCACHE_REGION: auto
+          SCCACHE_ENDPOINT: https://${{ secrets.R2_ACCOUNT_ID }}.r2.cloudflarestorage.com
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+        run: |
+          ./tools/android_build.sh "$MY_ANDROID_NDK_HOME" "$ANDROID_TARGET_SDK_VERSION" "$TARGET_ARCH"
+
+      - name: Measure
+        env:
+          NDK_PATH: ${{ steps.setup-ndk.outputs.ndk-path }}
+          VARIANT: ${{ matrix.variant }}
+        run: |
+          set -euo pipefail
+          STRIP="$NDK_PATH/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-strip"
+          [ -x "$STRIP" ] || { echo "::error::llvm-strip not found at $STRIP"; exit 1; }
+          SO="out_android/$ABI/libnode.so"
+
+          # Does this binary actually contain SQLite? sqlite3.c carries the
+          # database file magic as a literal, so this distinguishes the two
+          # legs without trusting that the sed above did anything.
+          if grep -aq 'SQLite format 3' "$SO"; then HAS=yes; else HAS=no; fi
+          case "$VARIANT" in
+            lite)        WANT=no ;;
+            lite-sqlite) WANT=yes ;;
+          esac
+          [ "$HAS" = "$WANT" ] || { echo "::error::$VARIANT: sqlite present=$HAS, expected $WANT"; exit 1; }
+
+          cp "$SO" "$RUNNER_TEMP/libnode.so"
+          "$STRIP" --strip-unneeded "$RUNNER_TEMP/libnode.so"
+          RAW=$(stat -c%s "$SO")
+          STRIPPED=$(stat -c%s "$RUNNER_TEMP/libnode.so")
+          # Rough stand-in for what the download costs, since Play compresses
+          # the upload even though the APK stores the .so uncompressed.
+          GZ=$(gzip -9 -c "$RUNNER_TEMP/libnode.so" | wc -c)
+
+          printf '{"variant":"%s","sqlite":"%s","raw":%s,"stripped":%s,"gzip":%s}\n' \
+            "$VARIANT" "$HAS" "$RAW" "$STRIPPED" "$GZ" > "size-$VARIANT.json"
+          cat "size-$VARIANT.json"
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: size-${{ matrix.variant }}
+          path: size-${{ matrix.variant }}.json
+
+  compare:
+    needs: measure
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: size-*
+          merge-multiple: true
+          path: sizes
+
+      - name: Report
+        run: |
+          python3 - <<'PY' >> "$GITHUB_STEP_SUMMARY"
+          import json, pathlib
+          rows = {}
+          for p in sorted(pathlib.Path("sizes").glob("*.json")):
+              d = json.loads(p.read_text())
+              rows[d["variant"]] = d
+          mb = lambda n: f"{n / 1024 / 1024:.2f} MB"
+          print("## Android arm64 `libnode.so`, lite flavor\n")
+          print("| variant | node:sqlite | unstripped | stripped (as packaged) | gzip of stripped |")
+          print("|---|---|---:|---:|---:|")
+          for v in ("lite", "lite-sqlite"):
+              r = rows[v]
+              print(f"| `{v}` | {r['sqlite']} | {mb(r['raw'])} | {mb(r['stripped'])} | {mb(r['gzip'])} |")
+          a, b = rows["lite"], rows["lite-sqlite"]
+          d = b["stripped"] - a["stripped"]
+          dz = b["gzip"] - a["gzip"]
+          print(f"\n**Cost of `node:sqlite`: {mb(d)} stripped** "
+                f"({d / a['stripped'] * 100:+.1f}%), {mb(dz)} gzipped.")
+          PY
+          cat "$GITHUB_STEP_SUMMARY"
